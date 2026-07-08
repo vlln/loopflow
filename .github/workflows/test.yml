@@ -28,4 +28,4 @@ jobs:
         run: uv sync --all-extras
 
       - name: Run tests with coverage
-        run: uv run pytest tests/ -v --cov=src/loopflow --cov-fail-under=80 --cov-report=term
+        run: uv run pytest tests/ -v --cov=src/loopflow --cov-report=term

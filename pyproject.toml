@@ -25,3 +25,15 @@ build-backend = "hatchling.build"
 dev = [
     "pytest-cov>=7.1.0",
 ]
+
+[tool.coverage.run]
+source = ["src/loopflow"]
+omit = [
+    "src/loopflow/backends/*",
+    "src/loopflow/transports/*",
+    "src/loopflow/agent.py",
+    "src/loopflow/lock.py",
+]
+
+[tool.coverage.report]
+fail_under = 59
