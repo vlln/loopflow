@@ -1,4 +1,4 @@
-"""Abstract backend interface for subagent."""
+"""Abstract backend interface for loopflow."""
 
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ if TYPE_CHECKING:
 
 
 class BaseBackend(ABC):
-    """Abstract backend for running subagent sessions.
+    """Abstract backend for running agent sessions.
 
-    Each backend implements how to create, resume, and list sessions
+    Each backend implements how to create, resume, and close sessions
     for a specific agent provider (e.g. kimi, claude, codex, pi, kiro).
+    loopflow only needs create_session, resume_session, and close.
     """
 
     @abstractmethod
@@ -31,8 +32,7 @@ class BaseBackend(ABC):
             user: The user prompt.
             system: Optional system prompt (agent definition body).
             model: Optional model name.
-            system_mode: 'append' (default) or 'overwrite'. Controls how the
-                system prompt is handled relative to the backend's default.
+            system_mode: 'append' (default) or 'overwrite'.
             requires: Optional agent requirements (skills, params, mcps).
         """
 
@@ -53,14 +53,9 @@ class BaseBackend(ABC):
             user: The user prompt.
             system: Optional system prompt (agent definition body).
             model: Optional model name.
-            system_mode: 'append' (default) or 'overwrite'. Controls how the
-                system prompt is handled relative to the backend's default.
+            system_mode: 'append' (default) or 'overwrite'.
             requires: Optional agent requirements (skills, params, mcps).
         """
-
-    @abstractmethod
-    def list_sessions(self) -> list[dict]:
-        """List all sessions known to this backend."""
 
     def close(self) -> None:
         """Clean up backend resources. Optional override."""
