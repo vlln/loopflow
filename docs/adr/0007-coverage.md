@@ -2,7 +2,7 @@
 title: ADR-0007
 description: 覆盖率策略：coverage.py + 80% 阈值
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

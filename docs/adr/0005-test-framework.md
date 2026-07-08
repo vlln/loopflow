@@ -2,7 +2,7 @@
 title: ADR-0005
 description: 测试框架选型：pytest + coverage.py
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

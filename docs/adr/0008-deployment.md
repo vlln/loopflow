@@ -2,7 +2,7 @@
 title: ADR-0008
 description: 部署策略：PyPI 发布，uv tool install 安装
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

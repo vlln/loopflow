@@ -2,7 +2,7 @@
 title: ADR-0006
 description: CI 平台选型：GitHub Actions
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

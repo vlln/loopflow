@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `TEST_INFRA` |
-| **设计评估** | 已冻结（vision active, 1 Spec, 8 ACs, 4 ADRs accepted） |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | 已冻结（vision active, 1 Spec, 8 ACs, 8 ADRs accepted） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
