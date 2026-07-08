@@ -4,8 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `INIT` |
-| **设计评估** | — |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | 已冻结（vision active, 1 Spec, 8 ACs, 8 ADRs accepted） |
+| **核心模块** | backend, runtime, discovery, CLI 已实现（50 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 

@@ -1,0 +1,248 @@
+"""loopflow CLI — AI Agent loop orchestration tool.
+
+Commands:
+    loop run <name> [--args '<json>']
+    loop resume <run-id>
+    loop status <run-id>
+    loop list
+    loop stop <run-id>
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import signal
+import sys
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+
+import click
+
+
+def _runs_dir() -> Path:
+    home = os.environ.get("HOME", os.path.expanduser("~"))
+    runs = os.environ.get("LOOPFLOW_RUNS_DIR", str(Path(home) / ".loopflow" / "runs"))
+    return Path(runs)
+
+
+@click.group()
+def main():
+    """loopflow — AI Agent loop orchestration tool."""
+    pass
+
+
+@main.command()
+@click.argument("name")
+@click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
+def run(name, wf_args):
+    """Run a loop."""
+    from loopflow.discovery import load_loop
+    from loopflow.runtime import RunContext, set_context, agent, parallel, pipeline, phase, log, workflow
+
+    args_dict = {}
+    if wf_args:
+        try:
+            args_dict = json.loads(wf_args)
+        except json.JSONDecodeError as e:
+            print(f"Error: invalid --args JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    mod, meta = load_loop(name)
+
+    run_id = uuid.uuid4().hex[:8]
+    run_dir = _runs_dir() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Write run.json
+    run_meta = {
+        "loop": name,
+        "run_id": run_id,
+        "status": "running",
+        "created": datetime.now(timezone.utc).isoformat(),
+        "args": args_dict,
+        "counter": 0,
+    }
+    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+
+    ctx = RunContext(run_id=run_id, run_dir=run_dir)
+    set_context(ctx)
+
+    print(f"[loopflow] Running: {name} ({run_id})", file=sys.stderr)
+
+    try:
+        result = mod.run(
+            agent=agent, parallel=parallel, pipeline=pipeline,
+            phase=phase, log=log, args=args_dict, workflow=workflow,
+        )
+    except Exception as e:
+        print(f"[loopflow] Error: {e}", file=sys.stderr)
+        run_meta["status"] = "failed"
+        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+        sys.exit(1)
+
+    run_meta["status"] = "done"
+    run_meta["counter"] = ctx._counter
+    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+
+    if result is not None:
+        if isinstance(result, str):
+            print(result)
+        elif isinstance(result, dict) and "summary" in result:
+            print(result["summary"])
+        else:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+
+
+@main.command()
+@click.argument("run_id")
+def resume(run_id):
+    """Resume a crashed loop run."""
+    from loopflow.discovery import load_loop
+    from loopflow.runtime import RunContext, set_context, agent, parallel, pipeline, phase, log, workflow
+
+    run_dir = _runs_dir() / run_id
+    if not run_dir.is_dir():
+        print(f"Error: run '{run_id}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    run_json = run_dir / "run.json"
+    if not run_json.is_file():
+        print(f"Error: run '{run_id}' has no run.json", file=sys.stderr)
+        sys.exit(1)
+
+    run_meta = json.loads(run_json.read_text())
+    if run_meta["status"] == "running":
+        print(f"Error: run '{run_id}' is still running", file=sys.stderr)
+        sys.exit(1)
+
+    loop_name = run_meta["loop"]
+    mod, meta = load_loop(loop_name)
+    args_dict = run_meta.get("args", {})
+
+    run_meta["status"] = "running"
+    run_json.write_text(json.dumps(run_meta, indent=2))
+
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True)
+    set_context(ctx)
+
+    print(f"[loopflow] Resuming: {loop_name} ({run_id})", file=sys.stderr)
+
+    try:
+        result = mod.run(
+            agent=agent, parallel=parallel, pipeline=pipeline,
+            phase=phase, log=log, args=args_dict, workflow=workflow,
+        )
+    except Exception as e:
+        print(f"[loopflow] Error: {e}", file=sys.stderr)
+        run_meta["status"] = "failed"
+        run_json.write_text(json.dumps(run_meta, indent=2))
+        sys.exit(1)
+
+    run_meta["status"] = "done"
+    run_meta["counter"] = ctx._counter
+    run_json.write_text(json.dumps(run_meta, indent=2))
+
+    if result is not None:
+        if isinstance(result, str):
+            print(result)
+        elif isinstance(result, dict) and "summary" in result:
+            print(result["summary"])
+        else:
+            print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+
+
+@main.command()
+@click.argument("run_id")
+def status(run_id):
+    """Show status of a run."""
+    run_dir = _runs_dir() / run_id
+    if not run_dir.is_dir():
+        print(f"Error: run '{run_id}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    run_json = run_dir / "run.json"
+    if not run_json.is_file():
+        print(f"Error: run '{run_id}' has no run.json", file=sys.stderr)
+        sys.exit(1)
+
+    meta = json.loads(run_json.read_text())
+    jsonl_files = sorted(run_dir.glob("*.jsonl"))
+
+    print(f"Run: {run_id}")
+    print(f"  Loop:   {meta['loop']}")
+    print(f"  Status: {meta['status']}")
+    print(f"  Created: {meta['created']}")
+    print(f"  Agents: {len(jsonl_files)} calls")
+    if meta.get("args"):
+        print(f"  Args:   {json.dumps(meta['args'])}")
+
+
+@main.command()
+def list():
+    """List all loops and runs."""
+    from loopflow.discovery import list_loops
+
+    print("Loops:")
+    loops = list_loops()
+    if not loops:
+        print("  (none)")
+    else:
+        for name, meta, path in loops:
+            desc = meta.get("description", "")
+            print(f"  {name} — {desc}")
+
+    print()
+    print("Runs:")
+    runs = _runs_dir()
+    if not runs.is_dir():
+        print("  (none)")
+    else:
+        entries = sorted(runs.iterdir(), reverse=True)
+        if not entries:
+            print("  (none)")
+        for entry in entries:
+            rj = entry / "run.json"
+            if rj.is_file():
+                m = json.loads(rj.read_text())
+                print(f"  {m['run_id']}  [{m['status']}]  {m['loop']}  {m['created']}")
+
+
+@main.command()
+@click.argument("run_id")
+def stop(run_id):
+    """Stop a running loop."""
+    run_dir = _runs_dir() / run_id
+    if not run_dir.is_dir():
+        print(f"Error: run '{run_id}' not found", file=sys.stderr)
+        sys.exit(1)
+
+    run_json = run_dir / "run.json"
+    if not run_json.is_file():
+        print(f"Error: run '{run_id}' has no run.json", file=sys.stderr)
+        sys.exit(1)
+
+    meta = json.loads(run_json.read_text())
+    if meta["status"] != "running":
+        print(f"Run '{run_id}' is not running (status: {meta['status']})", file=sys.stderr)
+        sys.exit(0)
+
+    pid_file = run_dir / "loop.pid"
+    if pid_file.is_file():
+        try:
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, signal.SIGTERM)
+            print(f"Stopped run '{run_id}' (pid {pid})", file=sys.stderr)
+        except (OSError, ValueError):
+            print(f"Process not found for run '{run_id}', cleaning up", file=sys.stderr)
+            pid_file.unlink()
+    else:
+        print(f"No pid file for run '{run_id}'", file=sys.stderr)
+
+    meta["status"] = "stopped"
+    run_json.write_text(json.dumps(meta, indent=2))

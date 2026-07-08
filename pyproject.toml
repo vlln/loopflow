@@ -1,0 +1,39 @@
+[project]
+name = "loopflow"
+version = "0.1.0"
+description = "AI Agent loop orchestration tool"
+requires-python = ">=3.10"
+dependencies = [
+    "pyyaml>=6.0",
+    "click>=8.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+loop = "loopflow.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pytest-cov>=7.1.0",
+]
+
+[tool.coverage.run]
+source = ["src/loopflow"]
+omit = [
+    "src/loopflow/backends/*",
+    "src/loopflow/transports/*",
+    "src/loopflow/agent.py",
+    "src/loopflow/lock.py",
+]
+
+[tool.coverage.report]
+fail_under = 59
