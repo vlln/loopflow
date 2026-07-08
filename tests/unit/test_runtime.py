@@ -10,6 +10,15 @@ import pytest
 
 # ── fixtures ──────────────────────────────────────────────────────────────
 
+@pytest.fixture(autouse=True)
+def _reset_mock():
+    """Reset mock mode before each test."""
+    from loopflow.runtime import set_mock
+    set_mock(None)
+    yield
+    set_mock(None)
+
+
 @pytest.fixture
 def temp_run_dir():
     d = Path(tempfile.mkdtemp()) / "test-run"
