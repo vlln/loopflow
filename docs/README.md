@@ -4,7 +4,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `INIT` |
+| **当前阶段** | `DESIGN` |
 | **设计评估** | — |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
