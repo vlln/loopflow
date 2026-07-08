@@ -1,8 +1,4 @@
-
-<!-- 项目版本变更记录，遵循 [Keep a Changelog](https://keepachangelog.com/) 规范。
-文档与代码的变更分别记录，各自独立 Commit，在此汇总。 -->
-
----
+# Changelog
 
 ## [Unreleased]
 
@@ -17,19 +13,20 @@
 
 ---
 
-## [0.1.0] — YYYY-MM-DD
+## [0.1.0] — 2026-07-08
 
 ### Added
-- 项目初始化
+- Loop 定义：以文件夹形式组织（workflow.py + agents/），支持 `~/.loopflow/loops/` 目录
+- Workflow Runtime：agent/parallel/pipeline/phase/log/args/workflow API，与 Claude Code Workflow 签名一致
+- 崩溃恢复：序号计数器重放，已完成 agent 调用自动跳过，对 workflow 作者透明
+- CLI 命令：loop run / resume / status / list / stop
+- 多后端支持：从 subagent-skills 复用 8 种后端适配器（kimi/claude/codex/pi/opencode/qwen/kiro/gemini）
+- 测试框架：pytest + coverage.py，50 个测试（41 unit + 9 integration），59% 覆盖率
+- CI/CD：GitHub Actions workflow，Python 3.10 + 3.14 矩阵测试
+- 文档体系：vision.md, Spec, 8 ACs, 8 ADRs, 5 Plans
 
-<!--
-格式说明：
-- Added — 新增功能
-- Changed — 功能变更
-- Deprecated — 即将移除
-- Removed — 已移除
-- Fixed — Bug 修复
-- Security — 安全修复
+### Changed
+- 从 subagent-skills 复制 backends/transports/agent/registry/lock，精简移除 goal/swarm/send/cancel 等不需要的功能
 
-每次发布时，将 [Unreleased] 内容移至新版本号下，并关联对应 Plan 和 Commit。
--->
+### Fixed
+- Runtime 捕获真实后端输出（text_handler），修复了 mock 文本硬编码的问题
