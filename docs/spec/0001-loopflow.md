@@ -137,7 +137,7 @@ Markdown 文件，YAML frontmatter：
 | 兼容性 | Python 版本 | 3.10+ |
 | 兼容性 | 操作系统 | macOS / Linux |
 | 可靠性 | Resume 缓存命中准确性 | 100%（相同 prompt + 相同序号 → 相同结果） |
-| 可维护性 | 外部依赖 | 零（仅 Python 标准库） |
+| 可维护性 | 外部依赖 | 运行时：pyyaml, click, rich；开发：pytest；管理：uv |
 
 ---
 
@@ -145,6 +145,10 @@ Markdown 文件，YAML frontmatter：
 
 | 依赖 | 版本 | 用途 |
 |------|------|------|
+| pyyaml | — | Agent 定义文件 frontmatter 解析 |
+| click | — | CLI 命令路由和参数解析 |
+| rich | — | TTY 进度渲染 |
+| pytest | — | 测试框架（开发依赖） |
 | subagent-skills 后端层 | — | 多 Agent 后端的适配器代码（claude/kimi/codex 等），复制到 src/loopflow/backends/ 下 |
 | Python 标准库 | 3.10+ | 所有运行时能力（subprocess/threading/json/pathlib/importlib） |
 

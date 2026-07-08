@@ -1,6 +1,6 @@
 ---
 title: ADR-0001
-description: 技术栈选型：Python 3.10+，零外部依赖，仅标准库
+description: 技术栈选型：Python 3.10+，uv 管理项目，最小运行时依赖（pyyaml/click/rich）
 type: adr
 status: proposed
 created: 2026-07-07T12:00:00Z
@@ -18,7 +18,7 @@ loopflow 需要选择编程语言和运行时。核心约束：复用 subagent-s
 
 ## 决策内容
 
-使用 **Python 3.10+**，**零外部依赖**（仅标准库）。不引入任何 pip 包。
+使用 **Python 3.10+**，**uv** 管理项目和依赖，**最小运行时依赖**（pyyaml、click、rich），**pytest** 作为开发依赖。通过 `pyproject.toml` 标准 Python 项目管理。
 
 ---
 
@@ -26,13 +26,13 @@ loopflow 需要选择编程语言和运行时。核心约束：复用 subagent-s
 
 ### 方案 A: Python 3.10+，零依赖
 
-- 优点：安装成本为零（系统自带 Python），subagent-skills 后端代码可直接复用，无依赖冲突风险
-- 缺点：部分功能需手写（如 YAML frontmatter 解析），并发能力受限于 threading
+- 优点：零安装成本，无依赖冲突风险
+- 缺点：YAML frontmatter 需手写解析器（~100 行，易出 bug），CLI 需手写 argparse 子命令路由（~200 行），TUI 需手写 ANSI（~300 行，subagent-skills 的 progress 渲染器有已知 bug）
 
-### 方案 B: Python + rich/click/pyyaml
+### 方案 B: Python + uv + pyyaml/click/rich（推荐）
 
-- 优点：TUI 效果更好（rich），CLI 更规范（click），YAML 解析更健壮（pyyaml）
-- 缺点：引入依赖管理负担，安装门槛提高，与 subagent-skills 零依赖哲学不一致
+- 优点：YAML 解析健壮（pyyaml），CLI 清晰自动 help（click），TUI 可维护（rich），uv 管理依赖快速可靠，pyproject.toml 标准工程化
+- 缺点：引入 3 个运行时依赖 + 1 个开发依赖，安装需要 `uv sync` 或 `pip install`
 
 ### 方案 C: Node.js / TypeScript
 
@@ -43,10 +43,11 @@ loopflow 需要选择编程语言和运行时。核心约束：复用 subagent-s
 
 ## 选择理由
 
-1. subagent-skills 已有 8 个后端适配器（~2000 行 Python），方案 A 零成本复用
-2. 零依赖意味着 `python3` 即可运行，无安装步骤
-3. YAML frontmatter 解析可手写（仅需解析 `key: value` 和列表，不需要完整 YAML 1.2 规范）
-4. TUI 可通过 ANSI escape codes 手写，subagent-skills 已有可用的 progress 渲染器
+1. subagent-skills 已有 8 个后端适配器（~2000 行 Python），方案 B 零成本复用
+2. loopflow 是独立工具（非 skill），用户通过 `pip install` 或 `uv tool install` 安装是标准期望
+3. pyyaml/click/rich 是 Python 生态的事实标准，稳定、轻量、维护成本为零
+4. uv 是当前最快的 Python 包管理器，pyproject.toml 是 PEP 标准
+5. 3 个运行时依赖 + 1 个开发依赖，总量可控，不引入重量级框架
 
 ---
 
@@ -54,8 +55,8 @@ loopflow 需要选择编程语言和运行时。核心约束：复用 subagent-s
 
 | 验证项 | 复现步骤 | 结论 | 经验 | 验证 Branch |
 |--------|---------|------|------|------------|
-| 标准库 YAML 解析足够 | 编写 agent 定义文件的 frontmatter 解析器，测试 name/description/requires 字段提取 | 可行 | 仅需解析简单 KV 对和字符串列表，无需完整 YAML 库 | spike/0001-tech-stack |
-| ANSI TUI 可行 | 运行 subagent-skills 的 progress 渲染器 demo | 可行 | subagent-skills 已实现 braille 进度条、TTY 树形渲染，可直接复用 | spike/0001-tech-stack |
+| uv + pyproject.toml 初始化 | `uv init loopflow`，添加 pyyaml/click/rich/pytest 依赖，`uv run python -c "import yaml, click, rich"` | 待验证 | — | spike/0001-tech-stack |
+| subagent-skills 后端代码可导入 | 复制 backends/ 到 src/loopflow/，`uv run python -c "from loopflow.backends import kimi"` | 待验证 | — | spike/0001-tech-stack |
 
 ---
 
@@ -63,14 +64,14 @@ loopflow 需要选择编程语言和运行时。核心约束：复用 subagent-s
 
 ### 正面
 
-- 零安装成本，`git clone` 后即用
-- 与 subagent-skills 代码完全兼容，复制粘贴即可
-- 无外部依赖冲突，用户环境兼容性最大化
+- 标准 Python 项目工程化（pyproject.toml + uv），社区熟悉
+- pyyaml/click/rich 健壮且零维护成本
+- 与 subagent-skills 后端代码完全兼容
 
 ### 负面
 
-- TUI 手写维护成本高于使用 rich
-- 需自行处理 Python 版本兼容性（3.10 的 match/case 语法 → 可选使用 3.10 特性，保持 3.9 兼容）
+- 非零安装成本（需 `uv sync` 或 `pip install`）
+- 3 个运行时依赖需要关注安全更新
 
 ---
 
@@ -84,6 +85,7 @@ loopflow 需要选择编程语言和运行时。核心约束：复用 subagent-s
 
 | 规则编号 | 规则 | 适用范围 | 违反时如何检出 |
 |----------|------|---------|--------------|
-| AR-001 | 禁止引入任何 pip 外部依赖 | 全部源码 | CI 检查 `pip list` 或 import 分析 |
+| AR-001 | 使用 uv 管理依赖，pyproject.toml 声明所有依赖 | 全部源码 | CI 检查 pyproject.toml 存在且 [project] 段完整 |
 | AR-002 | 代码必须在 Python 3.10 上运行 | 全部源码 | CI 运行 3.10 版本 |
-| AR-003 | 所有 import 必须来自标准库或项目内部 | 全部源码 | lint 规则检查 |
+| AR-003 | 运行时依赖仅限 pyyaml、click、rich | 全部源码 | pyproject.toml dependencies 审查 |
+| AR-004 | 开发依赖仅限 pytest | 全部源码 | pyproject.toml dev-dependencies 审查 |

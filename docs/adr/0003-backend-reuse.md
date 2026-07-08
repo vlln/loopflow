@@ -37,13 +37,13 @@ loopflow 需要调用 8 种 AI Agent 后端（kimi/claude/codex/pi/opencode/qwen
 ### 方案 C: Git submodule
 
 - 优点：版本锁定，可追溯
-- 缺点：用户体验差（需要 `--recursive` clone），不符合零依赖哲学
+- 缺点：用户体验差（需要 `--recursive` clone），增加安装复杂度
 
 ---
 
 ## 选择理由
 
-1. 与 ADR-0001（零依赖）一致——复制代码不引入外部包
+1. 与 ADR-0001（最小依赖）一致——复制代码不引入额外运行时依赖
 2. loopflow 和 subagent-skills 的演进方向不同：loopflow 面向循环编排，subagent-skills 面向一次性任务分发
 3. 复制时可大幅精简：移除 goal、swarm、send、cancel、queue_worker 等 loopflow 不需要的功能
 4. subagent-skills 的后端层本身设计为独立模块（`base.py` 抽象 + 各后端实现），复制后接口不变
@@ -65,7 +65,6 @@ loopflow 需要调用 8 种 AI Agent 后端（kimi/claude/codex/pi/opencode/qwen
 
 - loopflow 完全独立，不受上游变更影响
 - 可自由重构后端接口以适配 loopflow 的编排模型
-- 保持零依赖
 
 ### 负面
 
