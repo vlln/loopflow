@@ -2,7 +2,7 @@
 title: loopflow AC
 description: loopflow 核心功能验收标准：loop 定义、运行、resume、实例管理、parallel/pipeline/workflow
 type: ac
-status: proposed
+status: active
 created: 2026-07-07T12:00:00Z
 ---
 

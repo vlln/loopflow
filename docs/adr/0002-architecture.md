@@ -2,7 +2,7 @@
 title: ADR-0002
 description: 架构模式：目录结构、模块划分、~/.loopflow/ 用户目录布局
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

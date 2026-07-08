@@ -2,7 +2,7 @@
 title: ADR-0003
 description: 后端复用策略：从 subagent-skills 复制代码 vs pip 包依赖
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

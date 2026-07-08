@@ -3,7 +3,7 @@ title: Vision — 项目顶层愿景
 description: 全局顶层愿景，一句话说明项目的核心目标和约束。
 type: vision
 # status: 见 SKILL.md status 有效值表
-status: proposed
+status: active
 created: 2026-07-07T12:00:00Z
 ---
 

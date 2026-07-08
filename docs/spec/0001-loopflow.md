@@ -2,7 +2,7 @@
 title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、运行实例管理、崩溃恢复。CLI 工具，无 API，无 UI。
 type: spec
-status: proposed
+status: active
 version: 1
 created: 2026-07-07T12:00:00Z
 ---

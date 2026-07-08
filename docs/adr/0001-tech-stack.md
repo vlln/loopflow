@@ -2,7 +2,7 @@
 title: ADR-0001
 description: 技术栈选型：Python 3.10+，uv 管理项目，最小运行时依赖（pyyaml/click/rich）
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 

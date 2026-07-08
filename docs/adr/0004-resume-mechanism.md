@@ -2,7 +2,7 @@
 title: ADR-0004
 description: 崩溃恢复机制：序号计数器重放 vs 显式状态检查点
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 
