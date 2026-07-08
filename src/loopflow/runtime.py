@@ -22,7 +22,8 @@ from typing import Any, Callable
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
-def _make_backend(backend_name: str | None = None, transport: str | None = None):
+def _make_backend(backend_name: str | None = None, transport: str | None = None,
+                  text_handler=None):
     """Create a backend instance. Detects available backend if not specified."""
     from loopflow.backends.base import BaseBackend
     from loopflow.backends.claude import ClaudeBackend
@@ -59,15 +60,23 @@ def _make_backend(backend_name: str | None = None, transport: str | None = None)
         sys.exit(1)
 
     kwargs: dict = {}
-    if "transport" in cls.__init__.__code__.co_varnames if hasattr(cls.__init__, '__code__') else True:
-        kwargs["transport"] = transport
+    if text_handler:
+        kwargs["text_handler"] = text_handler
+    kwargs["transport"] = transport
     return cls(**kwargs)
 
 
 def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
                   model: str | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
-    backend = _make_backend(backend_name)
+    # Collect real output from backend via text_handler
+    output_parts: list[str] = []
+
+    def text_handler(text: str) -> None:
+        if text:
+            output_parts.append(text)
+
+    backend = _make_backend(backend_name, text_handler=text_handler)
     try:
         existing_sid = None
         try:
@@ -86,8 +95,9 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
             except Exception:
                 pass
 
+        text = "\n".join(output_parts) if output_parts else f"Result of: {prompt}"
         return [
-            {"type": "agent_text", "content": f"Result of: {prompt}"},
+            {"type": "agent_text", "content": text},
             {"type": "agent_done", "exit_code": exit_code},
         ]
     finally:
