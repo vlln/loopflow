@@ -95,17 +95,16 @@ Merge 策略：squash merge（保持 develop 历史线性）。
 
 | 命令 | 用途 |
 |------|------|
-| <!-- 测试命令 --> | 单元测试 |
-| <!-- 测试命令 --> | 集成测试 |
-| <!-- 测试命令 --> | E2E 测试 |
+| `uv run pytest tests/unit/ -v` | 单元测试 |
+| `uv run pytest tests/integration/ -v` | 集成测试 |
+| `uv run pytest tests/ -v --cov=src/loopflow --cov-fail-under=80` | 全部测试 + 覆盖率 |
 
 ### 测试目录
 
 | 层级 | 目录路径 | 说明 |
 |------|---------|------|
-| <!-- 单元测试 --> | | |
-| <!-- 集成测试 --> | | |
-| <!-- E2E 测试 --> | | |
+| 单元测试 | `tests/unit/` | 纯函数/类测试，无外部依赖 |
+| 集成测试 | `tests/integration/` | 模块间协作，需 mock backend |
 
 ---
 
