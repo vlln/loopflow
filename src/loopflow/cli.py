@@ -159,7 +159,8 @@ def resume(run_id):
 
 @main.command()
 @click.argument("run_id")
-def status(run_id):
+@click.option("--graph/--no-graph", default=True, help="Show phase execution graph")
+def status(run_id, graph):
     """Show status of a run."""
     run_dir = _runs_dir() / run_id
     if not run_dir.is_dir():
@@ -172,15 +173,39 @@ def status(run_id):
         sys.exit(1)
 
     meta = json.loads(run_json.read_text())
-    jsonl_files = sorted(run_dir.glob("*.jsonl"))
+    agent_jsonl = sorted(
+        [f for f in run_dir.glob("*.jsonl") if f.name != "events.jsonl"]
+    )
 
     print(f"Run: {run_id}")
     print(f"  Loop:   {meta['loop']}")
     print(f"  Status: {meta['status']}")
     print(f"  Created: {meta['created']}")
-    print(f"  Agents: {len(jsonl_files)} calls")
+    print(f"  Agents: {len(agent_jsonl)} calls")
     if meta.get("args"):
         print(f"  Args:   {json.dumps(meta['args'])}")
+
+    # Show phase graph if events.jsonl exists
+    if graph:
+        events_path = run_dir / "events.jsonl"
+        if events_path.is_file():
+            from loopflow.graph import PhaseGraph
+            from loopflow.display.graph_renderer import TerminalGraphRenderer
+
+            events = []
+            for line in events_path.read_text().strip().split("\n"):
+                if line:
+                    try:
+                        events.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        pass
+
+            pg = PhaseGraph.from_events(events)
+            renderer = TerminalGraphRenderer(pg)
+            rendered = renderer.render()
+            if rendered.plain.strip():
+                print(f"\n  Execution graph:")
+                print(f"  {rendered.plain}")
 
 
 @main.command()
