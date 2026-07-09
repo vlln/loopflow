@@ -238,6 +238,8 @@ def agent(
             {"type": "agent_done", "exit_code": exit_code},
         ]
         cache_path.write_text("\n".join(json.dumps(e) for e in cache_events) + "\n")
+        for e in cache_events:
+            _write_event(e)
     except OSError:
         pass
 
@@ -329,7 +331,20 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
 
 def phase(title: str) -> None:
     print(f"[loopflow] Phase: {title}", file=sys.stderr, flush=True)
+    _write_event({"type": "phase", "title": title, "ts": time.time()})
 
 
 def log(message: str) -> None:
     print(f"[loopflow] {message}", file=sys.stderr, flush=True)
+    _write_event({"type": "log", "message": message, "ts": time.time()})
+
+
+def _write_event(event: dict) -> None:
+    """Append a structured event to events.jsonl in the run directory."""
+    try:
+        events_path = _ctx.run_dir / "events.jsonl"
+        events_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(events_path, "a") as f:
+            f.write(json.dumps(event) + "\n")
+    except OSError:
+        pass

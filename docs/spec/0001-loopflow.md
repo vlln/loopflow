@@ -42,7 +42,8 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | Backend Layer | 适配 8 种 AI Agent 后端（kimi/claude/codex/pi/opencode/qwen/kiro/gemini），自动检测，支持 CLI/ACP 传输 | `src/loopflow/backends/` | P0 |
 | Registry | 运行实例元数据管理（run.json），Agent 调用缓存索引（序号→jsonl 映射），状态追踪 | `src/loopflow/registry.py` | P0 |
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
-| Display | TTY 进度渲染：phase 分组、agent 状态树、spinner、耗时 | `src/loopflow/display.py` | P1 |
+| PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
+| Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |
 | Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义 | `src/loopflow/discovery.py` | P0 |
 
 ---
@@ -65,6 +66,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 ```
 ~/.loopflow/runs/<run-id>/
 ├── run.json                 # 元数据
+├── events.jsonl             # 全部事件流（phase + agent，按时间序）
 └── <seq>.jsonl              # 每个 agent 调用的输出缓存
 ```
 
@@ -104,6 +106,20 @@ Markdown 文件，YAML frontmatter：
 | agent_text | agent 输出文本 |
 | agent_done | agent 调用完成（含 exit_code） |
 | agent_error | agent 调用失败 |
+| phase | phase 转移（含 title, ts） |
+
+### events.jsonl
+
+所有事件按时间顺序追加写入，phase 事件与 agent 事件混合。用于 UI 重建执行图和调试。
+
+```jsonl
+{"type":"version","version":1}
+{"type":"phase","title":"采集","ts":1.23}
+{"type":"agent_start","session":"wf_abc_1","seq":1}
+{"type":"agent_text","content":"done"}
+{"type":"agent_done","exit_code":0}
+{"type":"phase","title":"处理","ts":2.45}
+```
 
 ---
 

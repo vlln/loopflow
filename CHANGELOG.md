@@ -13,6 +13,21 @@
 
 ---
 
+## [0.2.0] — 2026-07-08
+
+### Added
+- PhaseGraph 执行图：纯数据结构（`graph.py`），邻接表 + 边计数 + 环检测，不依赖任何渲染库
+- TerminalGraphRenderer：Rich 终端渲染，支持线性/回边（循环）/分支三种布局
+- `phase()` 和 `agent()` 自动写入 events.jsonl 事件流
+- `loop status --graph` 显示执行图，`--no-graph` 关闭
+- 21 个 graph 单元测试 + 4 个集成测试
+
+### Changed
+- `phase()` 和 `log()` 除 stderr 输出外，同时写入结构化事件到 events.jsonl
+- `loop status` 不再统计 events.jsonl 为 agent 调用
+
+---
+
 ## [0.1.0] — 2026-07-08
 
 ### Added
