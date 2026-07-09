@@ -86,9 +86,10 @@ class TestLoadLoop:
     def test_load_valid_loop(self, loops_dir):
         _create_loop(loops_dir, "hello", {"name": "hello", "description": "A test loop"})
         from loopflow.discovery import load_loop
-        mod, meta = load_loop("hello")
+        mod, meta, loop_dir = load_loop("hello")
         assert meta["name"] == "hello"
         assert hasattr(mod, "run")
+        assert loop_dir.is_dir()
 
     def test_load_missing_workflow(self, loops_dir):
         loop_dir = loops_dir / "empty"
@@ -124,3 +125,58 @@ class TestListAgents:
         from loopflow.discovery import list_agents
         agents = list_agents("hello")
         assert agents == []
+
+
+class TestMetaPhases:
+    """A1: meta.phases validation."""
+
+    def test_meta_without_phases(self, loops_dir):
+        """meta without phases field is valid."""
+        _create_loop(loops_dir, "hello", {"name": "hello", "description": "Test"})
+        from loopflow.discovery import load_loop
+        mod, meta, _ = load_loop("hello")
+        assert meta["name"] == "hello"
+        assert "phases" not in meta
+
+    def test_meta_with_valid_phases(self, loops_dir):
+        """meta with valid phases list is accepted."""
+        meta = {
+            "name": "hello",
+            "description": "Test",
+            "phases": [
+                {"title": "Research", "detail": "Collect info"},
+                {"title": "Translate", "detail": "Translate results"},
+            ],
+        }
+        _create_loop(loops_dir, "hello", meta)
+        from loopflow.discovery import load_loop
+        mod, loaded_meta, _ = load_loop("hello")
+        assert loaded_meta["phases"] == meta["phases"]
+
+    def test_meta_phases_not_list(self, loops_dir):
+        """phases must be a list."""
+        meta = {"name": "hello", "description": "Test", "phases": "not-a-list"}
+        _create_loop(loops_dir, "hello", meta)
+        from loopflow.discovery import load_loop
+        with pytest.raises(SystemExit):
+            load_loop("hello")
+
+    def test_meta_phases_missing_title(self, loops_dir):
+        """Each phase entry must have a title."""
+        meta = {
+            "name": "hello",
+            "description": "Test",
+            "phases": [{"detail": "no title here"}],
+        }
+        _create_loop(loops_dir, "hello", meta)
+        from loopflow.discovery import load_loop
+        with pytest.raises(SystemExit):
+            load_loop("hello")
+
+    def test_meta_phases_empty_list(self, loops_dir):
+        """Empty phases list is valid."""
+        meta = {"name": "hello", "description": "Test", "phases": []}
+        _create_loop(loops_dir, "hello", meta)
+        from loopflow.discovery import load_loop
+        mod, loaded_meta, _ = load_loop("hello")
+        assert loaded_meta["phases"] == []

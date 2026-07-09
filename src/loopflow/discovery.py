@@ -43,7 +43,7 @@ def list_loops() -> list[tuple[str, dict, Path]]:
 
 
 def load_loop(name: str):
-    """Load a loop by name. Returns (module, meta).
+    """Load a loop by name. Returns (module, meta, loop_dir).
 
     Raises SystemExit if loop not found or invalid.
     """
@@ -65,7 +65,7 @@ def load_loop(name: str):
         print(f"Error: {wf_path} must define a run() function", file=sys.stderr)
         sys.exit(1)
 
-    return mod, meta
+    return mod, meta, loop_dir
 
 
 def list_agents(loop_name: str) -> list[dict]:
@@ -95,6 +95,7 @@ def _load_meta(wf_path: Path) -> dict:
     """Load meta dict from a workflow.py file.
 
     Executes the file in a restricted namespace and extracts the meta variable.
+    Validates the meta dict structure and optional phases field.
     """
     mod = _load_module(wf_path)
     if not hasattr(mod, "meta"):
@@ -103,6 +104,30 @@ def _load_meta(wf_path: Path) -> dict:
     if not isinstance(meta, dict):
         print(f"Error: meta must be a dict, got {type(meta).__name__}", file=sys.stderr)
         sys.exit(1)
+
+    # Validate optional phases field
+    if "phases" in meta:
+        phases = meta["phases"]
+        if not isinstance(phases, list):
+            print(
+                f"Error: meta.phases must be a list, got {type(phases).__name__}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        for i, p in enumerate(phases):
+            if not isinstance(p, dict):
+                print(
+                    f"Error: meta.phases[{i}] must be a dict, got {type(p).__name__}",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if "title" not in p:
+                print(
+                    f"Error: meta.phases[{i}] missing required field 'title'",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+
     return meta
 
 

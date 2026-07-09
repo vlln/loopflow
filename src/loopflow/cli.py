@@ -82,7 +82,7 @@ def run(name, wf_args, mock, watch):
             print(f"Error: invalid --args JSON: {e}", file=sys.stderr)
             sys.exit(1)
 
-    mod, meta = load_loop(name)
+    mod, meta, loop_dir = load_loop(name)
 
     run_id = uuid.uuid4().hex[:8]
     run_dir = _runs_dir() / run_id
@@ -109,7 +109,8 @@ def run(name, wf_args, mock, watch):
                      transient=True)
         live.start()
 
-    ctx = RunContext(run_id=run_id, run_dir=run_dir, graph=pg, live=live)
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, graph=pg, live=live,
+                     loop_dir=loop_dir)
     set_context(ctx)
 
     print(f"[loopflow] Running: {name} ({run_id})", file=sys.stderr)
@@ -177,7 +178,7 @@ def resume(run_id, mock, watch):
         sys.exit(1)
 
     loop_name = run_meta["loop"]
-    mod, meta = load_loop(loop_name)
+    mod, meta, loop_dir = load_loop(loop_name)
     args_dict = run_meta.get("args", {})
 
     run_meta["status"] = "running"
@@ -193,7 +194,8 @@ def resume(run_id, mock, watch):
                      transient=True)
         live.start()
 
-    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live)
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live,
+                     loop_dir=loop_dir)
     set_context(ctx)
 
     print(f"[loopflow] Resuming: {loop_name} ({run_id})", file=sys.stderr)
