@@ -13,6 +13,20 @@
 
 ---
 
+## [0.2.2] — 2026-07-09
+
+### Added
+- `loop run` 和 `loop resume` 结束自动渲染执行图
+- `--watch` 标志：Rich Live 实时增量渲染执行图
+- `--mock` 标志：无需安装 AI 后端即可测试
+- `--no-graph` 标志：关闭 status 图形输出
+
+### Changed
+- `phase()` 运行时自动记录到 PhaseGraph，支持 live 更新
+- 手动测试流程：一条命令完成运行+绘图
+
+---
+
 ## [0.2.1] — 2026-07-09
 
 ### Added
