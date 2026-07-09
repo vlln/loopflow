@@ -36,10 +36,14 @@ def main():
 @main.command()
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
-def run(name, wf_args):
+@click.option("--mock/--no-mock", default=False, help="Use mock backend (shell echo) for testing")
+def run(name, wf_args, mock):
     """Run a loop."""
     from loopflow.discovery import load_loop
-    from loopflow.runtime import RunContext, set_context, agent, parallel, pipeline, phase, log, workflow
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
+
+    if mock:
+        set_mock("shell")
 
     args_dict = {}
     if wf_args:
@@ -99,10 +103,14 @@ def run(name, wf_args):
 
 @main.command()
 @click.argument("run_id")
-def resume(run_id):
+@click.option("--mock/--no-mock", default=False, help="Use mock backend (shell echo) for testing")
+def resume(run_id, mock):
     """Resume a crashed loop run."""
     from loopflow.discovery import load_loop
-    from loopflow.runtime import RunContext, set_context, agent, parallel, pipeline, phase, log, workflow
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
+
+    if mock:
+        set_mock("shell")
 
     run_dir = _runs_dir() / run_id
     if not run_dir.is_dir():
