@@ -85,6 +85,8 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
         except Exception:
             pass
 
+        _emit_log(f"Calling agent via {backend_name or 'auto'}...")
+
         if existing_sid:
             exit_code = backend.resume_session(existing_sid, prompt, model=model)
         else:
@@ -95,10 +97,24 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
             except Exception:
                 pass
 
-        text = "\n".join(output_parts) if output_parts else f"Result of: {prompt}"
+        text = "\n".join(output_parts) if output_parts else ""
+        if text:
+            _emit_log(f"Agent responded: {len(text)} chars")
         return [
             {"type": "agent_text", "content": text},
             {"type": "agent_done", "exit_code": exit_code},
+        ]
+    except TimeoutError:
+        _emit_log(f"Agent timed out: {prompt[:80]}...")
+        return [
+            {"type": "agent_text", "content": ""},
+            {"type": "agent_done", "exit_code": 124},
+        ]
+    except Exception as e:
+        _emit_log(f"Agent backend error: {e}")
+        return [
+            {"type": "agent_text", "content": ""},
+            {"type": "agent_done", "exit_code": 1},
         ]
     finally:
         backend.close()
