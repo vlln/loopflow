@@ -53,7 +53,7 @@ class TestRenderLinear:
 
         # Current node should be bold
         spans = result.spans
-        assert any(s.style == "bold" for s in spans)
+        assert any(s.style and s.style.bold for s in spans)
 
 
 class TestRenderCycle:
@@ -70,8 +70,8 @@ class TestRenderCycle:
         result = renderer.render()
 
         text = result.plain
-        assert "↑" in text or "└" in text  # back-edge marker
-        assert "第" in text or "轮" in text  # iteration label
+        assert "└──" in text  # branch marker for back-edge
+        assert "回边" in text  # back-edge label
 
     def test_cycle_nodes_marked(self):
         g = PhaseGraph()
@@ -85,6 +85,7 @@ class TestRenderCycle:
         text = result.plain
         assert "A" in text
         assert "B" in text
+        assert "回边" in text
 
 
 class TestRenderInline:
