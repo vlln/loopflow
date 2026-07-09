@@ -241,13 +241,15 @@ def agent(
         def_name = agent_def if agent_def is not None else "default"
         agent_path = _ctx.loop_dir / "agents" / f"{def_name}.md"
         if agent_path.is_file():
-            from loopflow.agent import parse_agent, render_template
+            from loopflow.agent import parse_agent, render_template, resolve_params
             try:
                 ad = parse_agent(agent_path)
             except (ValueError, FileNotFoundError):
                 ad = None  # Invalid agent file, fall through to plain prompt
             if ad is not None:
-                body = render_template(ad.body, **kwargs)
+                params = ad.requires.params if ad.requires else None
+                resolved_kwargs = resolve_params(params, **kwargs)
+                body = render_template(ad.body, **resolved_kwargs)
                 resolved_prompt = f"{body}\n\n---\n\nTask: {prompt}"
 
     # Resume: skip if already completed

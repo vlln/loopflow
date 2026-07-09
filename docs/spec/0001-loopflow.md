@@ -105,11 +105,11 @@ Markdown 文件，YAML frontmatter：
 | description | string | required | 简短描述 |
 | requires.env | string[] | optional | 需要的环境变量 |
 | requires.skills | string[] | optional | 需要的 skill |
-| requires.params | string[] | optional | 需要的模板参数 |
+| requires.params | string[] | optional | 需要的模板参数。支持两种格式：<br>`- param_name`（必填参数）<br>`- param_name: default_value`（可选参数，含默认值） |
 | requires.mcps | string[] | optional | 需要的 MCP server |
 | body | string | optional | 系统提示词，支持 `{{param}}` 占位符 |
 
-Agent 定义文件通过 `agent_def` 参数引用：`agent("动态指令", agent_def="reader")`。此时 `body` 作为系统提示词（静态背景/约束），prompt 参数作为动态任务指令追加。`requires.params` 中声明的参数通过 `{{param}}` 在 body 中占位，调用时渲染。
+Agent 定义文件通过 `agent_def` 参数引用：`agent("动态指令", agent_def="reader")`。此时 `body` 作为系统提示词（静态背景/约束），prompt 参数作为动态任务指令追加。`requires.params` 中声明的参数通过 `{{param}}` 在 body 中占位，调用时渲染。可选参数未传入时使用默认值；必填参数未传入时抛 `ValueError`。
 
 ### Agent 调用缓存（jsonl）
 

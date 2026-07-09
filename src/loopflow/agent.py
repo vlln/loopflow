@@ -1,7 +1,19 @@
 """Agent definition parser for .md files with YAML frontmatter."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class ParamSpec:
+    """Specification for a template parameter."""
+
+    name: str
+    required: bool = True
+    default: Any = None
 
 
 @dataclass
@@ -10,7 +22,7 @@ class AgentRequires:
 
     env: list[str] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
-    params: list[str] = field(default_factory=list)
+    params: list[ParamSpec] = field(default_factory=list)
     mcps: list[str] = field(default_factory=list)
 
 
@@ -119,10 +131,24 @@ def parse_agent(file_path: str | Path) -> AgentDef:
 
     requires = None
     if requires_data:
+        # Convert raw param strings to ParamSpec objects
+        raw_params: list[str] = requires_data.get("params", [])
+        param_specs: list[ParamSpec] = []
+        for p in raw_params:
+            if ":" in p:
+                name, _, default = p.partition(":")
+                param_specs.append(ParamSpec(
+                    name.strip(),
+                    required=False,
+                    default=default.strip().strip('"').strip("'"),
+                ))
+            else:
+                param_specs.append(ParamSpec(p.strip(), required=True))
+
         requires = AgentRequires(
             env=requires_data.get("env", []),
             skills=requires_data.get("skills", []),
-            params=requires_data.get("params", []),
+            params=param_specs,
             mcps=requires_data.get("mcps", []),
         )
 
@@ -152,6 +178,36 @@ def list_agents(agents_dir: str | Path) -> list[AgentDef]:
         except (ValueError, FileNotFoundError):
             pass
     return agents
+
+
+def resolve_params(
+    params: list[ParamSpec] | None,
+    **kwargs: str,
+) -> dict[str, str]:
+    """Resolve template parameters with defaults.
+
+    Args:
+        params: List of parameter specifications (or None for passthrough).
+        **kwargs: Provided parameter values.
+
+    Returns:
+        Dict of resolved parameter values (provided kwargs + defaults).
+
+    Raises:
+        ValueError: if a required parameter is not provided.
+    """
+    if params is None:
+        return dict(kwargs)
+
+    resolved: dict[str, str] = dict(kwargs)
+    for p in params:
+        if p.name not in resolved:
+            if p.required:
+                raise ValueError(
+                    f"Required parameter '{p.name}' is not provided"
+                )
+            resolved[p.name] = p.default
+    return resolved
 
 
 def render_template(body: str, **kwargs: str) -> str:
