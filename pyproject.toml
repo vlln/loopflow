@@ -31,7 +31,6 @@ source = ["src/loopflow"]
 omit = [
     "src/loopflow/backends/*",
     "src/loopflow/transports/*",
-    "src/loopflow/agent.py",
     "src/loopflow/lock.py",
 ]
 
