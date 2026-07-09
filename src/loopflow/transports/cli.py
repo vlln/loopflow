@@ -8,6 +8,9 @@ import threading
 from typing import Callable
 
 
+DEFAULT_TIMEOUT = 300  # 5 minutes
+
+
 class CliTransport:
     """Generic subprocess-based communication with a CLI tool.
 
@@ -25,7 +28,7 @@ class CliTransport:
         *,
         on_stdout: Callable[[str], None] | None = None,
         on_stderr: Callable[[str], None] | None = None,
-        timeout: float | None = None,
+        timeout: float | None = DEFAULT_TIMEOUT,
         env: dict[str, str] | None = None,
     ) -> int:
         """Run a command and return its exit code.
@@ -34,7 +37,7 @@ class CliTransport:
             args: Command and arguments to execute.
             on_stdout: Called for each stdout line (newline stripped).
             on_stderr: Called for each stderr line (newline stripped).
-            timeout: Maximum time in seconds. None = no timeout.
+            timeout: Maximum time in seconds. Default 300s (5 min).
             env: Additional environment variables to merge into the
                 subprocess environment.
 

@@ -85,6 +85,8 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
         except Exception:
             pass
 
+        _emit_log(f"Calling agent via {backend_name or 'auto'}...")
+
         if existing_sid:
             exit_code = backend.resume_session(existing_sid, prompt, model=model)
         else:
@@ -95,10 +97,24 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
             except Exception:
                 pass
 
-        text = "\n".join(output_parts) if output_parts else f"Result of: {prompt}"
+        text = "\n".join(output_parts) if output_parts else ""
+        if text:
+            _emit_log(f"Agent responded: {len(text)} chars")
         return [
             {"type": "agent_text", "content": text},
             {"type": "agent_done", "exit_code": exit_code},
+        ]
+    except TimeoutError:
+        _emit_log(f"Agent timed out: {prompt[:80]}...")
+        return [
+            {"type": "agent_text", "content": ""},
+            {"type": "agent_done", "exit_code": 124},
+        ]
+    except Exception as e:
+        _emit_log(f"Agent backend error: {e}")
+        return [
+            {"type": "agent_text", "content": ""},
+            {"type": "agent_done", "exit_code": 1},
         ]
     finally:
         backend.close()
@@ -333,7 +349,19 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
 
 
 def phase(title: str) -> None:
-    print(f"[loopflow] Phase: {title}", file=sys.stderr, flush=True)
+    _emit_phase(title)
+
+
+def log(message: str) -> None:
+    _emit_log(message)
+
+
+def _emit_phase(title: str) -> None:
+    if _ctx.live is not None:
+        _ctx.live.console.log(f"[loopflow] Phase: {title}")
+    else:
+        print(f"[loopflow] Phase: {title}", file=sys.stderr, flush=True)
+
     _write_event({"type": "phase", "title": title, "ts": time.time()})
 
     # Live graph rendering
@@ -346,8 +374,12 @@ def phase(title: str) -> None:
             _ctx.live.update(renderer.render())
 
 
-def log(message: str) -> None:
-    print(f"[loopflow] {message}", file=sys.stderr, flush=True)
+def _emit_log(message: str) -> None:
+    if _ctx.live is not None:
+        _ctx.live.console.log(f"[loopflow] {message}")
+    else:
+        print(f"[loopflow] {message}", file=sys.stderr, flush=True)
+
     _write_event({"type": "log", "message": message, "ts": time.time()})
 
 
