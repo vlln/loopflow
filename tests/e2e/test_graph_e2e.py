@@ -206,9 +206,9 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         output = result.output
         assert "Execution graph" in output
-        # Back-edge markers
-        assert "↑" in output
-        assert "第" in output  # iteration label
+        # Back-edge markers in new multi-line format
+        assert "└──" in output
+        assert "回边" in output
 
     def test_branch_conditional(self, env_dirs):
         """If/else branch: two paths from a decision node."""
@@ -251,6 +251,57 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
         assert "End" in output
         # At least one branch path taken
         assert ("PathA" in output) or ("PathB" in output)
+
+    def test_multi_branch_from_loop(self, env_dirs):
+        """AC-009-N-3: loop that takes different paths → fork rendering."""
+        loops, runs = env_dirs
+        _create_phase_loop(loops, "multibranch", """
+meta = {"name": "multibranch", "description": "Multi-branch test"}
+
+def run(agent, parallel, pipeline, phase, log, args, workflow):
+    # First iteration: PathA
+    phase("Start")
+    phase("PathA")
+    agent("echo a1")
+    phase("PathA-End")
+    agent("echo a2")
+
+    # Second iteration: PathB (back to Start)
+    phase("Start")
+    phase("PathB")
+    agent("echo b1")
+    phase("PathB-End")
+    agent("echo b2")
+
+    phase("Final")
+    agent("echo done")
+    return "done"
+""")
+
+        from loopflow.cli import main
+        from loopflow.runtime import set_mock
+        set_mock("shell")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["run", "multibranch"])
+            assert result.exit_code == 0
+
+        run_dirs = sorted(runs.iterdir())
+        run_id = run_dirs[0].name
+
+        result = runner.invoke(main, ["status", run_id])
+        assert result.exit_code == 0
+
+        output = result.output
+        assert "Execution graph" in output
+        # Fork rendering: Start has two forward children
+        assert "└─→" in output  # branch marker
+        assert "PathA" in output
+        assert "PathB" in output
+        assert "Final" in output
+        # Back-edge from PathA-End → Start
+        assert "回边" in output
 
 
 class TestEventsJsonl:

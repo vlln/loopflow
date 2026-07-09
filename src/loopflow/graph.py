@@ -121,6 +121,30 @@ class PhaseGraph:
         """Estimate iteration count from max edge count on back-edges."""
         return max((e.count for e in self._edges if e.is_backedge), default=0)
 
+    def forward_edges(self) -> list[Edge]:
+        return [e for e in self._edges if not e.is_backedge]
+
+    def back_edges(self) -> list[Edge]:
+        return [e for e in self._edges if e.is_backedge]
+
+    def fork_nodes(self) -> set[str]:
+        """Nodes with >1 outgoing forward edges."""
+        counts: dict[str, int] = {}
+        for e in self.forward_edges():
+            counts[e.from_phase] = counts.get(e.from_phase, 0) + 1
+        return {n for n, c in counts.items() if c > 1}
+
+    def merge_nodes(self) -> set[str]:
+        """Nodes with >1 incoming forward edges."""
+        counts: dict[str, int] = {}
+        for e in self.forward_edges():
+            counts[e.to_phase] = counts.get(e.to_phase, 0) + 1
+        return {n for n, c in counts.items() if c > 1}
+
+    def children(self, node: str) -> list[str]:
+        """Forward children of a node."""
+        return [e.to_phase for e in self.forward_edges() if e.from_phase == node]
+
     def to_dict(self) -> dict:
         return {
             "nodes": self._nodes,
