@@ -27,6 +27,33 @@ def _runs_dir() -> Path:
     return Path(runs)
 
 
+def _print_graph(run_dir: Path) -> None:
+    """Render and print the phase graph from events.jsonl."""
+    events_path = run_dir / "events.jsonl"
+    if not events_path.is_file():
+        return
+
+    from loopflow.graph import PhaseGraph
+    from loopflow.display.graph_renderer import TerminalGraphRenderer
+
+    events = []
+    for line in events_path.read_text().strip().split("\n"):
+        if line:
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                pass
+
+    pg = PhaseGraph.from_events(events)
+    if not pg.nodes():
+        return
+
+    renderer = TerminalGraphRenderer(pg)
+    rendered = renderer.render()
+    if rendered.plain.strip():
+        print(f"\n  {rendered.plain}", file=sys.stderr)
+
+
 @click.group()
 def main():
     """loopflow — AI Agent loop orchestration tool."""
@@ -37,9 +64,11 @@ def main():
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--mock/--no-mock", default=False, help="Use mock backend (shell echo) for testing")
-def run(name, wf_args, mock):
+@click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
+def run(name, wf_args, mock, watch):
     """Run a loop."""
     from loopflow.discovery import load_loop
+    from loopflow.graph import PhaseGraph
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
 
     if mock:
@@ -70,7 +99,17 @@ def run(name, wf_args, mock):
     }
     (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
 
-    ctx = RunContext(run_id=run_id, run_dir=run_dir)
+    # Set up graph for live/watch mode
+    pg = PhaseGraph() if watch else None
+    live = None
+    if watch:
+        from rich.live import Live
+        from loopflow.display.graph_renderer import TerminalGraphRenderer
+        live = Live(TerminalGraphRenderer(pg).render(), refresh_per_second=10,
+                     transient=True)
+        live.start()
+
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, graph=pg, live=live)
     set_context(ctx)
 
     print(f"[loopflow] Running: {name} ({run_id})", file=sys.stderr)
@@ -84,7 +123,12 @@ def run(name, wf_args, mock):
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
         (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+        if live:
+            live.stop()
         sys.exit(1)
+
+    if live:
+        live.stop()
 
     run_meta["status"] = "done"
     run_meta["counter"] = ctx._counter
@@ -100,13 +144,18 @@ def run(name, wf_args, mock):
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
 
+    # Auto-render graph at end
+    _print_graph(run_dir)
+
 
 @main.command()
 @click.argument("run_id")
 @click.option("--mock/--no-mock", default=False, help="Use mock backend (shell echo) for testing")
-def resume(run_id, mock):
+@click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
+def resume(run_id, mock, watch):
     """Resume a crashed loop run."""
     from loopflow.discovery import load_loop
+    from loopflow.graph import PhaseGraph
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
 
     if mock:
@@ -134,7 +183,17 @@ def resume(run_id, mock):
     run_meta["status"] = "running"
     run_json.write_text(json.dumps(run_meta, indent=2))
 
-    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True)
+    # Set up graph for live/watch mode
+    pg = PhaseGraph() if watch else None
+    live = None
+    if watch:
+        from rich.live import Live
+        from loopflow.display.graph_renderer import TerminalGraphRenderer
+        live = Live(TerminalGraphRenderer(pg).render(), refresh_per_second=10,
+                     transient=True)
+        live.start()
+
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live)
     set_context(ctx)
 
     print(f"[loopflow] Resuming: {loop_name} ({run_id})", file=sys.stderr)
@@ -148,7 +207,12 @@ def resume(run_id, mock):
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
         run_json.write_text(json.dumps(run_meta, indent=2))
+        if live:
+            live.stop()
         sys.exit(1)
+
+    if live:
+        live.stop()
 
     run_meta["status"] = "done"
     run_meta["counter"] = ctx._counter
@@ -163,6 +227,9 @@ def resume(run_id, mock):
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+
+    # Auto-render graph at end
+    _print_graph(run_dir)
 
 
 @main.command()
