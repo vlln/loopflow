@@ -125,12 +125,15 @@ class RunContext:
     """Tracks run state: session naming, resume, nested workflow()."""
 
     def __init__(self, run_id: str | None = None, run_dir: Path | None = None,
-                 resume: bool = False) -> None:
+                 resume: bool = False, graph=None, live=None) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.resume = resume
         self._counter = 0
+        self._prev_phase: str | None = None
+        self.graph = graph  # PhaseGraph instance (optional, for live rendering)
+        self.live = live    # Rich Live instance (optional)
 
     def next_session(self) -> str:
         self._counter += 1
@@ -332,6 +335,15 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
 def phase(title: str) -> None:
     print(f"[loopflow] Phase: {title}", file=sys.stderr, flush=True)
     _write_event({"type": "phase", "title": title, "ts": time.time()})
+
+    # Live graph rendering
+    if _ctx.graph is not None:
+        _ctx.graph.record(_ctx._prev_phase, title)
+        _ctx._prev_phase = title
+        if _ctx.live is not None:
+            from loopflow.display.graph_renderer import TerminalGraphRenderer
+            renderer = TerminalGraphRenderer(_ctx.graph)
+            _ctx.live.update(renderer.render())
 
 
 def log(message: str) -> None:
