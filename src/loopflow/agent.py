@@ -152,3 +152,29 @@ def list_agents(agents_dir: str | Path) -> list[AgentDef]:
         except (ValueError, FileNotFoundError):
             pass
     return agents
+
+
+def render_template(body: str, **kwargs: str) -> str:
+    """Render {{param}} placeholders in a template string.
+
+    Args:
+        body: Template string with optional {{param}} placeholders.
+        **kwargs: Values for placeholders.
+
+    Returns:
+        Rendered string with all placeholders replaced.
+
+    Raises:
+        ValueError: if a placeholder has no matching kwarg.
+    """
+    import re
+
+    def _replace(match: re.Match) -> str:
+        name = match.group(1).strip()
+        if name not in kwargs:
+            raise ValueError(
+                f"Template parameter '{{{name}}}' is required but not provided"
+            )
+        return kwargs[name]
+
+    return re.sub(r"\{\{(\w+)\}\}", _replace, body)

@@ -13,6 +13,22 @@
 
 ---
 
+## [0.3.0] — 2026-07-09
+
+### Added
+- `meta.phases` 声明：workflow.py 可在 meta 中声明预期阶段列表，运行时验证格式
+- Agent 事件 `phase` 归属：`agent_start` 事件自动携带当前 phase 上下文
+- `agent_def` 参数：`agent("指令", agent_def="reader")` 加载 `agents/<name>.md` 作为系统提示词
+- `{{param}}` 模板渲染：agent body 支持占位符，调用时通过 kwargs 替换
+- `load_loop()` 返回 `(mod, meta, loop_dir)` 三值，支持 agent 定义文件查找
+- 用户文档 `README.md`
+
+### Changed
+- `agent.py` 移出 coverage omit，`render_template` 纳入覆盖率统计
+- 覆盖率从 69% 提升至 70%
+
+---
+
 ## [0.2.3] — 2026-07-09
 
 ### Fixed

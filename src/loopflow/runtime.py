@@ -141,15 +141,18 @@ class RunContext:
     """Tracks run state: session naming, resume, nested workflow()."""
 
     def __init__(self, run_id: str | None = None, run_dir: Path | None = None,
-                 resume: bool = False, graph=None, live=None) -> None:
+                 resume: bool = False, graph=None, live=None,
+                 loop_dir: Path | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.resume = resume
         self._counter = 0
         self._prev_phase: str | None = None
+        self._current_phase: str | None = None
         self.graph = graph  # PhaseGraph instance (optional, for live rendering)
         self.live = live    # Rich Live instance (optional)
+        self.loop_dir = loop_dir  # Path to loop definition directory
 
     def next_session(self) -> str:
         self._counter += 1
@@ -225,10 +228,27 @@ def agent(
     label: str | None = None,
     backend: str | None = None,
     model: str | None = None,
+    agent_def: str | None = None,
+    **kwargs: str,
 ) -> Any:
     session = _ctx.next_session()
     seq = _ctx._counter
     cache_path = _ctx.run_dir / f"{seq:04d}.jsonl"
+
+    # Resolve agent definition: load body from agents/<agent_def>.md
+    resolved_prompt = prompt
+    if _ctx.loop_dir is not None:
+        def_name = agent_def if agent_def is not None else "default"
+        agent_path = _ctx.loop_dir / "agents" / f"{def_name}.md"
+        if agent_path.is_file():
+            from loopflow.agent import parse_agent, render_template
+            try:
+                ad = parse_agent(agent_path)
+            except (ValueError, FileNotFoundError):
+                ad = None  # Invalid agent file, fall through to plain prompt
+            if ad is not None:
+                body = render_template(ad.body, **kwargs)
+                resolved_prompt = f"{body}\n\n---\n\nTask: {prompt}"
 
     # Resume: skip if already completed
     if _ctx.resume:
@@ -239,10 +259,10 @@ def agent(
     t0 = time.time()
 
     if _mock_mode:
-        text, exit_code = _run_mock(prompt)
+        text, exit_code = _run_mock(resolved_prompt)
     else:
         try:
-            events = _run_subagent(prompt, session, backend_name=backend, model=model)
+            events = _run_subagent(resolved_prompt, session, backend_name=backend, model=model)
         except Exception as e:
             print(f"[loopflow] agent failed: {e}", file=sys.stderr)
             return None
@@ -252,7 +272,7 @@ def agent(
     # Write cache
     try:
         cache_events = [
-            {"type": "agent_start", "session": session},
+            {"type": "agent_start", "session": session, "phase": _ctx._current_phase},
             {"type": "agent_text", "content": text},
             {"type": "agent_done", "exit_code": exit_code},
         ]
@@ -357,6 +377,8 @@ def log(message: str) -> None:
 
 
 def _emit_phase(title: str) -> None:
+    _ctx._current_phase = title
+
     if _ctx.live is not None:
         _ctx.live.console.log(f"[loopflow] Phase: {title}")
     else:

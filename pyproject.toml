@@ -1,6 +1,6 @@
 [project]
 name = "loopflow"
-version = "0.2.3"
+version = "0.3.0"
 description = "AI Agent loop orchestration tool"
 requires-python = ">=3.10"
 dependencies = [
@@ -31,7 +31,6 @@ source = ["src/loopflow"]
 omit = [
     "src/loopflow/backends/*",
     "src/loopflow/transports/*",
-    "src/loopflow/agent.py",
     "src/loopflow/lock.py",
 ]
 

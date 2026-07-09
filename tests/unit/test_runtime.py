@@ -269,3 +269,218 @@ class TestWorkflow:
         set_context(ctx)
         result = workflow("/nonexistent/path.py")
         assert result is None
+
+
+# ── phase tracking ──────────────────────────────────────────────────────────
+
+class TestPhaseTracking:
+    """A2: Agent events carry phase context."""
+
+    def test_agent_event_has_phase_field(self, temp_run_dir, mock_backend):
+        from loopflow.runtime import RunContext, set_context, phase, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        phase("Research")
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text", "content": "ok"},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                agent("do something")
+                cache_path = temp_run_dir / "0001.jsonl"
+                assert cache_path.exists()
+                events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
+                start_events = [e for e in events if e["type"] == "agent_start"]
+                assert len(start_events) == 1
+                assert start_events[0]["phase"] == "Research"
+
+    def test_agent_event_without_phase(self, temp_run_dir, mock_backend):
+        """agent called before any phase() should have phase=None or omit field."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text", "content": "ok"},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                agent("no phase")
+                cache_path = temp_run_dir / "0001.jsonl"
+                events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
+                start_events = [e for e in events if e["type"] == "agent_start"]
+                assert len(start_events) == 1
+                assert start_events[0].get("phase") is None
+
+    def test_phase_change_updates_agent_events(self, temp_run_dir, mock_backend):
+        from loopflow.runtime import RunContext, set_context, phase, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        phase("First")
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text", "content": "ok"},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                agent("task 1")
+
+        phase("Second")
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text", "content": "ok"},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                agent("task 2")
+
+        # Check first agent's phase
+        cache1 = temp_run_dir / "0001.jsonl"
+        events1 = [json.loads(l) for l in cache1.read_text().strip().split("\n") if l]
+        start1 = [e for e in events1 if e["type"] == "agent_start"][0]
+        assert start1["phase"] == "First"
+
+        # Check second agent's phase
+        cache2 = temp_run_dir / "0002.jsonl"
+        events2 = [json.loads(l) for l in cache2.read_text().strip().split("\n") if l]
+        start2 = [e for e in events2 if e["type"] == "agent_start"][0]
+        assert start2["phase"] == "Second"
+
+
+# ── agent_def ────────────────────────────────────────────────────────────────
+
+class TestAgentDef:
+    """A3: agent() accepts agent_def parameter to load agent definition files."""
+
+    @pytest.fixture
+    def loop_with_agents(self, temp_run_dir):
+        """Create a temporary loop directory with agent definitions."""
+        loop_dir = Path(tempfile.mkdtemp()) / "test-loop"
+        loop_dir.mkdir(parents=True)
+        agents_dir = loop_dir / "agents"
+        agents_dir.mkdir(parents=True)
+
+        # Create a translator agent definition
+        (agents_dir / "translator.md").write_text("""---
+name: translator
+description: Professional translator
+requires:
+  params:
+    - language
+---
+You are a professional translator. Translate the input to {{language}}.
+""")
+
+        # Create a default agent definition
+        (agents_dir / "default.md").write_text("""---
+name: default
+description: Default agent
+---
+You are a helpful assistant. Answer concisely.
+""")
+
+        return loop_dir
+
+    def test_agent_def_merges_body_and_prompt(self, temp_run_dir, mock_backend,
+                                               loop_with_agents):
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        captured_prompt = []
+
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text", "content": "translated"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                agent("Hello world", agent_def="translator", language="Chinese")
+
+        assert len(captured_prompt) == 1
+        assert "professional translator" in captured_prompt[0]
+        assert "Chinese" in captured_prompt[0]
+        assert "Hello world" in captured_prompt[0]
+
+    def test_agent_def_default(self, temp_run_dir, mock_backend, loop_with_agents):
+        """agent_def defaults to 'default' when available."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        captured_prompt = []
+
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                agent("test")
+
+        assert len(captured_prompt) == 1
+        assert "helpful assistant" in captured_prompt[0]
+        assert "test" in captured_prompt[0]
+
+    def test_agent_def_without_loop_dir(self, temp_run_dir, mock_backend):
+        """Without loop_dir, agent_def is ignored and works as plain prompt."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)  # no loop_dir
+        set_context(ctx)
+
+        captured_prompt = []
+
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                agent("plain prompt", agent_def="translator")
+
+        assert len(captured_prompt) == 1
+        assert captured_prompt[0] == "plain prompt"
+
+    def test_agent_def_nonexistent(self, temp_run_dir, mock_backend,
+                                    loop_with_agents):
+        """Non-existent agent_def falls back to plain prompt."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        captured_prompt = []
+
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                agent("test", agent_def="nonexistent")
+
+        assert len(captured_prompt) == 1
+        assert captured_prompt[0] == "test"
+
+    def test_agent_def_missing_template_param(self, temp_run_dir, mock_backend,
+                                                loop_with_agents):
+        """Missing template param raises ValueError."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with pytest.raises(ValueError, match="language"):
+                agent("Hello", agent_def="translator")  # missing language=

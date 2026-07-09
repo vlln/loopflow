@@ -56,10 +56,24 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 
 ```
 ~/.loopflow/loops/<name>/
-├── workflow.py              # def run(agent, parallel, pipeline, phase, log, args, workflow)
+├── workflow.py              # meta = {...}; def run(agent, parallel, pipeline, phase, log, args, workflow)
 └── agents/                  # agent 定义文件
     └── <name>.md            # Markdown + YAML frontmatter
 ```
+
+### workflow.py meta
+
+`meta` 是 workflow.py 的模块级字典，声明 loop 的元信息和预期阶段：
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| name | string | required | loop 唯一标识 |
+| description | string | required | 简短描述 |
+| phases | object[] | optional | 声明的预期阶段列表 |
+| phases[].title | string | required | 阶段标题，与 `phase()` 调用对应 |
+| phases[].detail | string | optional | 阶段描述，用于 UI 展示 |
+
+`meta` 必须是纯字面量（无变量、函数调用、表达式），用于静态发现和进度显示。`phases` 声明预期阶段，运行时 `phase()` 调用锚定到声明上，执行图区分预期路径与实际路径。
 
 ### 运行实例（文件系统）
 
@@ -95,6 +109,8 @@ Markdown 文件，YAML frontmatter：
 | requires.mcps | string[] | optional | 需要的 MCP server |
 | body | string | optional | 系统提示词，支持 `{{param}}` 占位符 |
 
+Agent 定义文件通过 `agent_def` 参数引用：`agent("动态指令", agent_def="reader")`。此时 `body` 作为系统提示词（静态背景/约束），prompt 参数作为动态任务指令追加。`requires.params` 中声明的参数通过 `{{param}}` 在 body 中占位，调用时渲染。
+
 ### Agent 调用缓存（jsonl）
 
 每行一个 JSON 事件，类型包括：
@@ -102,11 +118,13 @@ Markdown 文件，YAML frontmatter：
 | type | 含义 |
 |------|------|
 | version | 协议版本 |
-| agent_start | agent 调用开始 |
+| agent_start | agent 调用开始（含 seq, session, phase） |
 | agent_text | agent 输出文本 |
 | agent_done | agent 调用完成（含 exit_code） |
 | agent_error | agent 调用失败 |
 | phase | phase 转移（含 title, ts） |
+
+Agent 事件携带 `phase` 字段，记录当前 phase 上下文。agent 事件与 phase 事件按时间序混合写入 events.jsonl，通过 `phase` 字段重建 phase-agent 层级关系。
 
 ### events.jsonl
 
@@ -115,10 +133,13 @@ Markdown 文件，YAML frontmatter：
 ```jsonl
 {"type":"version","version":1}
 {"type":"phase","title":"采集","ts":1.23}
-{"type":"agent_start","session":"wf_abc_1","seq":1}
+{"type":"agent_start","session":"wf_abc_1","seq":1,"phase":"采集"}
 {"type":"agent_text","content":"done"}
 {"type":"agent_done","exit_code":0}
 {"type":"phase","title":"处理","ts":2.45}
+{"type":"agent_start","session":"wf_abc_2","seq":2,"phase":"处理"}
+{"type":"agent_text","content":"done"}
+{"type":"agent_done","exit_code":0}
 ```
 
 ---
