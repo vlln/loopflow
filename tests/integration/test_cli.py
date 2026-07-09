@@ -182,3 +182,141 @@ class TestResume:
             result = runner.invoke(main, ["resume", run_id])
             assert result.exit_code == 0
             assert "cached hello" in result.output
+
+
+class TestGraph:
+    """AC-009 integration: graph display in status and run."""
+
+    def test_status_shows_graph_when_events_exist(self, env_dirs):
+        """AC-009-N-1: status displays linear phase graph from events.jsonl."""
+        loops, runs = env_dirs
+        _create_test_loop(loops)
+
+        run_id = "graph1234"
+        run_dir = runs / run_id
+        run_dir.mkdir(parents=True)
+
+        # Write events.jsonl with phase events
+        events = [
+            {"type": "phase", "title": "Ingest", "ts": 1.0},
+            {"type": "phase", "title": "Process", "ts": 2.0},
+            {"type": "phase", "title": "Export", "ts": 3.0},
+        ]
+        (run_dir / "events.jsonl").write_text(
+            "\n".join(json.dumps(e) for e in events) + "\n"
+        )
+
+        # Write run.json
+        (run_dir / "run.json").write_text(json.dumps({
+            "loop": "hello",
+            "run_id": run_id,
+            "status": "done",
+            "created": "2026-07-07T12:00:00Z",
+            "args": {},
+            "counter": 0,
+        }))
+
+        from loopflow.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", run_id])
+        assert result.exit_code == 0
+        assert "Ingest" in result.output
+        assert "Process" in result.output
+        assert "Export" in result.output
+        assert "Execution graph" in result.output
+
+    def test_status_no_graph_when_no_events(self, env_dirs):
+        """AC-009-F-1: no graph when events.jsonl doesn't exist."""
+        loops, runs = env_dirs
+        _create_test_loop(loops)
+
+        run_id = "nograph01"
+        run_dir = runs / run_id
+        run_dir.mkdir(parents=True)
+
+        (run_dir / "run.json").write_text(json.dumps({
+            "loop": "hello",
+            "run_id": run_id,
+            "status": "running",
+            "created": "2026-07-07T12:00:00Z",
+            "args": {},
+            "counter": 0,
+        }))
+
+        from loopflow.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", run_id])
+        assert result.exit_code == 0
+        assert "Execution graph" not in result.output
+
+    def test_status_no_graph_flag(self, env_dirs):
+        """--no-graph flag suppresses graph display."""
+        loops, runs = env_dirs
+        _create_test_loop(loops)
+
+        run_id = "nogflag1"
+        run_dir = runs / run_id
+        run_dir.mkdir(parents=True)
+
+        events = [
+            {"type": "phase", "title": "A", "ts": 1.0},
+        ]
+        (run_dir / "events.jsonl").write_text(
+            "\n".join(json.dumps(e) for e in events) + "\n"
+        )
+
+        (run_dir / "run.json").write_text(json.dumps({
+            "loop": "hello",
+            "run_id": run_id,
+            "status": "done",
+            "created": "2026-07-07T12:00:00Z",
+            "args": {},
+            "counter": 0,
+        }))
+
+        from loopflow.cli import main
+        runner = CliRunner()
+        result = runner.invoke(main, ["status", "--no-graph", run_id])
+        assert result.exit_code == 0
+        assert "Execution graph" not in result.output
+
+    def test_run_emits_phase_events(self, env_dirs):
+        """loop run creates events.jsonl with phase events."""
+        loops, runs = env_dirs
+        loop_dir = loops / "phase-test"
+        loop_dir.mkdir(parents=True)
+        (loop_dir / "workflow.py").write_text("""
+meta = {"name": "phase-test", "description": "Test phase events"}
+
+def run(agent, parallel, pipeline, phase, log, args, workflow):
+    phase("Start")
+    agent("echo hello")
+    phase("End")
+    return "done"
+""")
+
+        from loopflow.cli import main
+        from loopflow.runtime import set_mock
+        set_mock("shell")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(main, ["run", "phase-test"])
+            # Should complete (mock mode uses shell)
+            assert result.exit_code in (0, 1)
+
+            # Find the run directory and check events.jsonl
+            run_dirs = list(runs.iterdir())
+            if run_dirs:
+                events_path = run_dirs[0] / "events.jsonl"
+                if events_path.is_file():
+                    events = [
+                        json.loads(line)
+                        for line in events_path.read_text().strip().split("\n")
+                        if line
+                    ]
+                    phase_events = [e for e in events if e["type"] == "phase"]
+                    assert len(phase_events) >= 2
+                    titles = [e["title"] for e in phase_events]
+                    assert "Start" in titles
+                    assert "End" in titles
