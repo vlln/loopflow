@@ -113,13 +113,25 @@ def run(name, wf_args, mock, watch):
                      loop_dir=loop_dir)
     set_context(ctx)
 
+    # Create state from meta declaration
+    from loopflow.runtime import State
+    state_defaults = meta.get("state", {})
+    state = State(state_defaults)
+    ctx.state = state
+
     print(f"[loopflow] Running: {name} ({run_id})", file=sys.stderr)
 
     try:
-        result = mod.run(
+        # Build kwargs, only pass state if run() accepts it
+        run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
             phase=phase, log=log, args=args_dict, workflow=workflow,
         )
+        import inspect
+        sig = inspect.signature(mod.run)
+        if "state" in sig.parameters:
+            run_kwargs["state"] = state
+        result = mod.run(**run_kwargs)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
@@ -198,13 +210,32 @@ def resume(run_id, mock, watch):
                      loop_dir=loop_dir)
     set_context(ctx)
 
+    # Restore state from state.json, filling missing keys from meta defaults
+    from loopflow.runtime import State
+    state_defaults = meta.get("state", {})
+    state_path = run_dir / "state.json"
+    if state_path.is_file():
+        try:
+            saved = json.loads(state_path.read_text())
+            state = State.from_dict(saved, state_defaults)
+        except (json.JSONDecodeError, OSError):
+            state = State(state_defaults)
+    else:
+        state = State(state_defaults)
+    ctx.state = state
+
     print(f"[loopflow] Resuming: {loop_name} ({run_id})", file=sys.stderr)
 
     try:
-        result = mod.run(
+        run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
             phase=phase, log=log, args=args_dict, workflow=workflow,
         )
+        import inspect
+        sig = inspect.signature(mod.run)
+        if "state" in sig.parameters:
+            run_kwargs["state"] = state
+        result = mod.run(**run_kwargs)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"

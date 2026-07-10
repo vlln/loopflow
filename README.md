@@ -109,11 +109,13 @@ meta = {
         {"title": "Translate", "detail": "翻译结果"},
         {"title": "Verify", "detail": "验证准确性"},
     ],
+    "state": {                           # 可选：声明持久化状态
+        "attempt": 0,                    # 默认值，类型即约定
+    },
 }
 
-def run(agent, parallel, pipeline, phase, log, args, workflow):
-    # args 是 CLI 传入的 --args '<json>'
-    # 你的工作流逻辑...
+def run(agent, parallel, pipeline, phase, log, args, workflow, state):
+    # state.attempt += 1  # 每次 agent() 成功后自动保存
     return result
 ```
 
@@ -149,11 +151,13 @@ agent("需要翻译的内容", agent_def="translator", target_language="中文")
 | `prompt` | `str` | 任务指令（必填） |
 | `agent_def` | `str` | 使用的 agent 定义文件名（不含 `.md`），默认 `"default"` |
 | `schema` | `dict` | JSON Schema，要求 agent 返回结构化 JSON |
+| `max_retries` | `int` | schema 合规重试次数，默认 3 |
 | `backend` | `str` | 指定后端（kimi/claude/codex 等），默认自动检测 |
 | `model` | `str` | 指定模型 |
+| `isolation` | `str` | `"worktree"` 时在独立 git worktree 中执行 agent，并发安全 |
 | `**kwargs` | | 传递给 agent 定义模板的参数（如 `target_language="中文"`） |
 
-返回值：`schema` 指定时返回 `dict`，否则返回 `str`。失败返回 `None`。
+返回值：`schema` 或 `output` 指定时返回 `dict`，否则返回 `str`。infra 失败抛 `AgentError`。
 
 ### `phase(title: str)`
 
@@ -194,6 +198,16 @@ results = pipeline(
 ### `args`
 
 `loop run` 时 `--args '<json>'` 传入的参数，在 workflow.py 中通过 `args` 参数访问。
+
+### `state`
+
+声明式持久化状态。`meta.state` 中声明默认值，workflow 中通过 `state.key` 属性访问。每次 `agent()` 成功后自动保存到 `state.json`，resume 时自动恢复。
+
+```python
+meta = {"state": {"attempt": 0}}
+
+def run(agent, ..., state):
+    state.attempt += 1  # 自动持久化，resume 恢复
 
 ---
 
