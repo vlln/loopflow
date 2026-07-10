@@ -67,7 +67,7 @@ def _check_environment(meta: dict, loop_dir: Path) -> None:
         )
         sys.exit(1)
     print(
-        f"[loopflow] Environment: {env_file} (activate with: conda env create -f {env_path})",
+        f"[loopflow] Environment: {env_file} (make sure the environment is activated)",
         file=sys.stderr,
     )
 
@@ -152,6 +152,14 @@ def run(name, wf_args, mock, watch):
         if "state" in sig.parameters:
             run_kwargs["state"] = state
         result = mod.run(**run_kwargs)
+    except KeyboardInterrupt:
+        print("\n[loopflow] Interrupted", file=sys.stderr)
+        run_meta["status"] = "stopped"
+        run_meta["counter"] = ctx._counter
+        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+        if live:
+            live.stop()
+        sys.exit(0)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
@@ -258,6 +266,14 @@ def resume(run_id, mock, watch):
         if "state" in sig.parameters:
             run_kwargs["state"] = state
         result = mod.run(**run_kwargs)
+    except KeyboardInterrupt:
+        print("\n[loopflow] Interrupted", file=sys.stderr)
+        run_meta["status"] = "stopped"
+        run_meta["counter"] = ctx._counter
+        run_json.write_text(json.dumps(run_meta, indent=2))
+        if live:
+            live.stop()
+        sys.exit(0)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
