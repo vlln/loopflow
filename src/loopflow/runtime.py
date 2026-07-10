@@ -70,7 +70,8 @@ def _make_backend(backend_name: str | None = None, transport: str | None = None,
 
 
 def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
-                  model: str | None = None, cwd: str | None = None) -> list[dict]:
+                  model: str | None = None, cwd: str | None = None,
+                  requires=None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
     output_parts: list[str] = []
@@ -91,9 +92,9 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
         _emit_log(f"Calling agent via {backend_name or 'auto'}...")
 
         if existing_sid:
-            exit_code = backend.resume_session(existing_sid, prompt, model=model)
+            exit_code = backend.resume_session(existing_sid, prompt, model=model, requires=requires)
         else:
-            sid, exit_code = backend.create_session(prompt, model=model)
+            sid, exit_code = backend.create_session(prompt, model=model, requires=requires)
             try:
                 from loopflow.registry import register
                 register(session, session, sid, background=False)
@@ -314,6 +315,7 @@ def agent(
 
     # Resolve agent definition: load body from agents/<agent_def>.md
     resolved_prompt = prompt
+    ad = None
     if _ctx.loop_dir is not None:
         def_name = agent_def if agent_def is not None else "default"
         agent_path = _ctx.loop_dir / "agents" / f"{def_name}.md"
@@ -332,6 +334,13 @@ def agent(
                 # Auto-detect output schema from agent definition
                 if schema is None and ad.output is not None:
                     schema = ad.output
+
+                # Inject skill descriptions into system prompt
+                if ad.requires and ad.requires.skills:
+                    from loopflow.skills import build_skill_prompt
+                    skill_section = build_skill_prompt(ad.requires.skills)
+                    if skill_section:
+                        resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
 
     # Inject schema into prompt so the agent knows the expected output format
     if schema:
@@ -393,6 +402,7 @@ def agent(
                 backend_name=backend,
                 model=model,
                 cwd=cwd,
+                requires=ad.requires if ad else None,
             )
             exit_code = _extract_exit_code(events)
             text = _extract_text(events) if exit_code == 0 else ""
