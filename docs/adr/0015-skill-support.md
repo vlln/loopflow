@@ -93,9 +93,9 @@ DISREGARD any earlier skill listings. Current available skills:
 
 ### 5. 当前不做的事
 
-- **不自动下载**：`source` 字段仅记录，loopflow 不负责 `git clone` 或安装
+- **不自动下载**：skill 安装由环境文件管理，loopflow 不负责下载或安装
 - **不校验可用性**：声明了 skill 但目录不存在时，注入时标记为 `[not found]`，不阻塞运行
-- **不锁定版本**：skill 名称不含版本号，版本管理留给未来
+- **不锁定版本**：skill 版本管理由环境文件（pixi.lock 等）负责
 
 ## 影响
 
