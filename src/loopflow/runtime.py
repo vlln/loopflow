@@ -23,7 +23,7 @@ from typing import Any, Callable
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _make_backend(backend_name: str | None = None, transport: str | None = None,
-                  text_handler=None):
+                  text_handler=None, cwd: str | None = None):
     """Create a backend instance. Detects available backend if not specified."""
     from loopflow.backends.base import BaseBackend
     from loopflow.backends.claude import ClaudeBackend
@@ -63,11 +63,14 @@ def _make_backend(backend_name: str | None = None, transport: str | None = None,
     if text_handler:
         kwargs["text_handler"] = text_handler
     kwargs["transport"] = transport
-    return cls(**kwargs)
+    backend = cls(**kwargs)
+    if cwd and hasattr(backend, '_transport'):
+        backend._transport.cwd = cwd
+    return backend
 
 
 def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
-                  model: str | None = None) -> list[dict]:
+                  model: str | None = None, cwd: str | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
     output_parts: list[str] = []
@@ -76,7 +79,7 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
         if text:
             output_parts.append(text)
 
-    backend = _make_backend(backend_name, text_handler=text_handler)
+    backend = _make_backend(backend_name, text_handler=text_handler, cwd=cwd)
     try:
         existing_sid = None
         try:
@@ -137,12 +140,44 @@ def _extract_exit_code(events: list[dict]) -> int:
 
 # ── context ──────────────────────────────────────────────────────────────
 
+class State:
+    """Mutable state object with attribute access, backed by a dict.
+
+    Persisted to state.json after each successful agent() call.
+    """
+
+    def __init__(self, defaults: dict | None = None) -> None:
+        defaults = defaults or {}
+        object.__setattr__(self, "_data", dict(defaults))
+        for key, value in defaults.items():
+            object.__setattr__(self, key, value)
+
+    def __setattr__(self, key: str, value: Any) -> None:
+        if key == "_data":
+            object.__setattr__(self, key, value)
+        else:
+            self._data[key] = value
+            object.__setattr__(self, key, value)
+
+    def to_dict(self) -> dict:
+        return dict(self._data)
+
+    @classmethod
+    def from_dict(cls, data: dict, defaults: dict | None = None) -> "State":
+        state = cls(defaults)
+        for key, value in data.items():
+            state._data[key] = value
+            object.__setattr__(state, key, value)
+        return state
+
+
 class RunContext:
     """Tracks run state: session naming, resume, nested workflow()."""
 
     def __init__(self, run_id: str | None = None, run_dir: Path | None = None,
                  resume: bool = False, graph=None, live=None,
-                 loop_dir: Path | None = None) -> None:
+                 loop_dir: Path | None = None,
+                 state: State | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -153,6 +188,7 @@ class RunContext:
         self.graph = graph  # PhaseGraph instance (optional, for live rendering)
         self.live = live    # Rich Live instance (optional)
         self.loop_dir = loop_dir  # Path to loop definition directory
+        self.state = state  # Workflow state (optional, auto-persisted)
 
     def next_session(self) -> str:
         self._counter += 1
@@ -226,6 +262,7 @@ def agent(
     *,
     schema: dict | None = None,
     max_retries: int = 3,
+    isolation: str | None = None,
     label: str | None = None,
     backend: str | None = None,
     model: str | None = None,
@@ -303,11 +340,18 @@ def agent(
         else:
             if attempt > 0:
                 session = _ctx.next_session()  # New session for each retry
+            # Create worktree for isolation (only on first attempt)
+            cwd = None
+            if isolation == "worktree" and attempt == 0:
+                cwd = _create_worktree(_ctx.run_id, _ctx._counter)
+                if cwd:
+                    _emit_log(f"Worktree: {cwd}")
             events = _run_subagent(
                 resolved_prompt + retry_hint,
                 session,
                 backend_name=backend,
                 model=model,
+                cwd=cwd,
             )
             exit_code = _extract_exit_code(events)
             text = _extract_text(events) if exit_code == 0 else ""
@@ -325,6 +369,7 @@ def agent(
                 result = json.loads(text)
                 # Write cache on success
                 _write_cache(cache_path, session, exit_code, text)
+                _persist_state()
                 return result
             except json.JSONDecodeError:
                 if attempt >= max_retries:
@@ -337,6 +382,7 @@ def agent(
 
         # No schema → return text
         _write_cache(cache_path, session, exit_code, text)
+        _persist_state()
         return text
 
 
@@ -407,11 +453,16 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
     if not hasattr(mod, "run"):
         return None
 
-    return mod.run(
+    import inspect
+    sig = inspect.signature(mod.run)
+    run_kwargs = dict(
         agent=agent, parallel=parallel, pipeline=pipeline,
         phase=phase, log=log, args=args or {},
         workflow=workflow,
     )
+    if "state" in sig.parameters:
+        run_kwargs["state"] = _ctx.state
+    return mod.run(**run_kwargs)
 
 
 def phase(title: str) -> None:
@@ -475,3 +526,32 @@ def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> N
             _write_event(e)
     except OSError:
         pass
+
+
+def _persist_state() -> None:
+    """Persist workflow state to state.json after successful agent call."""
+    if _ctx.state is None:
+        return
+    try:
+        state_path = _ctx.run_dir / "state.json"
+        state_path.write_text(json.dumps(_ctx.state.to_dict(), indent=2))
+    except OSError:
+        pass
+
+
+def _create_worktree(run_id: str, seq: int) -> str | None:
+    """Create a git worktree for isolated agent execution.
+
+    Returns the worktree path, or None if not in a git repo.
+    """
+    import subprocess
+    worktree_name = f"lf_{run_id}_{seq}"
+    worktree_path = Path.cwd() / ".agents" / "worktrees" / worktree_name
+    try:
+        subprocess.run(
+            ["git", "worktree", "add", str(worktree_path)],
+            capture_output=True, text=True, timeout=10, check=True,
+        )
+        return str(worktree_path)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        return None

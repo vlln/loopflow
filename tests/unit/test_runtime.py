@@ -162,7 +162,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             return [
                 {"type": "agent_text", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -188,7 +188,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             if "fail" in prompt:
                 raise Exception("boom")
             return [
@@ -215,7 +215,7 @@ class TestPipeline:
         set_context(ctx)
 
         # Use a dict-based mock that returns content based on prompt
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             return [
                 {"type": "agent_text", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -243,7 +243,7 @@ class TestPipeline:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             return [
                 {"type": "agent_done", "exit_code": 1},  # fails, returns None
             ]
@@ -391,7 +391,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "translated"},
@@ -415,7 +415,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -438,7 +438,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -461,7 +461,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -553,7 +553,7 @@ You are a reporter. Return structured results.
         explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": '{"custom": "override"}'},
@@ -575,7 +575,7 @@ You are a reporter. Return structured results.
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text",
@@ -603,7 +603,7 @@ You are a reporter. Return structured results.
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First attempt: invalid JSON (missing closing brace)
@@ -634,7 +634,7 @@ You are a reporter. Return structured results.
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             call_count[0] += 1
             return [
                 {"type": "agent_text", "content": "not valid json at all"},
@@ -657,7 +657,7 @@ You are a reporter. Return structured results.
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "plain text"},
@@ -670,3 +670,71 @@ You are a reporter. Return structured results.
 
         assert result == "plain text"
         assert "Output format" not in captured_prompt[0]
+
+
+# ── state ─────────────────────────────────────────────────────────────────────
+
+class TestState:
+    """State object with attribute access and persistence."""
+
+    def test_state_create_with_defaults(self):
+        from loopflow.runtime import State
+        state = State({"attempt": 0, "mode": "test"})
+        assert state.attempt == 0
+        assert state.mode == "test"
+
+    def test_state_set_and_get(self):
+        from loopflow.runtime import State
+        state = State({"attempt": 0})
+        state.attempt = 5
+        assert state.attempt == 5
+
+    def test_state_to_dict(self):
+        from loopflow.runtime import State
+        state = State({"attempt": 0, "mode": "test"})
+        state.attempt = 3
+        d = state.to_dict()
+        assert d == {"attempt": 3, "mode": "test"}
+
+    def test_state_from_dict(self):
+        from loopflow.runtime import State
+        state = State.from_dict({"attempt": 5}, {"attempt": 0, "mode": "test"})
+        # attempt from saved data takes precedence
+        assert state.attempt == 5
+        # mode from defaults fills in missing key
+        assert state.mode == "test"
+
+    def test_state_persisted_after_agent(self, temp_run_dir, mock_backend):
+        from loopflow.runtime import RunContext, State, set_context, agent
+        state = State({"attempt": 0})
+        ctx = RunContext(run_dir=temp_run_dir, state=state)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text", "content": "ok"},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                state.attempt = 1
+                agent("test")
+
+        state_path = temp_run_dir / "state.json"
+        assert state_path.exists()
+        saved = json.loads(state_path.read_text())
+        assert saved["attempt"] == 1
+
+    def test_state_no_persist_without_declaration(self, temp_run_dir, mock_backend):
+        """Without state in RunContext, no state.json is created."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)  # no state
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text", "content": "ok"},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                agent("test")
+
+        state_path = temp_run_dir / "state.json"
+        assert not state_path.exists()

@@ -30,6 +30,7 @@ class CliTransport:
         on_stderr: Callable[[str], None] | None = None,
         timeout: float | None = DEFAULT_TIMEOUT,
         env: dict[str, str] | None = None,
+        cwd: str | None = None,
     ) -> int:
         """Run a command and return its exit code.
 
@@ -40,6 +41,7 @@ class CliTransport:
             timeout: Maximum time in seconds. Default 300s (5 min).
             env: Additional environment variables to merge into the
                 subprocess environment.
+            cwd: Working directory for the subprocess.
 
         Returns:
             The process exit code.
@@ -56,6 +58,7 @@ class CliTransport:
                 stderr=subprocess.PIPE,
                 text=True,
                 env=proc_env,
+                cwd=cwd,
             )
         except FileNotFoundError:
             install_guide = ""
