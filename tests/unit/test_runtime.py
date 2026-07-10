@@ -35,6 +35,40 @@ def mock_backend():
     return backend
 
 
+@pytest.fixture
+def loop_with_output_agent(temp_run_dir):
+    """Create a loop with an agent that has output schema."""
+    loop_dir = Path(tempfile.mkdtemp()) / "test-loop"
+    loop_dir.mkdir(parents=True)
+    agents_dir = loop_dir / "agents"
+    agents_dir.mkdir(parents=True)
+
+    (agents_dir / "default.md").write_text("""---
+name: default
+description: Default agent
+---
+You are a helpful assistant. Answer concisely.
+""")
+
+    (agents_dir / "reporter.md").write_text("""---
+name: reporter
+description: Structured reporter
+output:
+  type: object
+  properties:
+    verdict:
+      type: string
+    score:
+      type: number
+  required:
+    - verdict
+    - score
+---
+You are a reporter. Return structured results.
+""")
+    return loop_dir
+
+
 # ── RunContext ────────────────────────────────────────────────────────────
 
 class TestRunContext:
@@ -492,39 +526,6 @@ You are a helpful assistant. Answer concisely.
 class TestOutputSchema:
     """Auto-detect output schema from agent definition, prompt injection, retry."""
 
-    @pytest.fixture
-    def loop_with_output_agent(self, temp_run_dir):
-        """Create a loop with an agent that has output schema."""
-        loop_dir = Path(tempfile.mkdtemp()) / "test-loop"
-        loop_dir.mkdir(parents=True)
-        agents_dir = loop_dir / "agents"
-        agents_dir.mkdir(parents=True)
-
-        (agents_dir / "default.md").write_text("""---
-name: default
-description: Default agent
----
-You are a helpful assistant. Answer concisely.
-""")
-
-        (agents_dir / "reporter.md").write_text("""---
-name: reporter
-description: Structured reporter
-output:
-  type: object
-  properties:
-    verdict:
-      type: string
-    score:
-      type: number
-  required:
-    - verdict
-    - score
----
-You are a reporter. Return structured results.
-""")
-        return loop_dir
-
     def test_auto_schema_from_agent_def(self, temp_run_dir, mock_backend,
                                          loop_with_output_agent):
         """Agent definition with output → agent() returns dict."""
@@ -738,3 +739,84 @@ class TestState:
 
         state_path = temp_run_dir / "state.json"
         assert not state_path.exists()
+
+
+# ── mock auto ─────────────────────────────────────────────────────────────────
+
+class TestMockAuto:
+    """Auto mock mode generates data from schema."""
+
+    def test_mock_auto_without_schema(self, temp_run_dir):
+        from loopflow.runtime import RunContext, set_context, set_mock, agent
+        set_mock("auto")
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        result = agent("test")
+        assert result == "mock response"
+
+    def test_mock_auto_with_schema(self, temp_run_dir):
+        from loopflow.runtime import RunContext, set_context, set_mock, agent
+        set_mock("auto")
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "verdict": {"type": "string", "enum": ["PASS", "FAIL"]},
+                "score": {"type": "number"},
+                "tags": {"type": "array"},
+            },
+            "required": ["verdict", "score"],
+        }
+        result = agent("test", schema=schema)
+        assert result == {"verdict": "PASS", "score": 0, "tags": []}
+
+    def test_mock_auto_first_enum(self, temp_run_dir):
+        from loopflow.runtime import RunContext, set_context, set_mock, agent
+        set_mock("auto")
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "status": {"type": "string", "enum": ["REPRODUCED", "PARTIAL", "FAILED"]},
+            },
+        }
+        result = agent("test", schema=schema)
+        assert result == {"status": "REPRODUCED"}
+
+    def test_mock_auto_nested_object(self, temp_run_dir):
+        from loopflow.runtime import RunContext, set_context, set_mock, agent
+        set_mock("auto")
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        schema = {
+            "type": "object",
+            "properties": {
+                "dimension_scores": {
+                    "type": "object",
+                    "properties": {
+                        "data": {"type": "number"},
+                        "process": {"type": "number"},
+                    },
+                },
+            },
+        }
+        result = agent("test", schema=schema)
+        assert result == {"dimension_scores": {"data": 0, "process": 0}}
+
+    def test_mock_auto_with_agent_def_output(self, temp_run_dir,
+                                               loop_with_output_agent):
+        from loopflow.runtime import RunContext, set_context, set_mock, agent
+        set_mock("auto")
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        result = agent("test", agent_def="reporter")
+        assert isinstance(result, dict)
+        assert result["verdict"] == "mock response"
+        assert result["score"] == 0

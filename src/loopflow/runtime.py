@@ -233,11 +233,15 @@ def _tempfile_getdir() -> str:
 
 # ── mock agent ────────────────────────────────────────────────────────────
 
-_mock_mode: str | None = None  # None | "shell" | "echo"
+_mock_mode: str | None = None  # None | "bash" | "auto"
 
 
-def set_mock(mode: str | None = "shell") -> None:
-    """Enable mock agent mode for testing without a real backend."""
+def set_mock(mode: str | None = "bash") -> None:
+    """Enable mock agent mode for testing without a real backend.
+
+    Args:
+        mode: "bash" (shell execution) or "auto" (schema-based generation).
+    """
     global _mock_mode
     _mock_mode = mode
 
@@ -253,6 +257,41 @@ def _run_mock(prompt: str) -> tuple[str, int]:
         return "", 1
     except Exception:
         return "", 1
+
+
+def _run_mock_auto(schema: dict | None) -> tuple[str, int]:
+    """Generate mock data from JSON Schema.
+
+    Rules:
+    - string + enum → first enum value
+    - string (no enum) → field name
+    - number/integer → 0
+    - boolean → false
+    - array → empty list
+    - object → empty object
+    """
+    if schema is None:
+        return "mock response", 0
+
+    def _generate(s: dict) -> Any:
+        if "enum" in s and isinstance(s["enum"], list) and s["enum"]:
+            return s["enum"][0]
+        t = s.get("type", "string")
+        if t == "object":
+            result = {}
+            for key, prop in s.get("properties", {}).items():
+                if isinstance(prop, dict):
+                    result[key] = _generate(prop)
+            return result
+        if t == "array":
+            return []
+        if t == "boolean":
+            return False
+        if t in ("number", "integer"):
+            return 0
+        return "mock response"  # string without enum
+
+    return json.dumps(_generate(schema)), 0
 
 
 # ── public API ───────────────────────────────────────────────────────────
@@ -331,9 +370,11 @@ def agent(
 
         t0 = time.time()
 
-        if _mock_mode:
+        if _mock_mode == "auto":
+            text, exit_code = _run_mock_auto(schema)
+        elif _mock_mode == "bash":
             text, exit_code = _run_mock(resolved_prompt + retry_hint)
-            # Mock mode: shell commands may fail on non-shell prompts.
+            # Mock bash mode: shell commands may fail on non-shell prompts.
             # Treat non-zero exit as empty output, not infra failure.
             if exit_code != 0:
                 text = ""

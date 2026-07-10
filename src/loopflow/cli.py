@@ -63,7 +63,8 @@ def main():
 @main.command()
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
-@click.option("--mock/--no-mock", default=False, help="Use mock backend (shell echo) for testing")
+@click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
+              help="Mock mode: bash (shell execution) or auto (schema-based generation)")
 @click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
 def run(name, wf_args, mock, watch):
     """Run a loop."""
@@ -72,7 +73,7 @@ def run(name, wf_args, mock, watch):
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
 
     if mock:
-        set_mock("shell")
+        set_mock(mock)
 
     args_dict = {}
     if wf_args:
@@ -163,7 +164,8 @@ def run(name, wf_args, mock, watch):
 
 @main.command()
 @click.argument("run_id")
-@click.option("--mock/--no-mock", default=False, help="Use mock backend (shell echo) for testing")
+@click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
+              help="Mock mode: bash (shell execution) or auto (schema-based generation)")
 @click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
 def resume(run_id, mock, watch):
     """Resume a crashed loop run."""
@@ -172,7 +174,7 @@ def resume(run_id, mock, watch):
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
 
     if mock:
-        set_mock("shell")
+        set_mock(mock)
 
     run_dir = _runs_dir() / run_id
     if not run_dir.is_dir():
