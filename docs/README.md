@@ -4,9 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 已冻结（vision active, 1 Spec, 8 ACs, 9 ADRs accepted） |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent 已实现（116 tests pass, 70% coverage） |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | 已冻结（vision active, 1 Spec v5, 17 ADRs accepted） |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（133 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
