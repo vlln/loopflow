@@ -55,24 +55,32 @@ loopflow 不强制使用 skit、skill.sh、npm 或任何特定工具。Workflow 
 
 ### 5. Skill 存储隔离
 
-与 conda 环境隔离同模式：每个 workflow 的 skill 存储到项目本地目录，不污染全局。
+与 conda 环境隔离同模式：每个 workflow 的 skill 存储到项目本地 `.skills/` 目录，不污染全局。
 
-```
+```toml
 # pixi.toml
-[workspace.env-vars]
-SKILLS_HOME = "${PIXI_ENV_PREFIX}/.project_skills"
+[activation.env]
+SKILLS_HOME = "${PIXI_PROJECT_ROOT}/.skills"
 ```
 
 ```
-pixi install
-  → ${PIXI_ENV_PREFIX}/.project_skills/  ← 项目本地，完全隔离
+bio-reproducer/
+├── workflow.py
+├── agents/
+├── pixi.toml
+├── .pixi/              ← pixi env（瞬态，可重建）
+└── .skills/            ← project skills（持久，随项目）
 ```
+
+- `.skills/` 是隐藏目录，表示自动管理，不手改
+- 不与 `agents/`（手写）混淆
+- `PIXI_PROJECT_ROOT` 而非 `CONDA_PREFIX`：技能属于项目，不属于环境。env 重建时 skill 不丢失
 
 | 管理器 | 隔离方式 |
 |--------|---------|
-| skit | `SKILLS_HOME` 环境变量覆盖默认路径 |
+| skit | `SKILLS_HOME=.skills` 覆盖默认路径 |
 | skill.sh (npm) | `npm install` 默认到 `node_modules/`，项目级 |
-| 手动 | `SKILLS_HOME` 指向项目本地目录 |
+| 手动 | `SKILLS_HOME` 指向 `.skills/` |
 
 隔离是环境管理器的职责，loopflow 不参与。loopflow 的保证：声明了环境文件 → 隔离由环境文件保证；未声明 → 不保证。
 
