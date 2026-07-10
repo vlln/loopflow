@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-07-09
+
+### Added
+- `--mock auto`：根据 agent 的 `output` schema 自动生成 mock 数据，无需 AI 后端即可验证 workflow 完整流程
+
+### Changed
+- `--mock` 从布尔标志改为模式选择：`--mock bash`（shell 执行）或 `--mock auto`（schema 生成）
+- 删除 `echo` mock 模式，`auto` 覆盖其场景
+
+### Fixed
+- Mock 模式不再因自然语言 prompt 导致 shell 执行失败，`auto` 模式生成合法数据
+
 ## [0.5.0] — 2026-07-09
 
 ### Added
