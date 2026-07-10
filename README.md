@@ -220,7 +220,8 @@ def run(agent, ..., state):
 ```bash
 loop run hello                           # 运行
 loop run hello --args '{"key": "val"}'   # 传参
-loop run hello --mock                    # mock 模式（无需 AI 后端）
+loop run hello --mock bash               # mock: shell 执行（兼容旧用法）
+loop run hello --mock auto               # mock: 根据 schema 自动生成数据
 loop run hello --watch                   # 实时显示执行图
 ```
 

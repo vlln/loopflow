@@ -82,7 +82,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -120,7 +120,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -153,7 +153,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -191,7 +191,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -232,7 +232,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -280,7 +280,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -323,7 +323,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -367,7 +367,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -388,7 +388,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
         phase_count_before = sum(1 for e in before if e["type"] == "phase")
 
         # Resume
-        set_mock("shell")
+        set_mock("bash")
         runner = CliRunner()
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["resume", run_id])
