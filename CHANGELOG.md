@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-07-10
+
+### Changed
+- ADR 0017：skill 声明边界 — agent 仅声明 WHAT，WHERE 由环境文件管理
+- 移除 SKILL.md 的 `path`/`source` 字段，保留 `name`/`description`
+- Skill 存储隔离：`.skills/`（项目本地），通过 `SKILLS_HOME` 环境变量
+- 推荐 pixi 作为环境管理器（`[activation.env]` 原生隔离），不约束格式
+- 环境文件提醒消息：存在时打印激活命令
+
 ## [0.8.0] — 2026-07-10
 
 ### Added
