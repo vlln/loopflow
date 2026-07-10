@@ -51,6 +51,114 @@ class TestRenderTemplate:
         assert result == ""
 
 
+class TestResolveParams:
+    """Resolve template parameters with defaults."""
+
+    def test_required_provided(self):
+        from loopflow.agent import ParamSpec, resolve_params
+        params = [ParamSpec("language")]
+        result = resolve_params(params, language="Chinese")
+        assert result == {"language": "Chinese"}
+
+    def test_required_missing_raises(self):
+        from loopflow.agent import ParamSpec, resolve_params
+        params = [ParamSpec("language")]
+        with pytest.raises(ValueError, match="language"):
+            resolve_params(params)
+
+    def test_optional_with_default(self):
+        from loopflow.agent import ParamSpec, resolve_params
+        params = [ParamSpec("language", required=False, default="English")]
+        result = resolve_params(params)
+        assert result == {"language": "English"}
+
+    def test_optional_overridden(self):
+        from loopflow.agent import ParamSpec, resolve_params
+        params = [ParamSpec("language", required=False, default="English")]
+        result = resolve_params(params, language="Chinese")
+        assert result == {"language": "Chinese"}
+
+    def test_mixed_required_and_optional(self):
+        from loopflow.agent import ParamSpec, resolve_params
+        params = [
+            ParamSpec("language"),  # required
+            ParamSpec("format", required=False, default="markdown"),
+            ParamSpec("figure_mode", required=False, default="generate"),
+        ]
+        result = resolve_params(params, language="Chinese")
+        assert result == {
+            "language": "Chinese",
+            "format": "markdown",
+            "figure_mode": "generate",
+        }
+
+    def test_extra_kwargs_passthrough(self):
+        from loopflow.agent import ParamSpec, resolve_params
+        params = [ParamSpec("language")]
+        result = resolve_params(params, language="Chinese", extra="ignored")
+        assert result == {"language": "Chinese", "extra": "ignored"}
+
+    def test_no_params(self):
+        from loopflow.agent import resolve_params
+        result = resolve_params(None, language="Chinese")
+        assert result == {"language": "Chinese"}
+
+
+class TestParseAgentParams:
+    """Parse agent definition with new param format."""
+
+    def test_old_format_params(self):
+        """Backward compatible: - param_name (required)."""
+        import tempfile
+        from loopflow.agent import parse_agent
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: test
+description: Test agent
+requires:
+  params:
+    - language
+    - format
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.requires is not None
+            assert len(result.requires.params) == 2
+            assert result.requires.params[0].name == "language"
+            assert result.requires.params[0].required is True
+            assert result.requires.params[1].name == "format"
+            assert result.requires.params[1].required is True
+
+    def test_new_format_params(self):
+        """New format: - param_name: default_value (optional)."""
+        import tempfile
+        from loopflow.agent import parse_agent
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: test
+description: Test agent
+requires:
+  params:
+    - language
+    - format: markdown
+    - figure_mode: generate
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.requires is not None
+            assert len(result.requires.params) == 3
+            assert result.requires.params[0].name == "language"
+            assert result.requires.params[0].required is True
+            assert result.requires.params[1].name == "format"
+            assert result.requires.params[1].required is False
+            assert result.requires.params[1].default == "markdown"
+            assert result.requires.params[2].name == "figure_mode"
+            assert result.requires.params[2].required is False
+            assert result.requires.params[2].default == "generate"
+
+
 class TestParseAgent:
     """Existing agent definition parsing tests."""
 
@@ -90,7 +198,11 @@ You are a test agent. Output in {{language}}.""")
             assert result.name == "test-agent"
             assert result.requires is not None
             assert result.requires.env == ["API_KEY"]
-            assert result.requires.params == ["language", "format"]
+            assert len(result.requires.params) == 2
+            assert result.requires.params[0].name == "language"
+            assert result.requires.params[0].required is True
+            assert result.requires.params[1].name == "format"
+            assert result.requires.params[1].required is True
             assert result.requires.mcps == ["filesystem"]
 
     def test_parse_agent_missing_name(self):
@@ -109,3 +221,79 @@ body""")
         from loopflow.agent import parse_agent
         with pytest.raises(FileNotFoundError):
             parse_agent("/nonexistent/agent.md")
+
+
+class TestAgentError:
+    """AgentError is raised for infrastructure failures."""
+
+    def test_agent_error_is_exception(self):
+        from loopflow.agent import AgentError
+        err = AgentError("test error")
+        assert isinstance(err, Exception)
+        assert str(err) == "test error"
+
+    def test_agent_error_can_be_caught(self):
+        from loopflow.agent import AgentError
+        with pytest.raises(AgentError, match="something went wrong"):
+            raise AgentError("something went wrong")
+
+
+class TestParseAgentOutput:
+    """Parse agent definition with output schema."""
+
+    def test_parse_agent_with_output(self):
+        from loopflow.agent import parse_agent
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: validate
+description: Validation agent
+requires:
+  params:
+    - language
+output:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [PASS, FAIL]
+  required:
+    - verdict
+---
+You are a validator. Output in {{language}}.""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.name == "validate"
+            assert result.output is not None
+            assert result.output["type"] == "object"
+            assert result.output["properties"]["verdict"]["type"] == "string"
+            assert result.output["required"] == ["verdict"]
+
+    def test_parse_agent_without_output(self):
+        """Agents without output field have output=None."""
+        from loopflow.agent import parse_agent
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: simple
+description: Simple agent
+---
+Just a body.""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.output is None
+
+    def test_parse_agent_output_not_dict_ignored(self):
+        """output that is not a dict is silently ignored."""
+        from loopflow.agent import parse_agent
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: broken
+description: Broken output
+output: not_a_schema
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.output is None

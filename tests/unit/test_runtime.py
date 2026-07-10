@@ -79,8 +79,9 @@ class TestAgent:
                 result = agent("say hello")
                 assert result == "hello world"
 
-    def test_agent_failed_returns_none(self, temp_run_dir, mock_backend):
+    def test_agent_failed_raises_agent_error(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
+        from loopflow.agent import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -88,8 +89,8 @@ class TestAgent:
             with patch('loopflow.runtime._run_subagent', return_value=(
                 [{"type": "agent_done", "exit_code": 1}]
             )):
-                result = agent("bad prompt")
-                assert result is None
+                with pytest.raises(AgentError, match="exit code 1"):
+                    agent("bad prompt")
 
     def test_agent_writes_cache(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
@@ -484,3 +485,188 @@ You are a helpful assistant. Answer concisely.
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with pytest.raises(ValueError, match="language"):
                 agent("Hello", agent_def="translator")  # missing language=
+
+
+# ── output schema ─────────────────────────────────────────────────────────────
+
+class TestOutputSchema:
+    """Auto-detect output schema from agent definition, prompt injection, retry."""
+
+    @pytest.fixture
+    def loop_with_output_agent(self, temp_run_dir):
+        """Create a loop with an agent that has output schema."""
+        loop_dir = Path(tempfile.mkdtemp()) / "test-loop"
+        loop_dir.mkdir(parents=True)
+        agents_dir = loop_dir / "agents"
+        agents_dir.mkdir(parents=True)
+
+        (agents_dir / "default.md").write_text("""---
+name: default
+description: Default agent
+---
+You are a helpful assistant. Answer concisely.
+""")
+
+        (agents_dir / "reporter.md").write_text("""---
+name: reporter
+description: Structured reporter
+output:
+  type: object
+  properties:
+    verdict:
+      type: string
+    score:
+      type: number
+  required:
+    - verdict
+    - score
+---
+You are a reporter. Return structured results.
+""")
+        return loop_dir
+
+    def test_auto_schema_from_agent_def(self, temp_run_dir, mock_backend,
+                                         loop_with_output_agent):
+        """Agent definition with output → agent() returns dict."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_text",
+                  "content": '{"verdict": "PASS", "score": 95}'},
+                 {"type": "agent_done", "exit_code": 0}]
+            )):
+                result = agent("Report results", agent_def="reporter")
+                assert isinstance(result, dict)
+                assert result["verdict"] == "PASS"
+                assert result["score"] == 95
+
+    def test_explicit_schema_overrides_output(self, temp_run_dir, mock_backend,
+                                               loop_with_output_agent):
+        """Explicit schema= overrides agent definition output."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
+
+        captured_prompt = []
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text", "content": '{"custom": "override"}'},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                result = agent("test", agent_def="reporter", schema=explicit_schema)
+                assert result == {"custom": "override"}
+                # Explicit schema should be in the prompt, not the agent's output
+                assert '"custom"' in captured_prompt[0]
+
+    def test_schema_injected_into_prompt(self, temp_run_dir, mock_backend,
+                                          loop_with_output_agent):
+        """Schema is injected into the prompt for the agent to see."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        captured_prompt = []
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text",
+                  "content": '{"verdict": "PASS", "score": 90}'},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                agent("test", agent_def="reporter")
+
+        assert len(captured_prompt) == 1
+        prompt = captured_prompt[0]
+        assert "Output format" in prompt
+        assert "JSON object" in prompt
+        assert "verdict" in prompt
+        assert "score" in prompt
+        assert "Do NOT wrap" in prompt
+
+    def test_schema_retry_on_json_error(self, temp_run_dir, mock_backend,
+                                         loop_with_output_agent):
+        """JSON parse failure triggers retry, succeeds on second attempt."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        call_count = [0]
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                # First attempt: invalid JSON (missing closing brace)
+                return [
+                    {"type": "agent_text", "content": '{"verdict": "PASS"'},
+                    {"type": "agent_done", "exit_code": 0},
+                ]
+            else:
+                # Second attempt: valid JSON
+                return [
+                    {"type": "agent_text",
+                      "content": '{"verdict": "PASS", "score": 85}'},
+                    {"type": "agent_done", "exit_code": 0},
+                ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                result = agent("test", agent_def="reporter")
+                assert call_count[0] == 2
+                assert result == {"verdict": "PASS", "score": 85}
+
+    def test_schema_retry_raises_after_max_retries(self, temp_run_dir, mock_backend,
+                                                    loop_with_output_agent):
+        """After max_retries failed JSON attempts, raises AgentError."""
+        from loopflow.runtime import RunContext, set_context, agent
+        from loopflow.agent import AgentError
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        call_count = [0]
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            call_count[0] += 1
+            return [
+                {"type": "agent_text", "content": "not valid json at all"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with pytest.raises(AgentError, match="valid JSON"):
+                    agent("test", agent_def="reporter", max_retries=2)
+
+        # 1 initial + 2 retries = 3 attempts
+        assert call_count[0] == 3
+
+    def test_no_schema_injection_without_output(self, temp_run_dir, mock_backend,
+                                                  loop_with_output_agent):
+        """Agent without output field → no schema injection, returns string."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
+        set_context(ctx)
+
+        captured_prompt = []
+        def _mock_run(prompt, session, backend_name=None, model=None):
+            captured_prompt.append(prompt)
+            return [
+                {"type": "agent_text", "content": "plain text"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                result = agent("test", agent_def="default")
+
+        assert result == "plain text"
+        assert "Output format" not in captured_prompt[0]

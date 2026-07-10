@@ -2,14 +2,22 @@
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-07-09
+
 ### Added
-- 
+- `output` 字段：agent 定义新增可选的 JSON Schema 输出契约，与 `requires.params` 对称
+- Schema prompt 注入：当 agent 有 `output` 时，自动将 schema 注入 prompt，要求 agent 返回纯 JSON
+- Schema 重试：JSON parse 失败时自动重试（默认最多 3 次），每次提醒 agent 按 schema 输出
+- `AgentError` 异常：infra 失败（后端崩溃、超时、非零退出）抛 `AgentError`，crash 后由 resume 恢复
+- `max_retries` 参数：`agent()` 新增，控制 schema 重试次数
 
 ### Changed
-- 
+- `parse_agent()` 重构：使用 `yaml.safe_load()` 解析 frontmatter，支持嵌套 output schema
+- `agent()` 失败时抛 `AgentError` 而非返回 `None`（mock 模式除外）
+- 缓存仅写入成功的 agent 调用（非零退出不再缓存）
 
 ### Fixed
-- 
+- Mock 模式下非零退出码不再导致 AgentError（mock 是测试工具，exit_code 无意义） 
 
 ---
 
