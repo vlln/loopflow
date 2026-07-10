@@ -2,7 +2,7 @@
 title: Skill Support Implementation
 description: 实现 ADR 0015 — requires.skills 的 prompt 注入 + 原生支持双轨策略
 type: plan
-status: pending
+status: done
 created: 2026-07-10T10:30:00Z
 ---
 

@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-10
+
+### Added
+- `requires.skills`：agent 声明依赖的 skill 名称列表，loopflow 自动查找并注入到 system prompt
+- Skill 发现：按 `~/.agents/skills/` → `~/.loopflow/skills/` 顺序查找 `SKILL.md`
+- 双轨策略：后端支持原生 skill 参数时优先使用（kimi `--skills-dir`、pi `--skill`），否则 prompt 注入
+- Skill prompt 注入格式：仅注入名称+描述+路径，agent 按需读取完整 skill 内容
+
+### Changed
+- `_run_subagent()` 新增 `requires` 参数，透传 AgentRequires 到后端
+- bio-reproducer reader agent 声明 `requires.skills: [paperutils]`
+
 ## [0.6.0] — 2026-07-09
 
 ### Added
