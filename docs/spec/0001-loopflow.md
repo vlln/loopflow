@@ -75,7 +75,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | state | object | optional | 声明的持久化状态变量，key 为变量名，value 为默认值。仅支持 JSON 可序列化类型 |
 | state.<key> | any | optional | 默认值，类型即约定类型。首次运行时以默认值初始化，每次 agent() 成功后自动持久化 |
 | requires | object | optional | workflow 级别的依赖声明 |
-| requires.environment | string | optional | 环境声明文件路径（相对路径，如 `environment.yml`）。`loop run` 启动时校验文件存在，不自动激活或安装 |
+| requires.environment | string | optional | 环境声明文件路径（相对路径，如 `environment.yml` 或 `pixi.toml`）。`loop run` 启动时校验文件存在，不自动激活或安装。推荐使用 pixi（原生支持 skill 隔离和 npm 依赖），但 loopflow 不约束文件格式 |
 
 `meta` 必须是纯字面量（无变量、函数调用、表达式），用于静态发现和进度显示。`phases` 声明预期阶段，运行时 `phase()` 调用锚定到声明上。`state` 声明持久化变量，运行时通过 `state.key` 属性访问，自动保存到 `state.json`。`requires.environment` 声明环境文件，`loop run` 启动时校验存在性，激活由 agent 或用户完成。
 
