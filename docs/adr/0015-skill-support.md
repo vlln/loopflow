@@ -63,6 +63,8 @@ source: github:owner/repo@ref     # 可选，安装源（未来功能）
 - `path`：指向本机自定义路径，覆盖默认查找路径
 - `source`：符合 skill 安装方式的源地址（如 GitHub），当前阶段仅记录，不自动下载
 
+> **修订（ADR 0017）：** `path` 和 `source` 字段已移除。Skill 安装来源（WHERE）由环境文件管理，不在 SKILL.md 中声明。
+
 ### 4. 双轨策略
 
 ```

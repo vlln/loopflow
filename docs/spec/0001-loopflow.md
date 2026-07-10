@@ -139,11 +139,11 @@ SKILL.md 格式：
 |------|------|------|------|
 | name | string | required | skill 唯一标识 |
 | description | string | required | 简短描述，用于 prompt 注入 |
-| path | string | optional | 自定义路径，覆盖默认查找 |
-| source | string | optional | 安装源（如 `github:owner/repo@ref`），当前仅记录，不自动下载 |
 | body | string | optional | skill 指令内容 |
 
 查找优先级：`~/.agents/skills/` → `~/.loopflow/skills/`。先找到的生效。
+
+Skill 的安装来源（WHERE）不在 SKILL.md 中声明，由环境文件（`pixi.toml` 或 `environment.yml`）管理。loopflow 不约束使用哪个 skill 管理器（skit、skill.sh、npm 等）。
 
 ### Agent 调用缓存（jsonl）
 
