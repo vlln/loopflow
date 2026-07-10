@@ -225,6 +225,7 @@ def agent(
     prompt: str,
     *,
     schema: dict | None = None,
+    max_retries: int = 3,
     label: str | None = None,
     backend: str | None = None,
     model: str | None = None,
@@ -245,55 +246,98 @@ def agent(
             try:
                 ad = parse_agent(agent_path)
             except (ValueError, FileNotFoundError):
-                ad = None  # Invalid agent file, fall through to plain prompt
+                ad = None
             if ad is not None:
                 params = ad.requires.params if ad.requires else None
                 resolved_kwargs = resolve_params(params, **kwargs)
                 body = render_template(ad.body, **resolved_kwargs)
                 resolved_prompt = f"{body}\n\n---\n\nTask: {prompt}"
 
-    # Resume: skip if already completed
-    if _ctx.resume:
-        cached = _ctx.try_resume()
-        if cached is not None:
-            return cached
+                # Auto-detect output schema from agent definition
+                if schema is None and ad.output is not None:
+                    schema = ad.output
 
-    t0 = time.time()
-
-    if _mock_mode:
-        text, exit_code = _run_mock(resolved_prompt)
-    else:
-        try:
-            events = _run_subagent(resolved_prompt, session, backend_name=backend, model=model)
-        except Exception as e:
-            print(f"[loopflow] agent failed: {e}", file=sys.stderr)
-            return None
-        exit_code = _extract_exit_code(events)
-        text = _extract_text(events) if exit_code == 0 else ""
-
-    # Write cache
-    try:
-        cache_events = [
-            {"type": "agent_start", "session": session, "phase": _ctx._current_phase},
-            {"type": "agent_text", "content": text},
-            {"type": "agent_done", "exit_code": exit_code},
-        ]
-        cache_path.write_text("\n".join(json.dumps(e) for e in cache_events) + "\n")
-        for e in cache_events:
-            _write_event(e)
-    except OSError:
-        pass
-
-    if exit_code != 0:
-        return None
-
+    # Inject schema into prompt so the agent knows the expected output format
     if schema:
-        try:
-            return json.loads(text)
-        except json.JSONDecodeError:
-            return None
+        import json as json_mod
+        schema_hint = (
+            f"\n\n---\n"
+            f"Output format — you MUST respond with a single JSON object "
+            f"matching this schema:\n{json_mod.dumps(schema, indent=2)}\n\n"
+            f"Do NOT wrap the JSON in markdown code blocks. "
+            f"Return ONLY the JSON object."
+        )
+        resolved_prompt = resolved_prompt + schema_hint
 
-    return text
+    # Retry loop for schema compliance
+    retry_hint = ""
+    for attempt in range(max_retries + 1):
+        if attempt > 0:
+            _emit_log(f"JSON parse failed, retrying ({attempt}/{max_retries})...")
+            retry_hint = (
+                f"\n\n---\n"
+                f"Your previous response was not valid JSON. "
+                f"Please respond with ONLY a JSON object matching the schema above."
+            )
+
+        # Resume: skip if already completed (first attempt only)
+        if _ctx.resume and attempt == 0:
+            cached = _ctx.try_resume()
+            if cached is not None:
+                if schema:
+                    try:
+                        return json.loads(cached)
+                    except json.JSONDecodeError:
+                        pass  # Cached result invalid, fall through to retry
+                else:
+                    return cached
+
+        t0 = time.time()
+
+        if _mock_mode:
+            text, exit_code = _run_mock(resolved_prompt + retry_hint)
+            # Mock mode: shell commands may fail on non-shell prompts.
+            # Treat non-zero exit as empty output, not infra failure.
+            if exit_code != 0:
+                text = ""
+        else:
+            if attempt > 0:
+                session = _ctx.next_session()  # New session for each retry
+            events = _run_subagent(
+                resolved_prompt + retry_hint,
+                session,
+                backend_name=backend,
+                model=model,
+            )
+            exit_code = _extract_exit_code(events)
+            text = _extract_text(events) if exit_code == 0 else ""
+
+        # Infra failure → crash, let resume handle it (real backends only)
+        if not _mock_mode and exit_code != 0:
+            from loopflow.agent import AgentError
+            raise AgentError(
+                f"Agent call failed with exit code {exit_code}"
+            )
+
+        # Schema compliance check
+        if schema:
+            try:
+                result = json.loads(text)
+                # Write cache on success
+                _write_cache(cache_path, session, exit_code, text)
+                return result
+            except json.JSONDecodeError:
+                if attempt >= max_retries:
+                    from loopflow.agent import AgentError
+                    raise AgentError(
+                        f"Agent failed to return valid JSON after "
+                        f"{max_retries} retries"
+                    )
+                continue
+
+        # No schema → return text
+        _write_cache(cache_path, session, exit_code, text)
+        return text
 
 
 def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
@@ -414,5 +458,20 @@ def _write_event(event: dict) -> None:
         events_path.parent.mkdir(parents=True, exist_ok=True)
         with open(events_path, "a") as f:
             f.write(json.dumps(event) + "\n")
+    except OSError:
+        pass
+
+
+def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> None:
+    """Write agent call cache and events for successful calls."""
+    try:
+        cache_events = [
+            {"type": "agent_start", "session": session, "phase": _ctx._current_phase},
+            {"type": "agent_text", "content": text},
+            {"type": "agent_done", "exit_code": exit_code},
+        ]
+        cache_path.write_text("\n".join(json.dumps(e) for e in cache_events) + "\n")
+        for e in cache_events:
+            _write_event(e)
     except OSError:
         pass

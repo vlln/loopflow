@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Any
 
 
+class AgentError(Exception):
+    """Raised when an agent call fails at the infrastructure level."""
+
+
 @dataclass
 class ParamSpec:
     """Specification for a template parameter."""
@@ -35,6 +39,7 @@ class AgentDef:
     body: str = ""       # entire .md file content (including frontmatter), used as system prompt
     file_path: str | None = None
     requires: AgentRequires | None = None
+    output: dict | None = None  # JSON Schema for structured output
 
 
 def parse_agent(file_path: str | Path) -> AgentDef:
@@ -52,8 +57,14 @@ def parse_agent(file_path: str | Path) -> AgentDef:
         - github:owner/repo@ref
       params:
         - param_name
+        - param_name: default_value
       mcps:
         - mcp_name
+    output:
+      type: object
+      properties:
+        field_name:
+          type: string
     ---
     System prompt body...
     ```
@@ -62,88 +73,55 @@ def parse_agent(file_path: str | Path) -> AgentDef:
         ValueError: if required fields are missing or frontmatter is malformed.
         FileNotFoundError: if the file does not exist.
     """
+    import yaml
+
     path = Path(file_path)
     if not path.is_file():
         raise FileNotFoundError(f"Agent definition not found: {file_path}")
 
     content = path.read_text(encoding="utf-8")
 
-    # Extract frontmatter between first and second ---
-    lines = content.split("\n")
-    frontmatter: dict[str, str] = {}
-    requires_data: dict[str, list[str]] = {}
-    in_fm = False
-    fm_ended = False
-    in_requires = False
-    current_requires_key: str | None = None
-
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped == "---":
-            if not in_fm:
-                in_fm = True
-                continue
-            else:
-                fm_ended = True
-                continue
-        if in_fm and not fm_ended:
-            if stripped == "":
-                continue
-            # Handle requires section (nested)
-            if stripped == "requires:" or stripped.startswith("requires:"):
-                in_requires = True
-                continue
-            if in_requires:
-                # Check for sub-keys: env:, skills:, params:, mcps:
-                if stripped in ("env:", "skills:", "params:", "mcps:"):
-                    current_requires_key = stripped.rstrip(":")
-                    requires_data[current_requires_key] = []
-                    continue
-                if stripped.startswith("- "):
-                    if current_requires_key:
-                        requires_data[current_requires_key].append(
-                            stripped[2:].strip().strip('"').strip("'")
-                        )
-                    continue
-                # If we hit a non-indented, non-list line, exit requires
-                if not line.startswith(" ") and not line.startswith("\t"):
-                    in_requires = False
-                    current_requires_key = None
-                    # Fall through to process as regular frontmatter
-                else:
-                    continue
-            if ":" in line and not in_requires:
-                key, _, value = line.partition(":")
-                frontmatter[key.strip()] = value.strip().strip('"').strip("'")
-
-    if not frontmatter:
+    # Extract frontmatter between --- markers
+    parts = content.split("---", 2)
+    if len(parts) < 3:
         raise ValueError(f"No YAML frontmatter found in {file_path}")
 
-    name = frontmatter.get("name", "").strip()
-    description = frontmatter.get("description", "").strip()
+    frontmatter_text = parts[1].strip()
+    body = content.strip()
+
+    try:
+        fm = yaml.safe_load(frontmatter_text)
+    except yaml.YAMLError as e:
+        raise ValueError(f"Invalid YAML frontmatter in {file_path}: {e}")
+
+    if not isinstance(fm, dict):
+        raise ValueError(f"Invalid frontmatter in {file_path}")
+
+    name = str(fm.get("name", "")).strip()
+    description = str(fm.get("description", "")).strip()
 
     if not name:
         raise ValueError(f"'name' is required in frontmatter of {file_path}")
     if not description:
         raise ValueError(f"'description' is required in frontmatter of {file_path}")
 
-    body = content.strip()
-
+    # Parse requires
     requires = None
-    if requires_data:
-        # Convert raw param strings to ParamSpec objects
-        raw_params: list[str] = requires_data.get("params", [])
+    requires_data = fm.get("requires", {})
+    if requires_data and isinstance(requires_data, dict):
+        raw_params: list = requires_data.get("params", [])
         param_specs: list[ParamSpec] = []
         for p in raw_params:
-            if ":" in p:
-                name, _, default = p.partition(":")
-                param_specs.append(ParamSpec(
-                    name.strip(),
-                    required=False,
-                    default=default.strip().strip('"').strip("'"),
-                ))
-            else:
+            if isinstance(p, str):
                 param_specs.append(ParamSpec(p.strip(), required=True))
+            elif isinstance(p, dict):
+                for pname, pdefault in p.items():
+                    param_specs.append(ParamSpec(
+                        str(pname).strip(),
+                        required=False,
+                        default=pdefault,
+                    ))
+            # Skip unknown types silently
 
         requires = AgentRequires(
             env=requires_data.get("env", []),
@@ -152,12 +130,18 @@ def parse_agent(file_path: str | Path) -> AgentDef:
             mcps=requires_data.get("mcps", []),
         )
 
+    # Parse output
+    output = fm.get("output")
+    if output is not None and not isinstance(output, dict):
+        output = None  # output must be a JSON Schema dict
+
     return AgentDef(
         name=name,
         description=description,
         body=body,
         file_path=str(path),
         requires=requires,
+        output=output,
     )
 
 
@@ -206,7 +190,7 @@ def resolve_params(
                 raise ValueError(
                     f"Required parameter '{p.name}' is not provided"
                 )
-            resolved[p.name] = p.default
+            resolved[p.name] = str(p.default) if p.default is not None else ""
     return resolved
 
 

@@ -221,3 +221,79 @@ body""")
         from loopflow.agent import parse_agent
         with pytest.raises(FileNotFoundError):
             parse_agent("/nonexistent/agent.md")
+
+
+class TestAgentError:
+    """AgentError is raised for infrastructure failures."""
+
+    def test_agent_error_is_exception(self):
+        from loopflow.agent import AgentError
+        err = AgentError("test error")
+        assert isinstance(err, Exception)
+        assert str(err) == "test error"
+
+    def test_agent_error_can_be_caught(self):
+        from loopflow.agent import AgentError
+        with pytest.raises(AgentError, match="something went wrong"):
+            raise AgentError("something went wrong")
+
+
+class TestParseAgentOutput:
+    """Parse agent definition with output schema."""
+
+    def test_parse_agent_with_output(self):
+        from loopflow.agent import parse_agent
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: validate
+description: Validation agent
+requires:
+  params:
+    - language
+output:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: [PASS, FAIL]
+  required:
+    - verdict
+---
+You are a validator. Output in {{language}}.""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.name == "validate"
+            assert result.output is not None
+            assert result.output["type"] == "object"
+            assert result.output["properties"]["verdict"]["type"] == "string"
+            assert result.output["required"] == ["verdict"]
+
+    def test_parse_agent_without_output(self):
+        """Agents without output field have output=None."""
+        from loopflow.agent import parse_agent
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: simple
+description: Simple agent
+---
+Just a body.""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.output is None
+
+    def test_parse_agent_output_not_dict_ignored(self):
+        """output that is not a dict is silently ignored."""
+        from loopflow.agent import parse_agent
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: broken
+description: Broken output
+output: not_a_schema
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.output is None
