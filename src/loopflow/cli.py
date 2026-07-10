@@ -66,6 +66,10 @@ def _check_environment(meta: dict, loop_dir: Path) -> None:
             file=sys.stderr,
         )
         sys.exit(1)
+    print(
+        f"[loopflow] Environment: {env_file} (activate with: conda env create -f {env_path})",
+        file=sys.stderr,
+    )
 
 
 @click.group()
