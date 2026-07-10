@@ -67,7 +67,7 @@ def _check_environment(meta: dict, loop_dir: Path) -> None:
         )
         sys.exit(1)
     print(
-        f"[loopflow] Environment: {env_file} (activate with: conda env create -f {env_path})",
+        f"[loopflow] Environment: {env_file} (make sure the environment is activated)",
         file=sys.stderr,
     )
 
