@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-07-09
+
+### Added
+- `meta.state`：声明式工作流状态变量，`state.key` 属性访问，每次 `agent()` 成功后自动持久化到 `state.json`
+- `state` 参数：`run()` 新增第 8 个参数，resume 时自动恢复已保存的状态
+- `isolation="worktree"`：agent 在独立 git worktree 中执行，并发安全，不自动清理
+
+### Changed
+- CLI transport 支持 `cwd` 参数，worktree 隔离时 agent 子进程在 worktree 目录中执行
+- `run()` 签名向后兼容：`state` 参数仅在函数签名包含时传入
+
 ## [0.4.0] — 2026-07-09
 
 ### Added
