@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+## [0.8.2] — 2026-07-10
+
+### Fixed
+- Ctrl+C 优雅退出：保存 `stopped` 状态和 counter，允许 resume 继续
+
 ## [0.8.1] — 2026-07-10
 
 ### Changed
