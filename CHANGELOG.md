@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-07-10
+
+### Added
+- `meta.requires.environment`：workflow 声明环境文件路径（如 `environment.yml`），`loop run`/`loop resume` 启动时校验文件存在
+- 松散校验：检查文件存在，不激活环境，不安装依赖，不解析内容
+- 隔离层级体系：声明层（environment 文件）→ 文件系统（worktree）→ 环境激活（conda，未来）→ 完整隔离（容器，未来）
+
 ## [0.7.0] — 2026-07-10
 
 ### Added

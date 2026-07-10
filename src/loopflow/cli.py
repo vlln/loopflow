@@ -54,6 +54,20 @@ def _print_graph(run_dir: Path) -> None:
         print(f"\n  {rendered.plain}", file=sys.stderr)
 
 
+def _check_environment(meta: dict, loop_dir: Path) -> None:
+    """Check that declared environment file exists."""
+    env_file = meta.get("requires", {}).get("environment")
+    if not env_file:
+        return
+    env_path = loop_dir / env_file
+    if not env_path.is_file():
+        print(
+            f"Error: environment file '{env_file}' not found in {loop_dir}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 @click.group()
 def main():
     """loopflow — AI Agent loop orchestration tool."""
@@ -84,6 +98,7 @@ def run(name, wf_args, mock, watch):
             sys.exit(1)
 
     mod, meta, loop_dir = load_loop(name)
+    _check_environment(meta, loop_dir)
 
     run_id = uuid.uuid4().hex[:8]
     run_dir = _runs_dir() / run_id
@@ -193,6 +208,7 @@ def resume(run_id, mock, watch):
 
     loop_name = run_meta["loop"]
     mod, meta, loop_dir = load_loop(loop_name)
+    _check_environment(meta, loop_dir)
     args_dict = run_meta.get("args", {})
 
     run_meta["status"] = "running"
