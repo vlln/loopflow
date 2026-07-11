@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-07-11
+
+### Changed
+- ACP auto-detection 禁用：所有后端默认走 CLI 传输，ACP 仅在 `transport="acp"` 时启用
+- Agent 输出实时写入 `{seq}.jsonl`：执行期间可 `cat` 查看进度，resume 通过 `agent_done` 正确区分进行中/已完成
+- 内部命名统一：`backend_name` → `backend`（`_make_backend`、`_run_subagent`）
+
+### Fixed
+- kimi ACP 模式 tool call 死锁：ACP 协议要求 client 授权 tool call，loopflow 未对接导致永久等待。CLI 模式无此问题
+
 ## [0.9.0] — 2026-07-11
 
 ### Added
