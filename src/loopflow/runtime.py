@@ -447,6 +447,13 @@ def agent(
                 _persist_state()
                 return result
             except json.JSONDecodeError:
+                # Best-effort extraction from text-mode responses
+                from loopflow.agent import extract_json
+                extracted = extract_json(text, schema)
+                if extracted is not None:
+                    _write_cache(cache_path, session, exit_code, text)
+                    _persist_state()
+                    return extracted
                 if attempt >= max_retries:
                     from loopflow.agent import AgentError
                     raise AgentError(

@@ -218,3 +218,59 @@ def render_template(body: str, **kwargs: str) -> str:
         return kwargs[name]
 
     return re.sub(r"\{\{(\w+)\}\}", _replace, body)
+
+
+def extract_json(text: str, schema: dict) -> dict | None:
+    """Extract a JSON object matching schema from agent text response.
+
+    When an agent's text output wraps JSON in markdown or other text,
+    this function finds the first { ... } block whose keys cover the
+    schema's property keys, then validates it with jsonschema.
+
+    Returns None if no matching JSON block is found.
+    """
+    required_keys = set(schema.get("properties", {}).keys())
+    if not required_keys:
+        return None
+
+    import json as json_mod
+
+    start = 0
+    while True:
+        idx = text.find("{", start)
+        if idx == -1:
+            break
+        depth = 0
+        for i, ch in enumerate(text[idx:], idx):
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    try:
+                        obj = json_mod.loads(text[idx : i + 1])
+                    except json_mod.JSONDecodeError:
+                        pass
+                    else:
+                        if isinstance(obj, dict) and required_keys.issubset(obj.keys()):
+                            if validate_json(obj, schema):
+                                return obj
+                    start = i + 1
+                    break
+        else:
+            break
+
+    return None
+
+
+def validate_json(obj: dict, schema: dict) -> bool:
+    """Validate obj against JSON Schema using jsonschema."""
+    try:
+        import jsonschema
+    except ImportError:
+        return False
+    try:
+        jsonschema.validate(obj, schema)
+        return True
+    except jsonschema.ValidationError:
+        return False

@@ -669,6 +669,79 @@ class TestOutputSchema:
         assert "Output format" not in captured_prompt[0]
 
 
+# ── JSON extraction ────────────────────────────────────────────────────────────
+
+class TestJsonExtraction:
+    """Best-effort JSON extraction from text-mode agent responses."""
+
+    def test_pure_json_parses_directly(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        result = extract_json('{"verdict": "PASS"}', schema)
+        assert result == {"verdict": "PASS"}
+
+    def test_json_in_markdown(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
+        text = '以下是分析结果：\n\n{"verdict": "PASS", "score": 95}\n\n以上是完整报告。'
+        result = extract_json(text, schema)
+        assert result == {"verdict": "PASS", "score": 95}
+
+    def test_json_in_code_block(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        text = '```json\n{"verdict": "PASS"}\n```'
+        result = extract_json(text, schema)
+        assert result == {"verdict": "PASS"}
+
+    def test_wrong_type_rejected(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        result = extract_json('{"verdict": 123}', schema)
+        assert result is None  # 123 is not string
+
+    def test_enum_mismatch_rejected(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["PASS", "FAIL"]}}}
+        result = extract_json('{"verdict": "UNKNOWN"}', schema)
+        assert result is None  # UNKNOWN not in enum
+
+    def test_missing_key_rejected(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
+        result = extract_json('{"verdict": "PASS"}', schema)
+        assert result is None  # missing "score" key
+
+    def test_multiple_json_blocks_first_match(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        text = '{"other": 1}\n{"verdict": "PASS"}\n{"more": 2}'
+        result = extract_json(text, schema)
+        assert result == {"verdict": "PASS"}
+
+    def test_no_matching_json(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        result = extract_json("no json here at all", schema)
+        assert result is None
+
+    def test_empty_schema_properties(self):
+        from loopflow.agent import extract_json
+        schema = {"type": "object"}
+        result = extract_json('{"anything": "goes"}', schema)
+        assert result is None  # no properties to match against
+
+    def test_validate_json_accepts_valid(self):
+        from loopflow.agent import validate_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        assert validate_json({"verdict": "PASS"}, schema) is True
+
+    def test_validate_json_rejects_invalid(self):
+        from loopflow.agent import validate_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        assert validate_json({"verdict": 123}, schema) is False
+
+
 # ── state ─────────────────────────────────────────────────────────────────────
 
 class TestState:
