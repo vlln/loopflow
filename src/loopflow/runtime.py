@@ -584,7 +584,7 @@ def _write_event(event: dict) -> None:
         events_path = _ctx.run_dir / "events.jsonl"
         events_path.parent.mkdir(parents=True, exist_ok=True)
         with open(events_path, "a") as f:
-            f.write(json.dumps(event) + "\n")
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -596,7 +596,7 @@ def _append_cache(cache_path: Path | None, event: dict) -> None:
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         with open(cache_path, "a") as f:
-            f.write(json.dumps(event) + "\n")
+            f.write(json.dumps(event, ensure_ascii=False) + "\n")
     except OSError:
         pass
 
@@ -623,7 +623,7 @@ def _persist_state() -> None:
         return
     try:
         state_path = _ctx.run_dir / "state.json"
-        state_path.write_text(json.dumps(_ctx.state.to_dict(), indent=2))
+        state_path.write_text(json.dumps(_ctx.state.to_dict(), indent=2, ensure_ascii=False))
     except OSError:
         pass
 
