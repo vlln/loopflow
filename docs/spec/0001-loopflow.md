@@ -39,7 +39,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 |------|-----------|---------|---------|
 | CLI | loop run / resume / status / list / stop 命令解析和路由 | `src/loopflow/cli.py` | P0 |
 | Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/log/args/workflow 运行时 API | `src/loopflow/runtime.py` | P0 |
-| Backend Layer | 适配 8 种 AI Agent 后端（kimi/claude/codex/pi/opencode/qwen/kiro/gemini），自动检测，支持 CLI/ACP 传输 | `src/loopflow/backends/` | P0 |
+| Backend Layer | 适配 8 种 AI Agent 后端（kimi/claude/codex/pi/opencode/qwen/kiro/gemini），自动检测，默认 CLI 传输，ACP 仅在显式指定时启用 | `src/loopflow/backends/` | P0 |
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
 | Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |
@@ -174,12 +174,14 @@ Skill 的安装来源（WHERE）不在 SKILL.md 中声明，由环境文件（`p
 |------|------|
 | version | 协议版本 |
 | agent_start | agent 调用开始（含 seq, session, phase） |
-| agent_text | agent 输出文本 |
+| agent_text | agent 输出文本（实时追加，流式 chunk） |
 | agent_done | agent 调用完成（含 exit_code） |
 | agent_error | agent 调用失败 |
 | phase | phase 转移（含 title, ts） |
 
 Agent 事件携带 `phase` 字段，记录当前 phase 上下文。agent 事件与 phase 事件按时间序混合写入 events.jsonl，通过 `phase` 字段重建 phase-agent 层级关系。
+
+`<seq>.jsonl` 缓存文件在 agent 执行期间**实时追加** `agent_text` 事件，完成后写入 `agent_done`。Resume 通过检查 `agent_done` 是否存在且 `exit_code=0` 判断是否已完成——仅含 `agent_text` 的缓存文件（执行中被中断）不会被误判为已完成。
 
 ### events.jsonl
 
@@ -226,6 +228,7 @@ Agent 隔离层级体系（递进）：
 | BR-012 | Mock 模式 | `--mock <mode>`（bash 或 auto） | bash：把 prompt 当 shell 执行。auto：有 `output` schema 时根据 schema 生成 mock dict（enum 取第一个值，number 取 0，array 取空列表）；无 schema 时返回固定字符串 `"mock response"` |
 | BR-013 | Skill 注入 | `agent()` 调用时 `requires.skills` 非空 | 按 `~/.agents/skills/` → `~/.loopflow/skills/` 顺序查找 skill 目录。后端支持原生 skill 参数时优先使用；否则将 skill 名称、描述、路径注入到 system prompt。skill 目录不存在时标记为 `[not found]`，不阻塞运行 |
 | BR-014 | 环境文件校验 | `loop run` 启动时 `meta.requires.environment` 存在 | 检查环境文件是否存在（相对于 workflow 目录）。存在则通过，不存在则报错退出。不解析文件内容，不激活环境，不安装依赖 |
+| BR-015 | Agent 输出实时可见 | `agent()` 执行期间 | `text_handler` 流式写入时同步 append 到 `<seq>.jsonl`（`agent_text` 事件）和 `events.jsonl`。完成后写入 `agent_done`。用户可通过 `cat <seq>.jsonl` 实时查看 agent 输出进度 |
 
 ---
 
