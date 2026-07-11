@@ -46,6 +46,21 @@ def env_dirs():
         del os.environ["LOOPFLOW_RUNS_DIR"]
 
 
+def _find_run(runs: Path) -> Path:
+    """Find a run directory under runs/lf_*/<uuid>/."""
+    for lf_dir in sorted(runs.iterdir()):
+        if lf_dir.is_dir() and lf_dir.name.startswith("lf_"):
+            for run_dir in sorted(lf_dir.iterdir()):
+                if (run_dir / "run.json").is_file():
+                    return run_dir
+    raise FileNotFoundError(f"No run found in {runs}")
+
+
+def _find_run_id(runs: Path) -> str:
+    """Find a run_id (full UUID) from a run directory."""
+    return _find_run(runs).name
+
+
 def _create_phase_loop(loops_dir: Path, name: str, code: str) -> None:
     """Create a loop with the given workflow code."""
     loop_dir = loops_dir / name
@@ -90,9 +105,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             assert result.exit_code == 0
 
         # Find the run and check status output
-        run_dirs = sorted(runs.iterdir())
-        assert len(run_dirs) == 1
-        run_id = run_dirs[0].name
+        run_id = _find_run_id(runs)
 
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -127,8 +140,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "single"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        run_id = run_dirs[0].name
+        run_id = _find_run_id(runs)
 
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -160,8 +172,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "nophase"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        run_id = run_dirs[0].name
+        run_id = _find_run_id(runs)
 
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -198,8 +209,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "cycle"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        run_id = run_dirs[0].name
+        run_id = _find_run_id(runs)
 
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -239,8 +249,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "branch"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        run_id = run_dirs[0].name
+        run_id = _find_run_id(runs)
 
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -287,8 +296,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "multibranch"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        run_id = run_dirs[0].name
+        run_id = _find_run_id(runs)
 
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -330,8 +338,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "events"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        events_path = run_dirs[0] / "events.jsonl"
+        events_path = _find_run(runs) / "events.jsonl"
         assert events_path.is_file()
 
         events = [
@@ -375,9 +382,8 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
             result = runner.invoke(main, ["run", "resume-ev"])
             assert result.exit_code == 0
 
-        run_dirs = sorted(runs.iterdir())
-        run_id = run_dirs[0].name
-        events_path = run_dirs[0] / "events.jsonl"
+        run_id = _find_run_id(runs)
+        events_path = _find_run(runs) / "events.jsonl"
 
         # Count phase events before resume
         before = [
