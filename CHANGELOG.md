@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-07-11
+
+### Changed
+- 缓存事件格式迁移：`agent_text` → `agent_message_chunk`（ACP 归一化 schema）
+- kimi 后端：strip `•` 前缀，输出干净文本
+- `CliBackend` 新增 `_normalize_line` 钩子，子类可重写以归一化 stdout 行
+- `_extract_text` 向后兼容 `agent_text` 和 `agent_message_chunk` 两种类型
+
+### Added
+- codex 后端：`turn.completed` 事件处理（usage 提取占位）
+- Spec v8：ACP 缓存 schema 定义，BR-016（ACP 归一化规则）
+
 ## [0.10.0] — 2026-07-11
 
 ### Changed
