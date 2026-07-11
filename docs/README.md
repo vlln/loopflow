@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | 已冻结（vision active, 1 Spec v6, 17 ADRs accepted） |
+| **设计评估** | v0.10.0 就绪：ADR 0018 accepted, Spec v7 active, 137/137 pass, 78% coverage |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（129 tests pass, 72% coverage） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

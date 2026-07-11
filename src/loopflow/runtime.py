@@ -22,7 +22,7 @@ from typing import Any, Callable
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
-def _make_backend(backend_name: str | None = None, transport: str | None = None,
+def _make_backend(backend: str | None = None, transport: str | None = None,
                   text_handler=None, cwd: str | None = None):
     """Create a backend instance. Detects available backend if not specified."""
     from loopflow.backends.base import BaseBackend
@@ -46,32 +46,33 @@ def _make_backend(backend_name: str | None = None, transport: str | None = None,
         "gemini": GeminiBackend,
     }
 
-    if backend_name is None:
+    if backend is None:
         from loopflow.backends.diagnostics import list_available_backends
         available = list_available_backends()
         if not available:
             print("[loopflow] No agent backends found on PATH.", file=sys.stderr)
             sys.exit(1)
-        backend_name = available[0]
+        backend = available[0]
 
-    cls = BACKEND_MAP.get(backend_name)
+    cls = BACKEND_MAP.get(backend)
     if cls is None:
-        print(f"Error: unknown backend '{backend_name}'", file=sys.stderr)
+        print(f"Error: unknown backend '{backend}'", file=sys.stderr)
         sys.exit(1)
 
     kwargs: dict = {}
     if text_handler:
         kwargs["text_handler"] = text_handler
     kwargs["transport"] = transport
-    backend = cls(**kwargs)
-    if cwd and hasattr(backend, '_transport'):
-        backend._transport.cwd = cwd
-    return backend
+    instance = cls(**kwargs)
+    if cwd and hasattr(instance, '_transport'):
+        instance._transport.cwd = cwd
+    return instance
 
 
-def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
+def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
-                  requires=None, timeout: float | None = None) -> list[dict]:
+                  requires=None, timeout: float | None = None,
+                  cache_path: Path | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
     output_parts: list[str] = []
@@ -80,20 +81,21 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
         if text:
             output_parts.append(text)
             _write_event({"type": "agent_text", "session": session, "content": text})
+            _append_cache(cache_path, {"type": "agent_text", "content": text})
             print(f"[agent] {text}", file=sys.stderr, flush=True)
 
-    backend = _make_backend(backend_name, text_handler=text_handler, cwd=cwd)
-    if timeout is not None and hasattr(backend, '_transport'):
-        backend._transport._timeout = timeout
+    instance = _make_backend(backend, text_handler=text_handler, cwd=cwd)
+    if timeout is not None and hasattr(instance, '_transport'):
+        instance._transport._timeout = timeout
     try:
-        _emit_log(f"Calling agent via {backend_name or 'auto'}...")
+        _emit_log(f"Calling agent via {backend or 'auto'}...")
 
-        sid, exit_code = backend.create_session(prompt, model=model, requires=requires)
+        sid, exit_code = instance.create_session(prompt, model=model, requires=requires)
 
         text = "\n".join(output_parts) if output_parts else ""
         stderr_text = ""
-        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
-            stderr_text = backend._transport.stderr_text
+        if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
+            stderr_text = instance._transport.stderr_text
         if text:
             _emit_log(f"Agent responded: {len(text)} chars")
         return [
@@ -103,8 +105,8 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
     except TimeoutError:
         _emit_log(f"Agent timed out: {prompt[:80]}...")
         stderr_text = ""
-        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
-            stderr_text = backend._transport.stderr_text
+        if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
+            stderr_text = instance._transport.stderr_text
         return [
             {"type": "agent_text", "content": ""},
             {"type": "agent_done", "exit_code": 124, "stderr": stderr_text},
@@ -112,14 +114,14 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
     except Exception as e:
         _emit_log(f"Agent backend error: {e}")
         stderr_text = ""
-        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
-            stderr_text = backend._transport.stderr_text
+        if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
+            stderr_text = instance._transport.stderr_text
         return [
             {"type": "agent_text", "content": ""},
             {"type": "agent_done", "exit_code": 1, "stderr": stderr_text},
         ]
     finally:
-        backend.close()
+        instance.close()
 
 
 def _extract_text(events: list[dict]) -> str:
@@ -409,11 +411,12 @@ def agent(
             events = _run_subagent(
                 resolved_prompt + retry_hint,
                 session,
-                backend_name=backend,
+                backend=backend,
                 model=model,
                 cwd=cwd,
                 requires=ad.requires if ad else None,
                 timeout=timeout,
+                cache_path=cache_path,
             )
             exit_code = _extract_exit_code(events)
             text = _extract_text(events) if exit_code == 0 else ""
@@ -577,16 +580,30 @@ def _write_event(event: dict) -> None:
         pass
 
 
-def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> None:
-    """Write agent call cache and events for successful calls."""
+def _append_cache(cache_path: Path | None, event: dict) -> None:
+    """Append an event to the cache file (used for real-time progress)."""
+    if cache_path is None:
+        return
     try:
-        cache_events = [
-            {"type": "agent_text", "content": text},
-            {"type": "agent_done", "exit_code": exit_code},
-        ]
-        cache_path.write_text("\n".join(json.dumps(e) for e in cache_events) + "\n")
-        for e in cache_events:
-            _write_event(e)
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "a") as f:
+            f.write(json.dumps(event) + "\n")
+    except OSError:
+        pass
+
+
+def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> None:
+    """Write agent_done to cache file and events.jsonl.
+
+    agent_text chunks are already in the cache file via _append_cache
+    (real mode). For mock mode, text_handler is never called, so write
+    agent_text to events.jsonl here.
+    """
+    try:
+        done_event = {"type": "agent_done", "exit_code": exit_code}
+        _append_cache(cache_path, done_event)
+        _write_event({"type": "agent_text", "content": text})
+        _write_event(done_event)
     except OSError:
         pass
 

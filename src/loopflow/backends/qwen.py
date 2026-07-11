@@ -1,4 +1,4 @@
-"""Qwen backend — CLI with ACP fallback."""
+"""Qwen backend — CLI mode (default), ACP when explicitly requested."""
 
 from __future__ import annotations
 
@@ -7,19 +7,16 @@ from typing import TYPE_CHECKING
 from loopflow.backends.base import BaseBackend
 from loopflow.backends.acp_backend import AcpBackend
 from loopflow.backends.cli_backend import CliBackend
-from loopflow.backends.utils import check_acp
 
 if TYPE_CHECKING:
     from loopflow.agent import AgentRequires
 
 
 class QwenBackend(BaseBackend):
-    """Backend for qwen-code. Tries ACP first, falls back to CLI."""
+    """Backend for qwen-code. CLI mode (default), ACP when explicitly requested."""
 
     def __init__(self, transport: str | None = None, text_handler=None, backend_name: str = "qwen"):
-        use_acp = transport == "acp" or (transport is None and check_acp(["qwen", "--acp"]))
-        if transport == "cli":
-            use_acp = False
+        use_acp = transport == "acp"
         self._th = text_handler
         if use_acp:
             self._acp = AcpBackend(["qwen", "--acp"], text_handler=text_handler)

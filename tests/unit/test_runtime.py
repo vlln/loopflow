@@ -196,7 +196,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             return [
                 {"type": "agent_text", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -222,7 +222,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             if "fail" in prompt:
                 raise Exception("boom")
             return [
@@ -249,7 +249,7 @@ class TestPipeline:
         set_context(ctx)
 
         # Use a dict-based mock that returns content based on prompt
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             return [
                 {"type": "agent_text", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -277,7 +277,7 @@ class TestPipeline:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             return [
                 {"type": "agent_done", "exit_code": 1},  # fails, returns None
             ]
@@ -421,7 +421,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "translated"},
@@ -445,7 +445,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -468,7 +468,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -491,7 +491,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -550,7 +550,7 @@ class TestOutputSchema:
         explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": '{"custom": "override"}'},
@@ -572,7 +572,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text",
@@ -600,7 +600,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First attempt: invalid JSON (missing closing brace)
@@ -631,7 +631,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             call_count[0] += 1
             return [
                 {"type": "agent_text", "content": "not valid json at all"},
@@ -654,7 +654,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, requires=None, timeout=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "plain text"},
