@@ -2,7 +2,7 @@
 title: Claude CLI Output Format — stream-json with thinking/text separation
 description: 分析 claude-code CLI 的两种输出模式，确定归一化策略
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-11T15:00:00Z
 ---
 

@@ -2,7 +2,7 @@
 title: Cache Normalization Schema — ACP SessionNotification
 description: 将 ACP SessionNotification 作为 {seq}.jsonl 的归一化 schema，统一 CLI 和 ACP 后端的输出格式
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-11T15:30:00Z
 ---
 
