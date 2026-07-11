@@ -2,7 +2,7 @@
 title: JSON Extraction — best-effort parse from text-mode backend responses
 description: 当 text 模式后端的回复不是纯 JSON 时，使用 output schema 定位并提取 JSON 对象，跳过 retry
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-11T17:30:00Z
 ---
 
