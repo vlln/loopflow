@@ -79,6 +79,8 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
     def text_handler(text: str) -> None:
         if text:
             output_parts.append(text)
+            _write_event({"type": "agent_text", "session": session, "content": text})
+            print(f"[agent] {text}", file=sys.stderr, flush=True)
 
     backend = _make_backend(backend_name, text_handler=text_handler, cwd=cwd)
     if timeout is not None and hasattr(backend, '_transport'):
