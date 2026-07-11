@@ -86,5 +86,9 @@ class _KimiCli(CliBackend):
         return (None, m.group(1) if m else None)
 
     def _on_stderr_line(self, line: str) -> None:
-        if not line.startswith("\u2022") and "To resume this session:" not in line:
+        if line.startswith("\u2022") or "To resume this session:" in line:
+            return
+        if self._thought_handler:
+            self._thought_handler(line)
+        else:
             print(line, file=sys.stderr, flush=True)

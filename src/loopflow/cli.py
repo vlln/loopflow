@@ -143,7 +143,7 @@ def run(name, wf_args, mock, watch):
         "args": args_dict,
         "counter": 0,
     }
-    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Set up graph for live/watch mode
     pg = PhaseGraph() if watch else None
@@ -182,14 +182,14 @@ def run(name, wf_args, mock, watch):
         print("\n[loopflow] Interrupted", file=sys.stderr)
         run_meta["status"] = "stopped"
         run_meta["counter"] = ctx._counter
-        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
         if live:
             live.stop()
         sys.exit(0)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
-        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
         if live:
             live.stop()
         sys.exit(1)
@@ -199,7 +199,7 @@ def run(name, wf_args, mock, watch):
 
     run_meta["status"] = "done"
     run_meta["counter"] = ctx._counter
-    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2))
+    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if result is not None:
         if isinstance(result, str):
@@ -250,7 +250,7 @@ def resume(run_id, mock, watch):
     args_dict = run_meta.get("args", {})
 
     run_meta["status"] = "running"
-    run_json.write_text(json.dumps(run_meta, indent=2))
+    run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     # Set up graph for live/watch mode
     pg = PhaseGraph() if watch else None
@@ -296,14 +296,14 @@ def resume(run_id, mock, watch):
         print("\n[loopflow] Interrupted", file=sys.stderr)
         run_meta["status"] = "stopped"
         run_meta["counter"] = ctx._counter
-        run_json.write_text(json.dumps(run_meta, indent=2))
+        run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
         if live:
             live.stop()
         sys.exit(0)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         run_meta["status"] = "failed"
-        run_json.write_text(json.dumps(run_meta, indent=2))
+        run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
         if live:
             live.stop()
         sys.exit(1)
@@ -313,7 +313,7 @@ def resume(run_id, mock, watch):
 
     run_meta["status"] = "done"
     run_meta["counter"] = ctx._counter
-    run_json.write_text(json.dumps(run_meta, indent=2))
+    run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
 
     if result is not None:
         if isinstance(result, str):
@@ -355,7 +355,7 @@ def status(run_id, graph):
     print(f"  Created: {meta['created']}")
     print(f"  Agents: {len(agent_jsonl)} calls")
     if meta.get("args"):
-        print(f"  Args:   {json.dumps(meta['args'])}")
+        print(f"  Args:   {json.dumps(meta['args'], ensure_ascii=False)}")
 
     # Show phase graph if events.jsonl exists
     if graph:
@@ -450,4 +450,4 @@ def stop(run_id):
         print(f"No pid file for run '{run_id}'", file=sys.stderr)
 
     meta["status"] = "stopped"
-    run_json.write_text(json.dumps(meta, indent=2))
+    run_json.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")

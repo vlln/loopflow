@@ -2,6 +2,18 @@
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-07-11
+
+### Added
+- JSON 提取：text 模式后端回复包裹在 markdown 中时，使用 `jsonschema` 验证 + schema keys 匹配提取 JSON 对象，跳过 retry
+- `agent.extract_json()` 和 `agent.validate_json()` 函数
+- `jsonschema` 项目依赖
+
+### Fixed
+- `json.dumps` 缺少 `ensure_ascii=False`：中文不再被转义为 `\uXXXX`
+- `json.dumps` 缺少 `separators`：JSONL 输出不再有多余空格
+- 文件写入缺少 `encoding="utf-8"`：非 UTF-8 系统上中文不损坏
+
 ## [0.11.0] — 2026-07-11
 
 ### Changed

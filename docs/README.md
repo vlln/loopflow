@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | v0.11.0 就绪：ADRs 0019-0022 accepted, Spec v8 active, 137/137 pass |
+| **设计评估** | v0.12.0 就绪：ADR 0024 accepted, 148/148 pass, jsonschema extraction |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（129 tests pass, 72% coverage） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

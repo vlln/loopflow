@@ -23,7 +23,7 @@ from typing import Any, Callable
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _make_backend(backend: str | None = None, transport: str | None = None,
-                  text_handler=None, cwd: str | None = None):
+                  text_handler=None, thought_handler=None, cwd: str | None = None):
     """Create a backend instance. Detects available backend if not specified."""
     from loopflow.backends.base import BaseBackend
     from loopflow.backends.claude import ClaudeBackend
@@ -62,6 +62,8 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
     kwargs: dict = {}
     if text_handler:
         kwargs["text_handler"] = text_handler
+    if thought_handler:
+        kwargs["thought_handler"] = thought_handler
     kwargs["transport"] = transport
     instance = cls(**kwargs)
     if cwd and hasattr(instance, '_transport'):
@@ -84,7 +86,12 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
             _append_cache(cache_path, {"type": "agent_message_chunk", "content": text})
             print(f"[agent] {text}", file=sys.stderr, flush=True)
 
-    instance = _make_backend(backend, text_handler=text_handler, cwd=cwd)
+    def thought_handler(text: str) -> None:
+        if text:
+            _append_cache(cache_path, {"type": "agent_thought_chunk", "content": text})
+            print(f"[thinking] {text}", file=sys.stderr, flush=True)
+
+    instance = _make_backend(backend, text_handler=text_handler, thought_handler=thought_handler, cwd=cwd)
     if timeout is not None and hasattr(instance, '_transport'):
         instance._transport._timeout = timeout
     try:
@@ -440,6 +447,13 @@ def agent(
                 _persist_state()
                 return result
             except json.JSONDecodeError:
+                # Best-effort extraction from text-mode responses
+                from loopflow.agent import extract_json
+                extracted = extract_json(text, schema)
+                if extracted is not None:
+                    _write_cache(cache_path, session, exit_code, text)
+                    _persist_state()
+                    return extracted
                 if attempt >= max_retries:
                     from loopflow.agent import AgentError
                     raise AgentError(
@@ -575,8 +589,8 @@ def _write_event(event: dict) -> None:
     try:
         events_path = _ctx.run_dir / "events.jsonl"
         events_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(events_path, "a") as f:
-            f.write(json.dumps(event) + "\n")
+        with open(events_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
     except OSError:
         pass
 
@@ -587,8 +601,8 @@ def _append_cache(cache_path: Path | None, event: dict) -> None:
         return
     try:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(cache_path, "a") as f:
-            f.write(json.dumps(event) + "\n")
+        with open(cache_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
     except OSError:
         pass
 
@@ -615,7 +629,7 @@ def _persist_state() -> None:
         return
     try:
         state_path = _ctx.run_dir / "state.json"
-        state_path.write_text(json.dumps(_ctx.state.to_dict(), indent=2))
+        state_path.write_text(json.dumps(_ctx.state.to_dict(), indent=2, ensure_ascii=False), encoding="utf-8")
     except OSError:
         pass
 
