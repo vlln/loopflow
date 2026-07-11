@@ -351,11 +351,11 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
         # Should start with phase, then agent_start, agent_text, agent_done, phase, ...
         assert types[0] == "phase"
         assert types[1] == "agent_start"
-        assert types[2] == "agent_text"
+        assert types[2] == "agent_message_chunk"
         assert types[3] == "agent_done"
         assert types[4] == "phase"
         assert types[5] == "agent_start"
-        assert types[6] == "agent_text"
+        assert types[6] == "agent_message_chunk"
         assert types[7] == "agent_done"
 
     def test_events_jsonl_on_resume(self, env_dirs):

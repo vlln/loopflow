@@ -75,6 +75,12 @@ class _KimiCli(CliBackend):
             cmd.extend(["-m", model])
         return cmd
 
+    def _normalize_line(self, line: str) -> str:
+        """Strip kimi's hardcoded bullet prefix."""
+        if line.startswith("• "):
+            return line[2:]
+        return line
+
     def _parse_line(self, line: str) -> tuple[str | None, str | None]:
         m = _SESSION_ID_RE.search(line)
         return (None, m.group(1) if m else None)
