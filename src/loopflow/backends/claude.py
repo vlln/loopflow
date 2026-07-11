@@ -39,8 +39,15 @@ class ClaudeBackend(CliBackend):
             return (None, data.get("session_id") or None)
         if tp == "assistant":
             content = data.get("message", {}).get("content", [])
-            texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
-            return ("".join(texts), data.get("session_id") or None)
+            for block in content:
+                if not isinstance(block, dict):
+                    continue
+                bt = block.get("type", "")
+                if bt == "text":
+                    return (block.get("text", ""), data.get("session_id") or None)
+                if bt == "thinking" and self._thought_handler:
+                    self._thought_handler(block.get("thinking", ""))
+            return (None, data.get("session_id") or None)
         if tp == "result":
             return (None, data.get("session_id") or None)
         return (None, None)

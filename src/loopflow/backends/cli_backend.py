@@ -32,9 +32,10 @@ class CliBackend(BaseBackend):
     _sid_on_stderr: ClassVar[bool] = False
     _skill_flag: ClassVar[str | None] = None  # Override in subclasses that support skills (e.g. "--skills-dir", "--skill")
 
-    def __init__(self, text_handler: Callable[[str], None] | None = None, backend_name: str | None = None, **kwargs) -> None:
+    def __init__(self, text_handler: Callable[[str], None] | None = None, thought_handler: Callable[[str], None] | None = None, backend_name: str | None = None, **kwargs) -> None:
         self._transport = CliTransport(backend_name=backend_name)
         self._text_handler = text_handler
+        self._thought_handler = thought_handler
 
     @abstractmethod
     def _cmd_create(self, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]: ...

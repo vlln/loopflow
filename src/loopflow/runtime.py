@@ -23,7 +23,7 @@ from typing import Any, Callable
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _make_backend(backend: str | None = None, transport: str | None = None,
-                  text_handler=None, cwd: str | None = None):
+                  text_handler=None, thought_handler=None, cwd: str | None = None):
     """Create a backend instance. Detects available backend if not specified."""
     from loopflow.backends.base import BaseBackend
     from loopflow.backends.claude import ClaudeBackend
@@ -62,6 +62,8 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
     kwargs: dict = {}
     if text_handler:
         kwargs["text_handler"] = text_handler
+    if thought_handler:
+        kwargs["thought_handler"] = thought_handler
     kwargs["transport"] = transport
     instance = cls(**kwargs)
     if cwd and hasattr(instance, '_transport'):
@@ -84,7 +86,13 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
             _append_cache(cache_path, {"type": "agent_message_chunk", "content": text})
             print(f"[agent] {text}", file=sys.stderr, flush=True)
 
-    instance = _make_backend(backend, text_handler=text_handler, cwd=cwd)
+    def thought_handler(text: str) -> None:
+        if text:
+            _write_event({"type": "agent_thought_chunk", "session": session, "content": text})
+            _append_cache(cache_path, {"type": "agent_thought_chunk", "content": text})
+            print(f"[thinking] {text}", file=sys.stderr, flush=True)
+
+    instance = _make_backend(backend, text_handler=text_handler, thought_handler=thought_handler, cwd=cwd)
     if timeout is not None and hasattr(instance, '_transport'):
         instance._transport._timeout = timeout
     try:
