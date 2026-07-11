@@ -27,6 +27,32 @@ def _runs_dir() -> Path:
     return Path(runs)
 
 
+def _find_run_by_id(run_id: str) -> Path | None:
+    """Find a run directory by run_id, searching all lf_*/ directories.
+
+    Returns the run_dir Path, or None if not found.
+    """
+    runs = _runs_dir()
+    if not runs.is_dir():
+        return None
+    for lf_dir in sorted(runs.iterdir()):
+        if not lf_dir.is_dir() or not lf_dir.name.startswith("lf_"):
+            continue
+        run_dir = lf_dir / run_id
+        if run_dir.is_dir() and (run_dir / "run.json").is_file():
+            return run_dir
+    return None
+
+
+def _run_dir_for_pwd() -> Path:
+    """Return the run directory for the current working directory.
+
+    Creates runs/lf_<pwd-path>/ where pwd-path has '/' replaced with '-'.
+    """
+    pwd = str(Path.cwd().absolute()).lstrip("/").replace("/", "-")
+    return _runs_dir() / f"lf_{pwd}"
+
+
 def _print_graph(run_dir: Path) -> None:
     """Render and print the phase graph from events.jsonl."""
     events_path = run_dir / "events.jsonl"
@@ -104,8 +130,8 @@ def run(name, wf_args, mock, watch):
     mod, meta, loop_dir = load_loop(name)
     _check_environment(meta, loop_dir)
 
-    run_id = uuid.uuid4().hex[:8]
-    run_dir = _runs_dir() / run_id
+    run_id = uuid.uuid4().hex
+    run_dir = _run_dir_for_pwd() / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
     # Write run.json
@@ -203,8 +229,8 @@ def resume(run_id, mock, watch):
     if mock:
         set_mock(mock)
 
-    run_dir = _runs_dir() / run_id
-    if not run_dir.is_dir():
+    run_dir = _find_run_by_id(run_id)
+    if run_dir is None:
         print(f"Error: run '{run_id}' not found", file=sys.stderr)
         sys.exit(1)
 
@@ -237,7 +263,7 @@ def resume(run_id, mock, watch):
         live.start()
 
     ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live,
-                     loop_dir=loop_dir)
+                     loop_dir=loop_dir, counter=run_meta.get("counter", 0))
     set_context(ctx)
 
     # Restore state from state.json, filling missing keys from meta defaults
@@ -308,8 +334,8 @@ def resume(run_id, mock, watch):
 @click.option("--graph/--no-graph", default=True, help="Show phase execution graph")
 def status(run_id, graph):
     """Show status of a run."""
-    run_dir = _runs_dir() / run_id
-    if not run_dir.is_dir():
+    run_dir = _find_run_by_id(run_id)
+    if run_dir is None:
         print(f"Error: run '{run_id}' not found", file=sys.stderr)
         sys.exit(1)
 
@@ -374,22 +400,30 @@ def list():
     if not runs.is_dir():
         print("  (none)")
     else:
-        entries = sorted(runs.iterdir(), reverse=True)
-        if not entries:
+        run_entries: list[tuple[str, str, str, str]] = []  # run_id, status, loop, created
+        for lf_dir in sorted(runs.iterdir()):
+            if not lf_dir.is_dir() or not lf_dir.name.startswith("lf_"):
+                continue
+            for entry in sorted(lf_dir.iterdir()):
+                rj = entry / "run.json"
+                if rj.is_file():
+                    try:
+                        m = json.loads(rj.read_text())
+                    except (json.JSONDecodeError, OSError):
+                        continue
+                    run_entries.append((m.get("run_id", entry.name), m.get("status", "?"), m.get("loop", "?"), m.get("created", "?")))
+        if not run_entries:
             print("  (none)")
-        for entry in entries:
-            rj = entry / "run.json"
-            if rj.is_file():
-                m = json.loads(rj.read_text())
-                print(f"  {m['run_id']}  [{m['status']}]  {m['loop']}  {m['created']}")
+        for rid, status, loop, created in sorted(run_entries, key=lambda x: x[3], reverse=True):
+            print(f"  {rid[:8]}  [{status}]  {loop}  {created}")
 
 
 @main.command()
 @click.argument("run_id")
 def stop(run_id):
     """Stop a running loop."""
-    run_dir = _runs_dir() / run_id
-    if not run_dir.is_dir():
+    run_dir = _find_run_by_id(run_id)
+    if run_dir is None:
         print(f"Error: run '{run_id}' not found", file=sys.stderr)
         sys.exit(1)
 

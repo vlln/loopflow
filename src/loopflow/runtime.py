@@ -71,7 +71,7 @@ def _make_backend(backend_name: str | None = None, transport: str | None = None,
 
 def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
                   model: str | None = None, cwd: str | None = None,
-                  requires=None) -> list[dict]:
+                  requires=None, timeout: float | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
     output_parts: list[str] = []
@@ -79,46 +79,44 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
     def text_handler(text: str) -> None:
         if text:
             output_parts.append(text)
+            _write_event({"type": "agent_text", "session": session, "content": text})
+            print(f"[agent] {text}", file=sys.stderr, flush=True)
 
     backend = _make_backend(backend_name, text_handler=text_handler, cwd=cwd)
+    if timeout is not None and hasattr(backend, '_transport'):
+        backend._transport._timeout = timeout
     try:
-        existing_sid = None
-        try:
-            from loopflow.registry import get_session_id_from_any
-            existing_sid = get_session_id_from_any(session)
-        except Exception:
-            pass
-
         _emit_log(f"Calling agent via {backend_name or 'auto'}...")
 
-        if existing_sid:
-            exit_code = backend.resume_session(existing_sid, prompt, model=model, requires=requires)
-        else:
-            sid, exit_code = backend.create_session(prompt, model=model, requires=requires)
-            try:
-                from loopflow.registry import register
-                register(session, session, sid, background=False)
-            except Exception:
-                pass
+        sid, exit_code = backend.create_session(prompt, model=model, requires=requires)
 
         text = "\n".join(output_parts) if output_parts else ""
+        stderr_text = ""
+        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
+            stderr_text = backend._transport.stderr_text
         if text:
             _emit_log(f"Agent responded: {len(text)} chars")
         return [
             {"type": "agent_text", "content": text},
-            {"type": "agent_done", "exit_code": exit_code},
+            {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text},
         ]
     except TimeoutError:
         _emit_log(f"Agent timed out: {prompt[:80]}...")
+        stderr_text = ""
+        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
+            stderr_text = backend._transport.stderr_text
         return [
             {"type": "agent_text", "content": ""},
-            {"type": "agent_done", "exit_code": 124},
+            {"type": "agent_done", "exit_code": 124, "stderr": stderr_text},
         ]
     except Exception as e:
         _emit_log(f"Agent backend error: {e}")
+        stderr_text = ""
+        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
+            stderr_text = backend._transport.stderr_text
         return [
             {"type": "agent_text", "content": ""},
-            {"type": "agent_done", "exit_code": 1},
+            {"type": "agent_done", "exit_code": 1, "stderr": stderr_text},
         ]
     finally:
         backend.close()
@@ -137,6 +135,13 @@ def _extract_exit_code(events: list[dict]) -> int:
         if evt.get("type") == "agent_done":
             return evt.get("exit_code", 0)
     return 1
+
+
+def _extract_stderr(events: list[dict]) -> str:
+    for evt in events:
+        if evt.get("type") == "agent_done":
+            return evt.get("stderr", "")
+    return ""
 
 
 # ── context ──────────────────────────────────────────────────────────────
@@ -178,12 +183,13 @@ class RunContext:
     def __init__(self, run_id: str | None = None, run_dir: Path | None = None,
                  resume: bool = False, graph=None, live=None,
                  loop_dir: Path | None = None,
-                 state: State | None = None) -> None:
+                 state: State | None = None,
+                 counter: int = 0) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.resume = resume
-        self._counter = 0
+        self._counter = counter
         self._prev_phase: str | None = None
         self._current_phase: str | None = None
         self.graph = graph  # PhaseGraph instance (optional, for live rendering)
@@ -302,6 +308,7 @@ def agent(
     *,
     schema: dict | None = None,
     max_retries: int = 3,
+    timeout: float | None = None,
     isolation: str | None = None,
     label: str | None = None,
     backend: str | None = None,
@@ -380,8 +387,10 @@ def agent(
         t0 = time.time()
 
         if _mock_mode == "auto":
+            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             text, exit_code = _run_mock_auto(schema)
         elif _mock_mode == "bash":
+            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             text, exit_code = _run_mock(resolved_prompt + retry_hint)
             # Mock bash mode: shell commands may fail on non-shell prompts.
             # Treat non-zero exit as empty output, not infra failure.
@@ -396,6 +405,7 @@ def agent(
                 cwd = _create_worktree(_ctx.run_id, _ctx._counter)
                 if cwd:
                     _emit_log(f"Worktree: {cwd}")
+            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             events = _run_subagent(
                 resolved_prompt + retry_hint,
                 session,
@@ -403,6 +413,7 @@ def agent(
                 model=model,
                 cwd=cwd,
                 requires=ad.requires if ad else None,
+                timeout=timeout,
             )
             exit_code = _extract_exit_code(events)
             text = _extract_text(events) if exit_code == 0 else ""
@@ -410,9 +421,11 @@ def agent(
         # Infra failure → crash, let resume handle it (real backends only)
         if not _mock_mode and exit_code != 0:
             from loopflow.agent import AgentError
-            raise AgentError(
-                f"Agent call failed with exit code {exit_code}"
-            )
+            stderr = _extract_stderr(events)
+            msg = f"Agent call failed with exit code {exit_code}"
+            if stderr:
+                msg += f"\nStderr: {stderr}"
+            raise AgentError(msg)
 
         # Schema compliance check
         if schema:
@@ -568,7 +581,6 @@ def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> N
     """Write agent call cache and events for successful calls."""
     try:
         cache_events = [
-            {"type": "agent_start", "session": session, "phase": _ctx._current_phase},
             {"type": "agent_text", "content": text},
             {"type": "agent_done", "exit_code": exit_code},
         ]

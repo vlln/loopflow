@@ -8,9 +8,6 @@ import threading
 from typing import Callable
 
 
-DEFAULT_TIMEOUT = 300  # 5 minutes
-
-
 class CliTransport:
     """Generic subprocess-based communication with a CLI tool.
 
@@ -21,6 +18,13 @@ class CliTransport:
     def __init__(self, backend_name: str | None = None) -> None:
         self._proc: subprocess.Popen | None = None
         self._backend_name = backend_name
+        self._timeout: float | None = None  # No default timeout; set per-call via agent(timeout=...)
+        self._stderr_lines: list[str] = []
+
+    @property
+    def stderr_text(self) -> str:
+        """Stderr output from the most recent run, for error diagnostics."""
+        return "\n".join(self._stderr_lines)
 
     def run(
         self,
@@ -28,7 +32,7 @@ class CliTransport:
         *,
         on_stdout: Callable[[str], None] | None = None,
         on_stderr: Callable[[str], None] | None = None,
-        timeout: float | None = DEFAULT_TIMEOUT,
+        timeout: float | None = None,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
     ) -> int:
@@ -75,6 +79,7 @@ class CliTransport:
         assert self._proc.stderr is not None
 
         errors: list[Exception] = []
+        self._stderr_lines.clear()
 
         def _read(stream, callback, write_fn, flush_fn):
             try:
@@ -88,6 +93,14 @@ class CliTransport:
             except Exception as e:
                 errors.append(e)
 
+        def _read_stderr(line: str) -> None:
+            self._stderr_lines.append(line)
+            if on_stderr:
+                on_stderr(line)
+            else:
+                sys.stderr.write(line + "\n")
+                sys.stderr.flush()
+
         t_stdout = threading.Thread(
             target=_read,
             args=(self._proc.stdout, on_stdout, sys.stdout.write, sys.stdout.flush),
@@ -95,14 +108,15 @@ class CliTransport:
         )
         t_stderr = threading.Thread(
             target=_read,
-            args=(self._proc.stderr, on_stderr, sys.stderr.write, sys.stderr.flush),
+            args=(self._proc.stderr, _read_stderr, sys.stderr.write, sys.stderr.flush),
             daemon=True,
         )
         t_stdout.start()
         t_stderr.start()
 
-        t_stdout.join(timeout=timeout)
-        t_stderr.join(timeout=timeout)
+        effective_timeout = timeout if timeout is not None else self._timeout
+        t_stdout.join(timeout=effective_timeout)
+        t_stderr.join(timeout=effective_timeout)
 
         if t_stdout.is_alive() or t_stderr.is_alive():
             self._proc.kill()

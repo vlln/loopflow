@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-07-11
+
+### Added
+- `lf_<pwd>/<uuid>` 运行目录结构：按工作目录分组，完整 UUID 标识
+- 文件系统布局：pwd 工作目录 vs `~/.loopflow/` 数据目录，worktree 在 pwd 下
+- `agent()` 新增 `timeout` 参数，默认无超时
+- Agent 输出实时流式到 stderr 和 events.jsonl，`[agent]` 前缀
+
+### Changed
+- `agent_start` 事件在 agent 调用前 emit（而非完成后）
+- `AgentError` 消息包含 CLI stderr 输出，便于诊断
+- 运行实例通过 `_find_run_by_id()` 搜索所有 `lf_*/` 目录，而非仅当前 pwd
+
+### Fixed
+- `CliBackend` 接受 `**kwargs`，修复 claude/codex/pi 等后端
+- Resume 时 counter 从 `run.json` 恢复
+
+### Removed
+- `registry.py`：session 管理功能已由 `run.json` + `events.jsonl` + counter 缓存替代
+
 ## [0.8.2] — 2026-07-10
 
 ### Fixed

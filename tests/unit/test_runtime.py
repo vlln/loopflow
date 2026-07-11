@@ -196,7 +196,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             return [
                 {"type": "agent_text", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -222,7 +222,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             if "fail" in prompt:
                 raise Exception("boom")
             return [
@@ -249,7 +249,7 @@ class TestPipeline:
         set_context(ctx)
 
         # Use a dict-based mock that returns content based on prompt
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             return [
                 {"type": "agent_text", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -277,7 +277,7 @@ class TestPipeline:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             return [
                 {"type": "agent_done", "exit_code": 1},  # fails, returns None
             ]
@@ -324,9 +324,9 @@ class TestPhaseTracking:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("do something")
-                cache_path = temp_run_dir / "0001.jsonl"
-                assert cache_path.exists()
-                events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
+                events_path = temp_run_dir / "events.jsonl"
+                assert events_path.exists()
+                events = [json.loads(l) for l in events_path.read_text().strip().split("\n") if l]
                 start_events = [e for e in events if e["type"] == "agent_start"]
                 assert len(start_events) == 1
                 assert start_events[0]["phase"] == "Research"
@@ -343,8 +343,8 @@ class TestPhaseTracking:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("no phase")
-                cache_path = temp_run_dir / "0001.jsonl"
-                events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
+                events_path = temp_run_dir / "events.jsonl"
+                events = [json.loads(l) for l in events_path.read_text().strip().split("\n") if l]
                 start_events = [e for e in events if e["type"] == "agent_start"]
                 assert len(start_events) == 1
                 assert start_events[0].get("phase") is None
@@ -370,17 +370,13 @@ class TestPhaseTracking:
             )):
                 agent("task 2")
 
-        # Check first agent's phase
-        cache1 = temp_run_dir / "0001.jsonl"
-        events1 = [json.loads(l) for l in cache1.read_text().strip().split("\n") if l]
-        start1 = [e for e in events1 if e["type"] == "agent_start"][0]
-        assert start1["phase"] == "First"
-
-        # Check second agent's phase
-        cache2 = temp_run_dir / "0002.jsonl"
-        events2 = [json.loads(l) for l in cache2.read_text().strip().split("\n") if l]
-        start2 = [e for e in events2 if e["type"] == "agent_start"][0]
-        assert start2["phase"] == "Second"
+        # Check agent_start events in events.jsonl (in order)
+        events_path = temp_run_dir / "events.jsonl"
+        all_events = [json.loads(l) for l in events_path.read_text().strip().split("\n") if l]
+        start_events = [e for e in all_events if e["type"] == "agent_start"]
+        assert len(start_events) == 2
+        assert start_events[0]["phase"] == "First"
+        assert start_events[1]["phase"] == "Second"
 
 
 # ── agent_def ────────────────────────────────────────────────────────────────
@@ -425,7 +421,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "translated"},
@@ -449,7 +445,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -472,7 +468,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -495,7 +491,7 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "ok"},
@@ -554,7 +550,7 @@ class TestOutputSchema:
         explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": '{"custom": "override"}'},
@@ -576,7 +572,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text",
@@ -604,7 +600,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First attempt: invalid JSON (missing closing brace)
@@ -635,7 +631,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             call_count[0] += 1
             return [
                 {"type": "agent_text", "content": "not valid json at all"},
@@ -658,7 +654,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None):
+        def _mock_run(prompt, session, backend_name=None, model=None, cwd=None, requires=None, timeout=None):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_text", "content": "plain text"},

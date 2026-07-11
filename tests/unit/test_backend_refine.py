@@ -32,34 +32,6 @@ class TestBaseBackend:
             f"list_sessions should be removed: {abstract_methods}"
 
 
-class TestRegistry:
-    """Verify registry has no goal/swarm/send/cancel/queue methods."""
-
-    def test_registry_has_core_methods(self):
-        from loopflow import registry
-        assert hasattr(registry, 'register')
-        assert hasattr(registry, 'get_session_id')
-        assert hasattr(registry, 'get_session_status')
-        assert hasattr(registry, 'complete')
-
-    def test_registry_no_goal(self):
-        from loopflow import registry
-        assert not hasattr(registry, 'set_goal'), "set_goal should be removed"
-        assert not hasattr(registry, 'get_goal'), "get_goal should be removed"
-        assert not hasattr(registry, 'cancel_goal'), "cancel_goal should be removed"
-
-    def test_registry_no_swarm(self):
-        from loopflow import registry
-        assert not hasattr(registry, 'swarm'), "swarm should be removed"
-
-    def test_registry_no_queue(self):
-        from loopflow import registry
-        assert not hasattr(registry, 'enqueue_task'), "enqueue_task should be removed"
-        assert not hasattr(registry, 'dequeue_task'), "dequeue_task should be removed"
-        assert not hasattr(registry, 'cancel_task'), "cancel_task should be removed"
-        assert not hasattr(registry, 'has_active_queue'), "has_active_queue should be removed"
-
-
 class TestAgentModule:
     """Verify agent module is clean."""
 
