@@ -21,12 +21,6 @@ def test_agent_module():
     assert callable(parse_agent)
 
 
-def test_registry_module():
-    from loopflow.registry import register, get_session_id
-    assert callable(register)
-    assert callable(get_session_id)
-
-
 def test_lock_module():
     from loopflow.lock import acquire, release, check
     assert callable(acquire)

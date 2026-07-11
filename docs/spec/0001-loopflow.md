@@ -40,7 +40,6 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | CLI | loop run / resume / status / list / stop 命令解析和路由 | `src/loopflow/cli.py` | P0 |
 | Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/log/args/workflow 运行时 API | `src/loopflow/runtime.py` | P0 |
 | Backend Layer | 适配 8 种 AI Agent 后端（kimi/claude/codex/pi/opencode/qwen/kiro/gemini），自动检测，支持 CLI/ACP 传输 | `src/loopflow/backends/` | P0 |
-| Registry | 运行实例元数据管理（run.json），Agent 调用缓存索引（序号→jsonl 映射），状态追踪 | `src/loopflow/registry.py` | P0 |
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
 | Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |

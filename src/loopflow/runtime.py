@@ -86,24 +86,9 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
     if timeout is not None and hasattr(backend, '_transport'):
         backend._transport._timeout = timeout
     try:
-        existing_sid = None
-        try:
-            from loopflow.registry import get_session_id_from_any
-            existing_sid = get_session_id_from_any(session)
-        except Exception:
-            pass
-
         _emit_log(f"Calling agent via {backend_name or 'auto'}...")
 
-        if existing_sid:
-            exit_code = backend.resume_session(existing_sid, prompt, model=model, requires=requires)
-        else:
-            sid, exit_code = backend.create_session(prompt, model=model, requires=requires)
-            try:
-                from loopflow.registry import register
-                register(session, session, sid, background=False)
-            except Exception:
-                pass
+        sid, exit_code = backend.create_session(prompt, model=model, requires=requires)
 
         text = "\n".join(output_parts) if output_parts else ""
         stderr_text = ""
