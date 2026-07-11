@@ -88,7 +88,6 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
 
     def thought_handler(text: str) -> None:
         if text:
-            _write_event({"type": "agent_thought_chunk", "session": session, "content": text})
             _append_cache(cache_path, {"type": "agent_thought_chunk", "content": text})
             print(f"[thinking] {text}", file=sys.stderr, flush=True)
 
