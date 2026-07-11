@@ -6,7 +6,7 @@
 |------|-----|
 | **当前阶段** | `SYSTEM_TEST` |
 | **设计评估** | 已冻结（vision active, 1 Spec v6, 17 ADRs accepted） |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（134 tests pass） |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（129 tests pass, 72% coverage） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
