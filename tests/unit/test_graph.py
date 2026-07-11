@@ -130,7 +130,7 @@ class TestPhaseGraphSerialization:
         events = [
             {"type": "agent_start", "session": "x"},
             {"type": "phase", "title": "A", "ts": 1.0},
-            {"type": "agent_text", "content": "ok"},
+            {"type": "agent_message_chunk", "content": "ok"},
             {"type": "phase", "title": "B", "ts": 2.0},
         ]
         g = PhaseGraph.from_events(events)

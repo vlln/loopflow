@@ -30,4 +30,9 @@ class CodexBackend(CliBackend):
             item = data.get("item", {})
             if isinstance(item, dict) and item.get("type") == "agent_message":
                 return (item.get("text", ""), None)
+        if tp == "turn.completed":
+            usage = data.get("usage", {})
+            if usage:
+                return (None, None)  # usage extracted but not returned via (text, sid)
+            return (None, None)
         return (None, None)

@@ -59,6 +59,10 @@ class CliBackend(BaseBackend):
                 cmd.extend([self._skill_flag, skill])
         return cmd
 
+    def _normalize_line(self, line: str) -> str:
+        """Transform a stdout line before passing to text_handler. Override in subclasses."""
+        return line
+
     def create_session(
         self,
         user: str,
@@ -73,6 +77,7 @@ class CliBackend(BaseBackend):
 
         if self._sid_on_stderr:
             def _on_stdout_line(line: str) -> None:
+                line = self._normalize_line(line)
                 if self._text_handler:
                     self._text_handler(line)
                 else:
@@ -112,6 +117,7 @@ class CliBackend(BaseBackend):
 
         if self._sid_on_stderr:
             def _on_stdout_line(line: str) -> None:
+                line = self._normalize_line(line)
                 if self._text_handler:
                     self._text_handler(line)
                 else:

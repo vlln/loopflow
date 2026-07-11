@@ -80,8 +80,8 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
     def text_handler(text: str) -> None:
         if text:
             output_parts.append(text)
-            _write_event({"type": "agent_text", "session": session, "content": text})
-            _append_cache(cache_path, {"type": "agent_text", "content": text})
+            _write_event({"type": "agent_message_chunk", "session": session, "content": text})
+            _append_cache(cache_path, {"type": "agent_message_chunk", "content": text})
             print(f"[agent] {text}", file=sys.stderr, flush=True)
 
     instance = _make_backend(backend, text_handler=text_handler, cwd=cwd)
@@ -99,7 +99,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if text:
             _emit_log(f"Agent responded: {len(text)} chars")
         return [
-            {"type": "agent_text", "content": text},
+            {"type": "agent_message_chunk", "content": text},
             {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text},
         ]
     except TimeoutError:
@@ -108,7 +108,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
             stderr_text = instance._transport.stderr_text
         return [
-            {"type": "agent_text", "content": ""},
+            {"type": "agent_message_chunk", "content": ""},
             {"type": "agent_done", "exit_code": 124, "stderr": stderr_text},
         ]
     except Exception as e:
@@ -117,7 +117,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
             stderr_text = instance._transport.stderr_text
         return [
-            {"type": "agent_text", "content": ""},
+            {"type": "agent_message_chunk", "content": ""},
             {"type": "agent_done", "exit_code": 1, "stderr": stderr_text},
         ]
     finally:
@@ -127,7 +127,8 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
 def _extract_text(events: list[dict]) -> str:
     parts: list[str] = []
     for evt in events:
-        if evt.get("type") == "agent_text":
+        t = evt.get("type")
+        if t in ("agent_message_chunk", "agent_text"):
             parts.append(evt["content"])
     return "\n".join(parts)
 
@@ -602,7 +603,7 @@ def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> N
     try:
         done_event = {"type": "agent_done", "exit_code": exit_code}
         _append_cache(cache_path, done_event)
-        _write_event({"type": "agent_text", "content": text})
+        _write_event({"type": "agent_message_chunk", "content": text})
         _write_event(done_event)
     except OSError:
         pass
