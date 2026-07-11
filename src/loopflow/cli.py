@@ -237,7 +237,7 @@ def resume(run_id, mock, watch):
         live.start()
 
     ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live,
-                     loop_dir=loop_dir)
+                     loop_dir=loop_dir, counter=run_meta.get("counter", 0))
     set_context(ctx)
 
     # Restore state from state.json, filling missing keys from meta defaults

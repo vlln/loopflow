@@ -106,23 +106,32 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
                 pass
 
         text = "\n".join(output_parts) if output_parts else ""
+        stderr_text = ""
+        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
+            stderr_text = backend._transport.stderr_text
         if text:
             _emit_log(f"Agent responded: {len(text)} chars")
         return [
             {"type": "agent_text", "content": text},
-            {"type": "agent_done", "exit_code": exit_code},
+            {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text},
         ]
     except TimeoutError:
         _emit_log(f"Agent timed out: {prompt[:80]}...")
+        stderr_text = ""
+        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
+            stderr_text = backend._transport.stderr_text
         return [
             {"type": "agent_text", "content": ""},
-            {"type": "agent_done", "exit_code": 124},
+            {"type": "agent_done", "exit_code": 124, "stderr": stderr_text},
         ]
     except Exception as e:
         _emit_log(f"Agent backend error: {e}")
+        stderr_text = ""
+        if hasattr(backend, '_transport') and hasattr(backend._transport, 'stderr_text'):
+            stderr_text = backend._transport.stderr_text
         return [
             {"type": "agent_text", "content": ""},
-            {"type": "agent_done", "exit_code": 1},
+            {"type": "agent_done", "exit_code": 1, "stderr": stderr_text},
         ]
     finally:
         backend.close()
@@ -141,6 +150,13 @@ def _extract_exit_code(events: list[dict]) -> int:
         if evt.get("type") == "agent_done":
             return evt.get("exit_code", 0)
     return 1
+
+
+def _extract_stderr(events: list[dict]) -> str:
+    for evt in events:
+        if evt.get("type") == "agent_done":
+            return evt.get("stderr", "")
+    return ""
 
 
 # ── context ──────────────────────────────────────────────────────────────
@@ -182,12 +198,13 @@ class RunContext:
     def __init__(self, run_id: str | None = None, run_dir: Path | None = None,
                  resume: bool = False, graph=None, live=None,
                  loop_dir: Path | None = None,
-                 state: State | None = None) -> None:
+                 state: State | None = None,
+                 counter: int = 0) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.resume = resume
-        self._counter = 0
+        self._counter = counter
         self._prev_phase: str | None = None
         self._current_phase: str | None = None
         self.graph = graph  # PhaseGraph instance (optional, for live rendering)
@@ -419,9 +436,11 @@ def agent(
         # Infra failure → crash, let resume handle it (real backends only)
         if not _mock_mode and exit_code != 0:
             from loopflow.agent import AgentError
-            raise AgentError(
-                f"Agent call failed with exit code {exit_code}"
-            )
+            stderr = _extract_stderr(events)
+            msg = f"Agent call failed with exit code {exit_code}"
+            if stderr:
+                msg += f"\nStderr: {stderr}"
+            raise AgentError(msg)
 
         # Schema compliance check
         if schema:

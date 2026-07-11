@@ -19,6 +19,12 @@ class CliTransport:
         self._proc: subprocess.Popen | None = None
         self._backend_name = backend_name
         self._timeout: float | None = None  # No default timeout; set per-call via agent(timeout=...)
+        self._stderr_lines: list[str] = []
+
+    @property
+    def stderr_text(self) -> str:
+        """Stderr output from the most recent run, for error diagnostics."""
+        return "\n".join(self._stderr_lines)
 
     def run(
         self,
@@ -73,6 +79,7 @@ class CliTransport:
         assert self._proc.stderr is not None
 
         errors: list[Exception] = []
+        self._stderr_lines.clear()
 
         def _read(stream, callback, write_fn, flush_fn):
             try:
@@ -86,6 +93,14 @@ class CliTransport:
             except Exception as e:
                 errors.append(e)
 
+        def _read_stderr(line: str) -> None:
+            self._stderr_lines.append(line)
+            if on_stderr:
+                on_stderr(line)
+            else:
+                sys.stderr.write(line + "\n")
+                sys.stderr.flush()
+
         t_stdout = threading.Thread(
             target=_read,
             args=(self._proc.stdout, on_stdout, sys.stdout.write, sys.stdout.flush),
@@ -93,7 +108,7 @@ class CliTransport:
         )
         t_stderr = threading.Thread(
             target=_read,
-            args=(self._proc.stderr, on_stderr, sys.stderr.write, sys.stderr.flush),
+            args=(self._proc.stderr, _read_stderr, sys.stderr.write, sys.stderr.flush),
             daemon=True,
         )
         t_stdout.start()
