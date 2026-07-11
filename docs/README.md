@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 增量迭代：后端 CLI 输出归一化，ADR 0019+ 逐个后端 |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | ADRs 0019/0020/0021/0022 accepted, Spec v8 active, Plan 0019 pending |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（129 tests pass, 72% coverage） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

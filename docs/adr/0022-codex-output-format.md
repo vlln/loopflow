@@ -2,7 +2,7 @@
 title: Codex CLI Output Format — codex exec --json
 description: 分析 codex CLI 的 JSON 输出格式，确定归一化策略
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-11T16:00:00Z
 ---
 
