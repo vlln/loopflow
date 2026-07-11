@@ -2,7 +2,7 @@
 title: Transport Strategy + Observability
 description: 禁用 ACP auto-detection，{seq}.jsonl 实时写入，backend_name → backend 统一命名
 type: plan
-status: pending
+status: done
 created: 2026-07-11T13:00:00Z
 ---
 
