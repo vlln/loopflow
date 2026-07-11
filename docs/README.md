@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | v0.10.0 就绪：ADR 0018 accepted, Spec v7 active, 137/137 pass, 78% coverage |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | 增量迭代：后端 CLI 输出归一化，ADR 0019+ 逐个后端 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（129 tests pass, 72% coverage） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
