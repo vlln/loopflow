@@ -2,7 +2,7 @@
 title: Backend Output Normalization — kimi, claude, codex
 description: 将 kimi/claude/codex 后端的原生输出归一化为 ACP 兼容事件，更新缓存 schema 从 agent_text 到 agent_message_chunk
 type: plan
-status: pending
+status: done
 created: 2026-07-11T16:00:00Z
 ---
 
