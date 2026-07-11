@@ -324,9 +324,9 @@ class TestPhaseTracking:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("do something")
-                cache_path = temp_run_dir / "0001.jsonl"
-                assert cache_path.exists()
-                events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
+                events_path = temp_run_dir / "events.jsonl"
+                assert events_path.exists()
+                events = [json.loads(l) for l in events_path.read_text().strip().split("\n") if l]
                 start_events = [e for e in events if e["type"] == "agent_start"]
                 assert len(start_events) == 1
                 assert start_events[0]["phase"] == "Research"
@@ -343,8 +343,8 @@ class TestPhaseTracking:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("no phase")
-                cache_path = temp_run_dir / "0001.jsonl"
-                events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
+                events_path = temp_run_dir / "events.jsonl"
+                events = [json.loads(l) for l in events_path.read_text().strip().split("\n") if l]
                 start_events = [e for e in events if e["type"] == "agent_start"]
                 assert len(start_events) == 1
                 assert start_events[0].get("phase") is None
@@ -370,17 +370,13 @@ class TestPhaseTracking:
             )):
                 agent("task 2")
 
-        # Check first agent's phase
-        cache1 = temp_run_dir / "0001.jsonl"
-        events1 = [json.loads(l) for l in cache1.read_text().strip().split("\n") if l]
-        start1 = [e for e in events1 if e["type"] == "agent_start"][0]
-        assert start1["phase"] == "First"
-
-        # Check second agent's phase
-        cache2 = temp_run_dir / "0002.jsonl"
-        events2 = [json.loads(l) for l in cache2.read_text().strip().split("\n") if l]
-        start2 = [e for e in events2 if e["type"] == "agent_start"][0]
-        assert start2["phase"] == "Second"
+        # Check agent_start events in events.jsonl (in order)
+        events_path = temp_run_dir / "events.jsonl"
+        all_events = [json.loads(l) for l in events_path.read_text().strip().split("\n") if l]
+        start_events = [e for e in all_events if e["type"] == "agent_start"]
+        assert len(start_events) == 2
+        assert start_events[0]["phase"] == "First"
+        assert start_events[1]["phase"] == "Second"
 
 
 # ── agent_def ────────────────────────────────────────────────────────────────

@@ -380,8 +380,10 @@ def agent(
         t0 = time.time()
 
         if _mock_mode == "auto":
+            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             text, exit_code = _run_mock_auto(schema)
         elif _mock_mode == "bash":
+            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             text, exit_code = _run_mock(resolved_prompt + retry_hint)
             # Mock bash mode: shell commands may fail on non-shell prompts.
             # Treat non-zero exit as empty output, not infra failure.
@@ -396,6 +398,7 @@ def agent(
                 cwd = _create_worktree(_ctx.run_id, _ctx._counter)
                 if cwd:
                     _emit_log(f"Worktree: {cwd}")
+            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             events = _run_subagent(
                 resolved_prompt + retry_hint,
                 session,
@@ -568,7 +571,6 @@ def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> N
     """Write agent call cache and events for successful calls."""
     try:
         cache_events = [
-            {"type": "agent_start", "session": session, "phase": _ctx._current_phase},
             {"type": "agent_text", "content": text},
             {"type": "agent_done", "exit_code": exit_code},
         ]
