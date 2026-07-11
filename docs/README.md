@@ -4,7 +4,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
+| **当前阶段** | `SYSTEM_TEST` |
 | **设计评估** | 已冻结（vision active, 1 Spec v6, 17 ADRs accepted） |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（134 tests pass） |
 
