@@ -71,7 +71,7 @@ def _make_backend(backend_name: str | None = None, transport: str | None = None,
 
 def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
                   model: str | None = None, cwd: str | None = None,
-                  requires=None) -> list[dict]:
+                  requires=None, timeout: float | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
     output_parts: list[str] = []
@@ -81,6 +81,8 @@ def _run_subagent(prompt: str, session: str, backend_name: str | None = None,
             output_parts.append(text)
 
     backend = _make_backend(backend_name, text_handler=text_handler, cwd=cwd)
+    if timeout is not None and hasattr(backend, '_transport'):
+        backend._transport._timeout = timeout
     try:
         existing_sid = None
         try:
@@ -302,6 +304,7 @@ def agent(
     *,
     schema: dict | None = None,
     max_retries: int = 3,
+    timeout: float | None = None,
     isolation: str | None = None,
     label: str | None = None,
     backend: str | None = None,
@@ -406,6 +409,7 @@ def agent(
                 model=model,
                 cwd=cwd,
                 requires=ad.requires if ad else None,
+                timeout=timeout,
             )
             exit_code = _extract_exit_code(events)
             text = _extract_text(events) if exit_code == 0 else ""

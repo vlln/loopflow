@@ -8,9 +8,6 @@ import threading
 from typing import Callable
 
 
-DEFAULT_TIMEOUT = 300  # 5 minutes
-
-
 class CliTransport:
     """Generic subprocess-based communication with a CLI tool.
 
@@ -21,6 +18,7 @@ class CliTransport:
     def __init__(self, backend_name: str | None = None) -> None:
         self._proc: subprocess.Popen | None = None
         self._backend_name = backend_name
+        self._timeout: float | None = None  # No default timeout; set per-call via agent(timeout=...)
 
     def run(
         self,
@@ -28,7 +26,7 @@ class CliTransport:
         *,
         on_stdout: Callable[[str], None] | None = None,
         on_stderr: Callable[[str], None] | None = None,
-        timeout: float | None = DEFAULT_TIMEOUT,
+        timeout: float | None = None,
         env: dict[str, str] | None = None,
         cwd: str | None = None,
     ) -> int:
@@ -101,8 +99,9 @@ class CliTransport:
         t_stdout.start()
         t_stderr.start()
 
-        t_stdout.join(timeout=timeout)
-        t_stderr.join(timeout=timeout)
+        effective_timeout = timeout if timeout is not None else self._timeout
+        t_stdout.join(timeout=effective_timeout)
+        t_stderr.join(timeout=effective_timeout)
 
         if t_stdout.is_alive() or t_stderr.is_alive():
             self._proc.kill()
