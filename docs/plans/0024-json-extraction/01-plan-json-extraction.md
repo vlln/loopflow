@@ -2,7 +2,7 @@
 title: JSON Extraction from Agent Responses
 description: 使用 jsonschema 验证 + schema-key 匹配从 text 模式后端回复中提取 JSON，跳过 retry
 type: plan
-status: pending
+status: done
 created: 2026-07-11T18:00:00Z
 ---
 
