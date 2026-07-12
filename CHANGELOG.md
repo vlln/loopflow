@@ -2,6 +2,26 @@
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-12
+
+### Changed
+- **破坏性变更**：Agent frontmatter 格式对齐 Claude Code subagent schema
+- 删除 `requires` 包装层，所有字段提升到顶层
+- `requires.params` → `input`（JSON Schema，与 `output` 对称）
+- `requires.mcps` → `mcpServers`（Claude Code 对齐）
+- `requires.skills` → `skills`（顶层）
+- `requires.env` → `env`（顶层）
+- 新增 `model`、`isolation` 字段
+- 新增 `tools`、`disallowedTools`、`maxTurns`、`hooks`、`effort`、`color`、`background`、`memory`、`permissionMode` 字段（接口预留，暂未实现）
+
+### Removed
+- `AgentRequires` 类：后端直接接收 `AgentDef`
+
+### Fixed
+- 后端 `__init__` 接受 `thought_handler` 参数（kimi/gemini/qwen/kiro/opencode）
+- 集成测试适配 `lf_<pwd>/<run_id>/` 运行目录结构
+- `set_mock("shell")` → `set_mock("bash")`
+
 ## [0.12.0] — 2026-07-11
 
 ### Added

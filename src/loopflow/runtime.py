@@ -73,7 +73,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
 
 def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
-                  requires=None, timeout: float | None = None,
+                  agent_def=None, timeout: float | None = None,
                   cache_path: Path | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
@@ -97,7 +97,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
     try:
         _emit_log(f"Calling agent via {backend or 'auto'}...")
 
-        sid, exit_code = instance.create_session(prompt, model=model, requires=requires)
+        sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def)
 
         text = "\n".join(output_parts) if output_parts else ""
         stderr_text = ""
@@ -337,13 +337,13 @@ def agent(
         def_name = agent_def if agent_def is not None else "default"
         agent_path = _ctx.loop_dir / "agents" / f"{def_name}.md"
         if agent_path.is_file():
-            from loopflow.agent import parse_agent, render_template, resolve_params
+            from loopflow.agent import parse_agent, render_template, resolve_params, _input_to_params
             try:
                 ad = parse_agent(agent_path)
             except (ValueError, FileNotFoundError):
                 ad = None
             if ad is not None:
-                params = ad.requires.params if ad.requires else None
+                params = _input_to_params(ad.input)
                 resolved_kwargs = resolve_params(params, **kwargs)
                 body = render_template(ad.body, **resolved_kwargs)
                 resolved_prompt = f"{body}\n\n---\n\nTask: {prompt}"
@@ -353,9 +353,9 @@ def agent(
                     schema = ad.output
 
                 # Inject skill descriptions into system prompt
-                if ad.requires and ad.requires.skills:
+                if ad.skills:
                     from loopflow.skills import build_skill_prompt
-                    skill_section = build_skill_prompt(ad.requires.skills)
+                    skill_section = build_skill_prompt(ad.skills)
                     if skill_section:
                         resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
 
@@ -422,7 +422,7 @@ def agent(
                 backend=backend,
                 model=model,
                 cwd=cwd,
-                requires=ad.requires if ad else None,
+                agent_def=ad if ad else None,
                 timeout=timeout,
                 cache_path=cache_path,
             )

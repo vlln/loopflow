@@ -42,19 +42,19 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
         agents_dir.mkdir(parents=True)
         for a in agents:
             body = a.get("body", "")
-            requires_str = ""
-            if "requires" in a:
-                req = a["requires"]
-                parts = []
-                if "env" in req:
-                    parts.append(f"  env:\n")
-                    for e in req["env"]:
-                        parts.append(f"    - {e}\n")
-                requires_str = "requires:\n" + "".join(parts) if parts else ""
+            env_str = ""
+            if "env" in a:
+                env_str = "env:\n" + "".join(f"  - {e}\n" for e in a["env"])
+            skills_str = ""
+            if "skills" in a:
+                skills_str = "skills:\n" + "".join(f"  - {s}\n" for s in a["skills"])
+            mcp_str = ""
+            if "mcpServers" in a:
+                mcp_str = "mcpServers:\n" + "".join(f"  - {m}\n" for m in a["mcpServers"])
             agent_content = f"""---
 name: {a['name']}
 description: {a['description']}
-{requires_str}---
+{env_str}{skills_str}{mcp_str}---
 {body}
 """
             (agents_dir / f"{a['name']}.md").write_text(agent_content)

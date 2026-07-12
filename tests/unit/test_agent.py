@@ -104,59 +104,227 @@ class TestResolveParams:
         assert result == {"language": "Chinese"}
 
 
-class TestParseAgentParams:
-    """Parse agent definition with new param format."""
+class TestParseAgentInput:
+    """Parse agent definition with input schema (JSON Schema)."""
 
-    def test_old_format_params(self):
-        """Backward compatible: - param_name (required)."""
+    def test_input_required_params(self):
+        """input with required params."""
         import tempfile
-        from loopflow.agent import parse_agent
+        from loopflow.agent import parse_agent, _input_to_params
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: test
 description: Test agent
-requires:
-  params:
+input:
+  type: object
+  properties:
+    language:
+      type: string
+    format:
+      type: string
+  required:
     - language
     - format
 ---
 body""")
             f.flush()
             result = parse_agent(f.name)
-            assert result.requires is not None
-            assert len(result.requires.params) == 2
-            assert result.requires.params[0].name == "language"
-            assert result.requires.params[0].required is True
-            assert result.requires.params[1].name == "format"
-            assert result.requires.params[1].required is True
+            assert result.input is not None
+            assert result.input["type"] == "object"
+            params = _input_to_params(result.input)
+            assert len(params) == 2
+            assert params[0].name == "language"
+            assert params[0].required is True
+            assert params[1].name == "format"
+            assert params[1].required is True
 
-    def test_new_format_params(self):
-        """New format: - param_name: default_value (optional)."""
+    def test_input_with_defaults(self):
+        """input with optional params that have defaults."""
         import tempfile
-        from loopflow.agent import parse_agent
+        from loopflow.agent import parse_agent, _input_to_params
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: test
 description: Test agent
-requires:
-  params:
+input:
+  type: object
+  properties:
+    language:
+      type: string
+    format:
+      type: string
+      default: markdown
+    figure_mode:
+      type: string
+      default: generate
+  required:
     - language
-    - format: markdown
-    - figure_mode: generate
 ---
 body""")
             f.flush()
             result = parse_agent(f.name)
-            assert result.requires is not None
-            assert len(result.requires.params) == 3
-            assert result.requires.params[0].name == "language"
-            assert result.requires.params[0].required is True
-            assert result.requires.params[1].name == "format"
-            assert result.requires.params[1].required is False
-            assert result.requires.params[1].default == "markdown"
-            assert result.requires.params[2].name == "figure_mode"
-            assert result.requires.params[2].required is False
-            assert result.requires.params[2].default == "generate"
+            params = _input_to_params(result.input)
+            assert len(params) == 3
+            assert params[0].name == "language"
+            assert params[0].required is True
+            assert params[1].name == "format"
+            assert params[1].required is False
+            assert params[1].default == "markdown"
+            assert params[2].name == "figure_mode"
+            assert params[2].required is False
+            assert params[2].default == "generate"
+
+    def test_input_with_enum(self):
+        """input with enum values."""
+        import tempfile
+        from loopflow.agent import parse_agent, _input_to_params
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: test
+description: Test agent
+input:
+  type: object
+  properties:
+    mode:
+      type: string
+      enum: [generate, extract]
+      default: generate
+  required:
+    - mode
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            params = _input_to_params(result.input)
+            assert len(params) == 1
+            assert params[0].name == "mode"
+            assert params[0].required is False  # has default, so not required
+            assert params[0].default == "generate"
+
+    def test_input_none(self):
+        """Agents without input field have input=None."""
+        import tempfile
+        from loopflow.agent import parse_agent, _input_to_params
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: simple
+description: Simple agent
+---
+Just a body.""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.input is None
+            assert _input_to_params(result.input) == []
+
+    def test_input_not_dict_ignored(self):
+        """input that is not a dict is silently ignored."""
+        import tempfile
+        from loopflow.agent import parse_agent
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: broken
+description: Broken input
+input: not_a_schema
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.input is None
+
+
+class TestParseAgentClaudeCodeFields:
+    """Parse Claude Code aligned fields."""
+
+    def test_full_claude_code_fields(self):
+        """All Claude Code aligned fields parsed correctly."""
+        import tempfile
+        from loopflow.agent import parse_agent
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: full-agent
+description: Agent with all Claude Code fields
+model: sonnet
+skills:
+  - paperutils
+mcpServers:
+  - filesystem
+tools:
+  - Read
+  - Bash
+disallowedTools:
+  - WebSearch
+maxTurns: 10
+hooks:
+  BeforeToolUse: []
+effort: high
+color: blue
+background: true
+memory: project
+isolation: worktree
+permissionMode: bypassPermissions
+env:
+  - API_KEY
+input:
+  type: object
+  properties:
+    query:
+      type: string
+output:
+  type: object
+  properties:
+    result:
+      type: string
+---
+Full agent body.""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.name == "full-agent"
+            assert result.model == "sonnet"
+            assert result.skills == ["paperutils"]
+            assert result.mcp_servers == ["filesystem"]
+            assert result.tools == ["Read", "Bash"]
+            assert result.disallowed_tools == ["WebSearch"]
+            assert result.max_turns == 10
+            assert result.hooks == {"BeforeToolUse": []}
+            assert result.effort == "high"
+            assert result.color == "blue"
+            assert result.background is True
+            assert result.memory == "project"
+            assert result.isolation == "worktree"
+            assert result.permission_mode == "bypassPermissions"
+            assert result.env == ["API_KEY"]
+            assert result.input is not None
+            assert result.output is not None
+
+    def test_minimal_fields(self):
+        """Only name and description are required."""
+        import tempfile
+        from loopflow.agent import parse_agent
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
+            f.write("""---
+name: minimal
+description: Minimal agent
+---
+body""")
+            f.flush()
+            result = parse_agent(f.name)
+            assert result.name == "minimal"
+            assert result.model is None
+            assert result.skills == []
+            assert result.mcp_servers == []
+            assert result.tools is None
+            assert result.disallowed_tools is None
+            assert result.max_turns is None
+            assert result.hooks is None
+            assert result.effort is None
+            assert result.color is None
+            assert result.background is False
+            assert result.memory is None
+            assert result.isolation is None
+            assert result.permission_mode is None
+            assert result.env == []
+            assert result.input is None
+            assert result.output is None
 
 
 class TestParseAgent:
@@ -176,34 +344,41 @@ You are a test agent.""")
             assert result.name == "test-agent"
             assert result.description == "A test agent"
 
-    def test_parse_agent_with_requires(self):
+    def test_parse_agent_with_all_fields(self):
         from loopflow.agent import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: test-agent
 description: A test agent with requirements
-requires:
-  env:
-    - API_KEY
-  params:
+skills:
+  - paperutils
+mcpServers:
+  - filesystem
+env:
+  - API_KEY
+input:
+  type: object
+  properties:
+    language:
+      type: string
+    format:
+      type: string
+  required:
     - language
     - format
-  mcps:
-    - filesystem
 ---
 You are a test agent. Output in {{language}}.""")
             f.flush()
             result = parse_agent(f.name)
             assert result.name == "test-agent"
-            assert result.requires is not None
-            assert result.requires.env == ["API_KEY"]
-            assert len(result.requires.params) == 2
-            assert result.requires.params[0].name == "language"
-            assert result.requires.params[0].required is True
-            assert result.requires.params[1].name == "format"
-            assert result.requires.params[1].required is True
-            assert result.requires.mcps == ["filesystem"]
+            assert result.skills == ["paperutils"]
+            assert result.mcp_servers == ["filesystem"]
+            assert result.env == ["API_KEY"]
+            assert result.input is not None
+            assert result.input["properties"]["language"]["type"] == "string"
+            assert result.input["properties"]["format"]["type"] == "string"
+            assert result.input["required"] == ["language", "format"]
 
     def test_parse_agent_missing_name(self):
         from loopflow.agent import parse_agent
@@ -248,8 +423,12 @@ class TestParseAgentOutput:
             f.write("""---
 name: validate
 description: Validation agent
-requires:
-  params:
+input:
+  type: object
+  properties:
+    language:
+      type: string
+  required:
     - language
 output:
   type: object

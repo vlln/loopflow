@@ -12,7 +12,7 @@ from loopflow.backends.base import BaseBackend
 from loopflow.transports.cli import CliTransport
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentRequires
+    from loopflow.agent import AgentDef
 
 
 class CliBackend(BaseBackend):
@@ -53,10 +53,10 @@ class CliBackend(BaseBackend):
             sys.stdout.write(text)
             sys.stdout.flush()
 
-    def _apply_requires_to_cmd(self, cmd: list[str], requires: AgentRequires | None) -> list[str]:
-        """Append skill flags from requires."""
-        if requires and requires.skills and self._skill_flag:
-            for skill in requires.skills:
+    def _apply_requires_to_cmd(self, cmd: list[str], agent_def: AgentDef | None) -> list[str]:
+        """Append skill flags from agent_def."""
+        if agent_def and agent_def.skills and self._skill_flag:
+            for skill in agent_def.skills:
                 cmd.extend([self._skill_flag, skill])
         return cmd
 
@@ -70,10 +70,10 @@ class CliBackend(BaseBackend):
         system: str | None = None,
         model: str | None = None,
         system_mode: str = "append",
-        requires: AgentRequires | None = None,
+        agent_def: AgentDef | None = None,
     ) -> tuple[str, int]:
         cmd = self._cmd_create(user, system, model, system_mode)
-        cmd = self._apply_requires_to_cmd(cmd, requires)
+        cmd = self._apply_requires_to_cmd(cmd, agent_def)
         sid: str = ""
 
         if self._sid_on_stderr:
@@ -111,7 +111,7 @@ class CliBackend(BaseBackend):
         system: str | None = None,
         model: str | None = None,
         system_mode: str = "append",
-        requires: AgentRequires | None = None,
+        agent_def: AgentDef | None = None,
     ) -> int:
         cmd = self._cmd_resume(session_id, user, system, model, system_mode)
         cmd = self._apply_requires_to_cmd(cmd, requires)

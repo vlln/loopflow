@@ -21,16 +21,6 @@ class ParamSpec:
 
 
 @dataclass
-class AgentRequires:
-    """Optional requirements for an agent."""
-
-    env: list[str] = field(default_factory=list)
-    skills: list[str] = field(default_factory=list)
-    params: list[ParamSpec] = field(default_factory=list)
-    mcps: list[str] = field(default_factory=list)
-
-
-@dataclass
 class AgentDef:
     """Parsed agent definition from a .md file."""
 
@@ -38,33 +28,106 @@ class AgentDef:
     description: str
     body: str = ""       # entire .md file content (including frontmatter), used as system prompt
     file_path: str | None = None
-    requires: AgentRequires | None = None
-    output: dict | None = None  # JSON Schema for structured output
+
+    # Claude Code aligned — implemented
+    model: str | None = None
+    skills: list[str] = field(default_factory=list)
+    mcp_servers: list[str] = field(default_factory=list)
+    isolation: str | None = None
+
+    # Claude Code aligned — parsed but not yet implemented
+    tools: list[str] | None = None
+    disallowed_tools: list[str] | None = None
+    max_turns: int | None = None
+    hooks: dict | None = None
+    effort: str | None = None
+    color: str | None = None
+    background: bool = False
+    memory: str | None = None
+    permission_mode: str | None = None
+
+    # loopflow-specific
+    env: list[str] = field(default_factory=list)
+    input: dict | None = None     # JSON Schema
+    output: dict | None = None    # JSON Schema
+
+
+def _input_to_params(input_schema: dict | None) -> list[ParamSpec]:
+    """Convert a JSON Schema input definition to a list of ParamSpec.
+
+    Args:
+        input_schema: JSON Schema dict with optional 'properties' and 'required'.
+
+    Returns:
+        List of ParamSpec, empty if input_schema is None or has no properties.
+    """
+    if input_schema is None:
+        return []
+
+    properties = input_schema.get("properties")
+    if not isinstance(properties, dict):
+        return []
+
+    required: set[str] = set(input_schema.get("required", []))
+    if not isinstance(required, set):
+        required = set(required)
+
+    params: list[ParamSpec] = []
+    for name, prop in properties.items():
+        if not isinstance(prop, dict):
+            params.append(ParamSpec(str(name), required=(name in required)))
+            continue
+        has_default = "default" in prop
+        params.append(ParamSpec(
+            str(name),
+            required=(name in required) and not has_default,
+            default=prop.get("default") if has_default else None,
+        ))
+    return params
 
 
 def parse_agent(file_path: str | Path) -> AgentDef:
     """Parse an agent definition .md file.
 
-    Expected format:
+    Expected format (aligned with Claude Code subagent schema):
     ```
     ---
     name: agent-name
     description: What this agent does
-    requires:
-      env:
-        - ENV_VAR_NAME
-      skills:
-        - github:owner/repo@ref
-      params:
+    model: sonnet
+    skills:
+      - skill-name
+    mcpServers:
+      - server-name
+    tools:
+      - Read
+      - Bash
+    disallowedTools: []
+    maxTurns: 10
+    hooks: {}
+    effort: high
+    color: blue
+    background: false
+    memory: project
+    isolation: worktree
+    permissionMode: bypassPermissions
+    env:
+      - API_KEY
+    input:
+      type: object
+      properties:
+        param_name:
+          type: string
+          default: default_value
+      required:
         - param_name
-        - param_name: default_value
-      mcps:
-        - mcp_name
     output:
       type: object
       properties:
         field_name:
           type: string
+      required:
+        - field_name
     ---
     System prompt body...
     ```
@@ -105,42 +168,48 @@ def parse_agent(file_path: str | Path) -> AgentDef:
     if not description:
         raise ValueError(f"'description' is required in frontmatter of {file_path}")
 
-    # Parse requires
-    requires = None
-    requires_data = fm.get("requires", {})
-    if requires_data and isinstance(requires_data, dict):
-        raw_params: list = requires_data.get("params", [])
-        param_specs: list[ParamSpec] = []
-        for p in raw_params:
-            if isinstance(p, str):
-                param_specs.append(ParamSpec(p.strip(), required=True))
-            elif isinstance(p, dict):
-                for pname, pdefault in p.items():
-                    param_specs.append(ParamSpec(
-                        str(pname).strip(),
-                        required=False,
-                        default=pdefault,
-                    ))
-            # Skip unknown types silently
+    # Parse input schema
+    input_schema = fm.get("input")
+    if input_schema is not None and not isinstance(input_schema, dict):
+        input_schema = None
 
-        requires = AgentRequires(
-            env=requires_data.get("env", []),
-            skills=requires_data.get("skills", []),
-            params=param_specs,
-            mcps=requires_data.get("mcps", []),
-        )
-
-    # Parse output
+    # Parse output schema
     output = fm.get("output")
     if output is not None and not isinstance(output, dict):
         output = None  # output must be a JSON Schema dict
+
+    def _str_list(key: str) -> list[str]:
+        val = fm.get(key, [])
+        if isinstance(val, list):
+            return [str(v) for v in val]
+        return []
 
     return AgentDef(
         name=name,
         description=description,
         body=body,
         file_path=str(path),
-        requires=requires,
+
+        # Claude Code aligned — implemented
+        model=fm.get("model"),
+        skills=_str_list("skills"),
+        mcp_servers=_str_list("mcpServers"),
+        isolation=fm.get("isolation"),
+
+        # Claude Code aligned — parsed but not yet implemented
+        tools=_str_list("tools") if fm.get("tools") is not None else None,
+        disallowed_tools=_str_list("disallowedTools") if fm.get("disallowedTools") is not None else None,
+        max_turns=fm.get("maxTurns"),
+        hooks=fm.get("hooks"),
+        effort=fm.get("effort"),
+        color=fm.get("color"),
+        background=bool(fm.get("background", False)),
+        memory=fm.get("memory"),
+        permission_mode=fm.get("permissionMode"),
+
+        # loopflow-specific
+        env=_str_list("env"),
+        input=input_schema,
         output=output,
     )
 
