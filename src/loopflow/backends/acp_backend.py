@@ -10,7 +10,7 @@ from loopflow.backends.base import BaseBackend
 from loopflow.transports.acp import AcpTransport
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentRequires
+    from loopflow.agent import AgentDef
 
 
 class AcpBackend(BaseBackend):
@@ -75,11 +75,11 @@ class AcpBackend(BaseBackend):
             f"{[m.get('id', '?') for m in self._auth_methods]}"
         )
 
-    def _build_mcp_servers(self, requires: AgentRequires | None) -> list[dict]:
-        """Build mcpServers list from requires.mcps."""
-        if not requires or not requires.mcps:
+    def _build_mcp_servers(self, agent_def: AgentDef | None) -> list[dict]:
+        """Build mcpServers list from agent_def.mcp_servers."""
+        if not agent_def or not agent_def.mcp_servers:
             return []
-        return [{"name": m} for m in requires.mcps]
+        return [{"name": m} for m in agent_def.mcp_servers]
 
     def create_session(
         self,
@@ -87,11 +87,11 @@ class AcpBackend(BaseBackend):
         system: str | None = None,
         model: str | None = None,
         system_mode: str = "append",
-        requires: AgentRequires | None = None,
+        agent_def: AgentDef | None = None,
     ) -> tuple[str, int]:
         self._ensure_initialized()
 
-        mcp_servers = self._build_mcp_servers(requires)
+        mcp_servers = self._build_mcp_servers(agent_def)
         # Try session/new; if it fails with auth error, authenticate and retry
         try:
             r = self._transport.call("session/new", {"cwd": str(Path.cwd()), "mcpServers": mcp_servers})
@@ -121,11 +121,11 @@ class AcpBackend(BaseBackend):
         system: str | None = None,
         model: str | None = None,
         system_mode: str = "append",
-        requires: AgentRequires | None = None,
+        agent_def: AgentDef | None = None,
     ) -> int:
         self._ensure_initialized()
 
-        mcp_servers = self._build_mcp_servers(requires)
+        mcp_servers = self._build_mcp_servers(agent_def)
         try:
             self._transport.call("session/load", {
                 "sessionId": session_id,

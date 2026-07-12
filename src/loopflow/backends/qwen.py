@@ -9,7 +9,7 @@ from loopflow.backends.acp_backend import AcpBackend
 from loopflow.backends.cli_backend import CliBackend
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentRequires
+    from loopflow.agent import AgentDef
 
 
 class QwenBackend(BaseBackend):
@@ -25,7 +25,7 @@ class QwenBackend(BaseBackend):
             self._acp = None
             self._cli = _QwenCli(text_handler=text_handler, backend_name=backend_name)
 
-    def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", requires: AgentRequires | None = None) -> tuple[str, int]:
+    def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> tuple[str, int]:
         if self._acp:
             try:
                 return self._acp.create_session(user, system, model, system_mode, requires)
@@ -34,7 +34,7 @@ class QwenBackend(BaseBackend):
                 self._cli = _QwenCli(text_handler=self._th)
         return self._cli.create_session(user, system, model, system_mode, requires)
 
-    def resume_session(self, sid: str, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", requires: AgentRequires | None = None) -> int:
+    def resume_session(self, sid: str, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> int:
         if self._acp:
             try:
                 return self._acp.resume_session(sid, user, system, model, system_mode, requires)

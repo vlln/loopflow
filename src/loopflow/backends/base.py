@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentRequires
+    from loopflow.agent import AgentDef
 
 
 class BaseBackend(ABC):
@@ -24,7 +24,7 @@ class BaseBackend(ABC):
         system: str | None = None,
         model: str | None = None,
         system_mode: str = "append",
-        requires: AgentRequires | None = None,
+        agent_def: AgentDef | None = None,
     ) -> tuple[str, int]:
         """Create a new session and run the prompt.
 
@@ -33,7 +33,7 @@ class BaseBackend(ABC):
             system: Optional system prompt (agent definition body).
             model: Optional model name.
             system_mode: 'append' (default) or 'overwrite'.
-            requires: Optional agent requirements (skills, params, mcps).
+            agent_def: Optional agent definition (skills, mcp_servers, etc.).
         """
 
     @abstractmethod
@@ -44,7 +44,7 @@ class BaseBackend(ABC):
         system: str | None = None,
         model: str | None = None,
         system_mode: str = "append",
-        requires: AgentRequires | None = None,
+        agent_def: AgentDef | None = None,
     ) -> int:
         """Resume an existing session and run the prompt.
 
@@ -54,7 +54,7 @@ class BaseBackend(ABC):
             system: Optional system prompt (agent definition body).
             model: Optional model name.
             system_mode: 'append' (default) or 'overwrite'.
-            requires: Optional agent requirements (skills, params, mcps).
+            agent_def: Optional agent definition (skills, mcp_servers, etc.).
         """
 
     def close(self) -> None:
