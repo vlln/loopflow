@@ -407,14 +407,6 @@ input:
 You are a professional translator. Translate the input to {{language}}.
 """)
 
-        # Create a default agent definition
-        (agents_dir / "default.md").write_text("""---
-name: default
-description: Default agent
----
-You are a helpful assistant. Answer concisely.
-""")
-
         return loop_dir
 
     def test_agent_def_merges_body_and_prompt(self, temp_run_dir, mock_backend,
@@ -442,7 +434,7 @@ You are a helpful assistant. Answer concisely.
         assert "Hello world" in captured_prompt[0]
 
     def test_agent_def_default(self, temp_run_dir, mock_backend, loop_with_agents):
-        """agent_def defaults to 'default' when available."""
+        """Without agent_def, no agent definition is loaded."""
         from loopflow.runtime import RunContext, set_context, agent
         ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
         set_context(ctx)
@@ -461,8 +453,8 @@ You are a helpful assistant. Answer concisely.
                 agent("test")
 
         assert len(captured_prompt) == 1
-        assert "helpful assistant" in captured_prompt[0]
-        assert "test" in captured_prompt[0]
+        # Without agent_def, prompt is used as-is (no system prompt wrapper)
+        assert captured_prompt[0] == "test"
 
     def test_agent_def_without_loop_dir(self, temp_run_dir, mock_backend):
         """Without loop_dir, agent_def is ignored and works as plain prompt."""

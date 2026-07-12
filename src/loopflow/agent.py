@@ -87,6 +87,29 @@ def _input_to_params(input_schema: dict | None) -> list[ParamSpec]:
     return params
 
 
+def _merge_schemas(parent: dict | None, child: dict | None) -> dict | None:
+    """Merge two JSON Schemas (input or output). Child properties override parent."""
+    if child is None:
+        return parent
+    if parent is None:
+        return child
+    result = dict(parent)
+    result["type"] = child.get("type", parent.get("type", "object"))
+    # Merge properties
+    props = dict(parent.get("properties", {}))
+    props.update(child.get("properties", {}))
+    if props:
+        result["properties"] = props
+    # Merge required
+    req = list(parent.get("required", []))
+    for r in child.get("required", []):
+        if r not in req:
+            req.append(r)
+    if req:
+        result["required"] = req
+    return result
+
+
 def _merge_agents(parent: AgentDef, child: AgentDef) -> AgentDef:
     """Merge parent agent into child, returning a new AgentDef.
 
@@ -123,8 +146,8 @@ def _merge_agents(parent: AgentDef, child: AgentDef) -> AgentDef:
         permission_mode=child.permission_mode if child.permission_mode is not None else parent.permission_mode,
 
         env=_merge_lists(parent.env, child.env),
-        input=child.input if child.input is not None else parent.input,
-        output=child.output if child.output is not None else parent.output,
+        input=_merge_schemas(parent.input, child.input),
+        output=_merge_schemas(parent.output, child.output),
     )
 
 

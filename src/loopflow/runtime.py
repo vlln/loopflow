@@ -333,9 +333,8 @@ def agent(
     # Resolve agent definition: load body from agents/<agent_def>.md
     resolved_prompt = prompt
     ad = None
-    if _ctx.loop_dir is not None:
-        def_name = agent_def if agent_def is not None else "default"
-        agent_path = _ctx.loop_dir / "agents" / f"{def_name}.md"
+    if _ctx.loop_dir is not None and agent_def is not None:
+        agent_path = _ctx.loop_dir / "agents" / f"{agent_def}.md"
         if agent_path.is_file():
             from loopflow.agent import parse_agent, render_template, resolve_params, _input_to_params
             try:
