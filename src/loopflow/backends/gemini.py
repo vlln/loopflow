@@ -15,33 +15,34 @@ if TYPE_CHECKING:
 class GeminiBackend(BaseBackend):
     """Backend for gemini-cli. CLI mode (default), ACP when explicitly requested."""
 
-    def __init__(self, transport: str | None = None, text_handler=None, backend_name: str = "gemini"):
+    def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, backend_name: str = "gemini"):
         use_acp = transport == "acp"
         self._th = text_handler
+        self._thought_handler = thought_handler
         if use_acp:
             self._acp = AcpBackend(["gemini", "--acp"], text_handler=text_handler)
             self._cli = None
         else:
             self._acp = None
-            self._cli = _GeminiCli(text_handler=text_handler, backend_name=backend_name)
+            self._cli = _GeminiCli(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
 
     def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> tuple[str, int]:
         if self._acp:
             try:
-                return self._acp.create_session(user, system, model, system_mode, requires)
+                return self._acp.create_session(user, system, model, system_mode, agent_def)
             except Exception:
                 self._acp = None
-                self._cli = _GeminiCli(text_handler=self._th)
-        return self._cli.create_session(user, system, model, system_mode, requires)
+                self._cli = _GeminiCli(text_handler=self._th, thought_handler=self._thought_handler)
+        return self._cli.create_session(user, system, model, system_mode, agent_def)
 
     def resume_session(self, sid: str, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> int:
         if self._acp:
             try:
-                return self._acp.resume_session(sid, user, system, model, system_mode, requires)
+                return self._acp.resume_session(sid, user, system, model, system_mode, agent_def)
             except Exception:
                 self._acp = None
-                self._cli = _GeminiCli(text_handler=self._th)
-        return self._cli.resume_session(sid, user, system, model, system_mode, requires)
+                self._cli = _GeminiCli(text_handler=self._th, thought_handler=self._thought_handler)
+        return self._cli.resume_session(sid, user, system, model, system_mode, agent_def)
 
     def list_sessions(self) -> list[dict]:
         return self._acp.list_sessions() if self._acp else []

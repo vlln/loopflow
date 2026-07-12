@@ -71,7 +71,7 @@ class TestCLIRun:
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -137,7 +137,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -151,9 +151,10 @@ class TestResume:
         loops, runs = env_dirs
         _create_test_loop(loops)
 
-        # Create a completed run
+        # Create a completed run (v0.9.0+ uses lf_<pwd>/<run_id>/ structure)
         run_id = "abc12345"
-        run_dir = runs / run_id
+        lf_dir = runs / "lf_test"
+        run_dir = lf_dir / run_id
         run_dir.mkdir(parents=True)
 
         # Pre-write agent cache
@@ -169,13 +170,13 @@ class TestResume:
             "status": "done",
             "created": "2026-07-07T12:00:00Z",
             "args": {},
-            "counter": 1,
+            "counter": 0,
         }
         (run_dir / "run.json").write_text(json.dumps(run_meta))
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
@@ -193,7 +194,8 @@ class TestGraph:
         _create_test_loop(loops)
 
         run_id = "graph1234"
-        run_dir = runs / run_id
+        lf_dir = runs / "lf_test"
+        run_dir = lf_dir / run_id
         run_dir.mkdir(parents=True)
 
         # Write events.jsonl with phase events
@@ -231,7 +233,8 @@ class TestGraph:
         _create_test_loop(loops)
 
         run_id = "nograph01"
-        run_dir = runs / run_id
+        lf_dir = runs / "lf_test"
+        run_dir = lf_dir / run_id
         run_dir.mkdir(parents=True)
 
         (run_dir / "run.json").write_text(json.dumps({
@@ -255,7 +258,8 @@ class TestGraph:
         _create_test_loop(loops)
 
         run_id = "nogflag1"
-        run_dir = runs / run_id
+        lf_dir = runs / "lf_test"
+        run_dir = lf_dir / run_id
         run_dir.mkdir(parents=True)
 
         events = [
@@ -297,7 +301,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
         from loopflow.cli import main
         from loopflow.runtime import set_mock
-        set_mock("shell")
+        set_mock("bash")
 
         runner = CliRunner()
         with runner.isolated_filesystem():
