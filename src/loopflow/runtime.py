@@ -358,6 +358,10 @@ def agent(
                     if skill_section:
                         resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
 
+                # Auto-detect model from agent definition
+                if model is None and ad.model is not None:
+                    model = ad.model
+
     # Inject schema into prompt so the agent knows the expected output format
     if schema:
         import json as json_mod
