@@ -623,6 +623,104 @@ You are a professional translator. Translate the input to {{language}}.
             with pytest.raises(ValueError, match="language"):
                 agent("Hello", agent_def="translator")  # missing language=
 
+    def test_agent_def_no_skills_no_warning(self, temp_run_dir, mock_backend,
+                                             loop_with_agents):
+        """Agent without skills declared → no warning."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        captured_logs = []
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                    agent("translate to Chinese", agent_def="translator", language="Chinese")
+
+        warnings = [m for m in captured_logs if "skills not found" in m]
+        assert len(warnings) == 0  # translator has no skills declared
+
+    def test_agent_def_missing_skills_warns(self, temp_run_dir, mock_backend,
+                                             loop_with_agents):
+        """Agent with skills declared but not installed → warning."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        # Create an agent that requires a non-existent skill
+        (loop_with_agents / "agents" / "researcher.md").write_text("""---
+name: researcher
+description: Research agent
+skills:
+  - nonexistent-skill-xyz-123
+---
+Research: {{}}
+""")
+
+        captured_logs = []
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                    agent("test", agent_def="researcher")
+
+        warnings = [m for m in captured_logs if "skills not found" in m]
+        assert len(warnings) == 1
+        assert "nonexistent-skill-xyz-123" in warnings[0]
+
+    def test_agent_def_skill_found_no_warning(self, temp_run_dir, mock_backend,
+                                                loop_with_agents):
+        """Agent with skill that exists in loop_dir/.skills/ → no warning."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        # Create a skill file in the loop's .skills/ directory
+        skill_dir = loop_with_agents / ".skills" / "test-skill-unique"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: test-skill-unique\ndescription: A test skill\n---\n"
+        )
+
+        # Create an agent that requires the skill
+        (loop_with_agents / "agents" / "researcher.md").write_text("""---
+name: researcher
+description: Research agent
+skills:
+  - test-skill-unique
+---
+Research task: {{}}
+""")
+
+        captured_logs = []
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                    agent("test", agent_def="researcher")
+
+        # No warning about skills
+        warnings = [m for m in captured_logs if "skills not found" in m]
+        assert len(warnings) == 0
+
 
 # ── output schema ─────────────────────────────────────────────────────────────
 
