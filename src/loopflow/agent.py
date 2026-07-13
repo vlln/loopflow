@@ -28,6 +28,7 @@ class AgentDef:
     description: str
     body: str = ""       # entire .md file content (including frontmatter), used as system prompt
     file_path: str | None = None
+    extends: str | None = None  # name of parent agent to inherit from
 
     # Claude Code aligned — implemented
     model: str | None = None
@@ -84,6 +85,70 @@ def _input_to_params(input_schema: dict | None) -> list[ParamSpec]:
             default=prop.get("default") if has_default else None,
         ))
     return params
+
+
+def _merge_schemas(parent: dict | None, child: dict | None) -> dict | None:
+    """Merge two JSON Schemas (input or output). Child properties override parent."""
+    if child is None:
+        return parent
+    if parent is None:
+        return child
+    result = dict(parent)
+    result["type"] = child.get("type", parent.get("type", "object"))
+    # Merge properties
+    props = dict(parent.get("properties", {}))
+    props.update(child.get("properties", {}))
+    if props:
+        result["properties"] = props
+    # Merge required
+    req = list(parent.get("required", []))
+    for r in child.get("required", []):
+        if r not in req:
+            req.append(r)
+    if req:
+        result["required"] = req
+    return result
+
+
+def _merge_agents(parent: AgentDef, child: AgentDef) -> AgentDef:
+    """Merge parent agent into child, returning a new AgentDef.
+
+    Rules:
+    - body: parent body + child body (parent first)
+    - list fields (skills, env, mcp_servers): merged
+    - scalar fields: child overrides parent
+    - input/output: child overrides parent
+    - name, description, file_path: child wins
+    """
+    def _merge_lists(a: list, b: list) -> list:
+        return a + b
+
+    return AgentDef(
+        name=child.name,
+        description=child.description,
+        body=f"{parent.body}\n\n{child.body}",
+        file_path=child.file_path,
+        extends=child.extends,
+
+        model=child.model if child.model is not None else parent.model,
+        skills=_merge_lists(parent.skills, child.skills),
+        mcp_servers=_merge_lists(parent.mcp_servers, child.mcp_servers),
+        isolation=child.isolation if child.isolation is not None else parent.isolation,
+
+        tools=child.tools if child.tools is not None else parent.tools,
+        disallowed_tools=child.disallowed_tools if child.disallowed_tools is not None else parent.disallowed_tools,
+        max_turns=child.max_turns if child.max_turns is not None else parent.max_turns,
+        hooks=child.hooks if child.hooks is not None else parent.hooks,
+        effort=child.effort if child.effort is not None else parent.effort,
+        color=child.color if child.color is not None else parent.color,
+        background=child.background if child.background else parent.background,
+        memory=child.memory if child.memory is not None else parent.memory,
+        permission_mode=child.permission_mode if child.permission_mode is not None else parent.permission_mode,
+
+        env=_merge_lists(parent.env, child.env),
+        input=_merge_schemas(parent.input, child.input),
+        output=_merge_schemas(parent.output, child.output),
+    )
 
 
 def parse_agent(file_path: str | Path) -> AgentDef:
@@ -184,11 +249,12 @@ def parse_agent(file_path: str | Path) -> AgentDef:
             return [str(v) for v in val]
         return []
 
-    return AgentDef(
+    ad = AgentDef(
         name=name,
         description=description,
         body=body,
         file_path=str(path),
+        extends=fm.get("extends"),
 
         # Claude Code aligned — implemented
         model=fm.get("model"),
@@ -213,6 +279,19 @@ def parse_agent(file_path: str | Path) -> AgentDef:
         output=output,
     )
 
+    # Resolve extends: load parent agent and merge
+    if ad.extends:
+        parent_path = path.parent / f"{ad.extends}.md"
+        if not parent_path.is_file():
+            raise ValueError(
+                f"Agent '{ad.name}' extends '{ad.extends}' but "
+                f"parent agent not found at {parent_path}"
+            )
+        parent = parse_agent(parent_path)
+        ad = _merge_agents(parent, ad)
+
+    return ad
+
 
 def list_agents(agents_dir: str | Path) -> list[AgentDef]:
     """List all agent definitions in a directory.
@@ -226,6 +305,8 @@ def list_agents(agents_dir: str | Path) -> list[AgentDef]:
 
     agents: list[AgentDef] = []
     for f in sorted(directory.glob("*.md")):
+        if f.name.startswith("_"):
+            continue  # skip abstract agents
         try:
             agents.append(parse_agent(f))
         except (ValueError, FileNotFoundError):
@@ -286,7 +367,7 @@ def render_template(body: str, **kwargs: str) -> str:
             )
         return kwargs[name]
 
-    return re.sub(r"\{\{(\w+)\}\}", _replace, body)
+    return re.sub(r"\{\{\s*(\w+)\s*\}\}", _replace, body)
 
 
 def extract_json(text: str, schema: dict) -> dict | None:

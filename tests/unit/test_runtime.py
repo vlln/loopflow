@@ -107,7 +107,7 @@ class TestAgent:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "hello world"},
+                [{"type": "agent_message", "content": "hello world"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("say hello")
@@ -133,7 +133,7 @@ class TestAgent:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "cached"},
+                [{"type": "agent_message", "content": "cached"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("cache me")
@@ -146,7 +146,7 @@ class TestAgent:
         from loopflow.runtime import RunContext, set_context, agent
         # Pre-write cache
         cache_path = temp_run_dir / "0001.jsonl"
-        cache_path.write_text(json.dumps({"type": "agent_message_chunk", "content": "cached"}) + "\n"
+        cache_path.write_text(json.dumps({"type": "agent_message", "content": "cached"}) + "\n"
                             + json.dumps({"type": "agent_done", "exit_code": 0}) + "\n")
 
         ctx = RunContext(run_dir=temp_run_dir, resume=True)
@@ -164,7 +164,7 @@ class TestAgent:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "fresh"},
+                [{"type": "agent_message", "content": "fresh"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("new prompt")
@@ -181,11 +181,122 @@ class TestAgent:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "recovered"},
+                [{"type": "agent_message", "content": "recovered"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("should re-execute")
                 assert result == "recovered"
+
+    def test_agent_retries_on_transient_error(self, temp_run_dir, mock_backend):
+        """Transient errors (connection_error) get retried, succeed on retry."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        call_count = [0]
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return [
+                    {"type": "agent_done", "exit_code": 1,
+                     "stderr": "error: failed to run prompt: provider.connection_error: terminated"},
+                ]
+            return [
+                {"type": "agent_message", "content": "recovered"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                result = agent("test")
+                assert result == "recovered"
+                assert call_count[0] == 2
+
+    def test_agent_raises_after_infra_retries_exhausted(self, temp_run_dir,
+                                                         mock_backend):
+        """Transient errors on all attempts → raise AgentError after backoff."""
+        from loopflow.runtime import RunContext, set_context, agent
+        from loopflow.agent import AgentError
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        call_count = [0]
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            call_count[0] += 1
+            return [
+                {"type": "agent_done", "exit_code": 1,
+                 "stderr": "error: timeout"},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('time.sleep', return_value=None):  # skip actual sleep
+                    with pytest.raises(AgentError, match="infra retries"):
+                        agent("test")
+
+        # 1 initial + 3 retries = 4 attempts
+        assert call_count[0] == 4
+
+    def test_agent_does_not_retry_non_transient(self, temp_run_dir,
+                                                  mock_backend):
+        """Non-transient errors raise immediately without retry."""
+        from loopflow.runtime import RunContext, set_context, agent
+        from loopflow.agent import AgentError
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        call_count = [0]
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            call_count[0] += 1
+            return [
+                {"type": "agent_done", "exit_code": 1,
+                 "stderr": "error: invalid_api_key"},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with pytest.raises(AgentError, match="exit code 1"):
+                    agent("test")
+
+        assert call_count[0] == 1  # No retry
+
+    def test_agent_retry_writes_events(self, temp_run_dir, mock_backend):
+        """Infra retry writes agent_retry events to events.jsonl."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        call_count = [0]
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            call_count[0] += 1
+            if call_count[0] <= 2:
+                return [
+                    {"type": "agent_done", "exit_code": 1,
+                     "stderr": "error: connection_error"},
+                ]
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('time.sleep', return_value=None):
+                    agent("test")
+
+        events_path = temp_run_dir / "events.jsonl"
+        events = [json.loads(l) for l in
+                  events_path.read_text().strip().split("\n") if l]
+        retry_events = [e for e in events if e["type"] == "agent_retry"]
+        assert len(retry_events) == 2
+        assert retry_events[0]["reason"] == "connection_error"
+        assert retry_events[0]["delay"] == 3
+        assert retry_events[1]["reason"] == "connection_error"
+        assert retry_events[1]["delay"] == 9
 
 
 # ── parallel() ────────────────────────────────────────────────────────────
@@ -196,9 +307,9 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             return [
-                {"type": "agent_message_chunk", "content": f"result:{prompt}"},
+                {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -222,11 +333,11 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             if "fail" in prompt:
                 raise Exception("boom")
             return [
-                {"type": "agent_message_chunk", "content": f"result:{prompt}"},
+                {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -249,9 +360,9 @@ class TestPipeline:
         set_context(ctx)
 
         # Use a dict-based mock that returns content based on prompt
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             return [
-                {"type": "agent_message_chunk", "content": f"result:{prompt}"},
+                {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -277,7 +388,7 @@ class TestPipeline:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             return [
                 {"type": "agent_done", "exit_code": 1},  # fails, returns None
             ]
@@ -320,7 +431,7 @@ class TestPhaseTracking:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "ok"},
+                [{"type": "agent_message", "content": "ok"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("do something")
@@ -339,7 +450,7 @@ class TestPhaseTracking:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "ok"},
+                [{"type": "agent_message", "content": "ok"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("no phase")
@@ -357,7 +468,7 @@ class TestPhaseTracking:
         phase("First")
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "ok"},
+                [{"type": "agent_message", "content": "ok"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("task 1")
@@ -365,7 +476,7 @@ class TestPhaseTracking:
         phase("Second")
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "ok"},
+                [{"type": "agent_message", "content": "ok"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("task 2")
@@ -407,14 +518,6 @@ input:
 You are a professional translator. Translate the input to {{language}}.
 """)
 
-        # Create a default agent definition
-        (agents_dir / "default.md").write_text("""---
-name: default
-description: Default agent
----
-You are a helpful assistant. Answer concisely.
-""")
-
         return loop_dir
 
     def test_agent_def_merges_body_and_prompt(self, temp_run_dir, mock_backend,
@@ -425,10 +528,10 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk", "content": "translated"},
+                {"type": "agent_message", "content": "translated"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -442,17 +545,17 @@ You are a helpful assistant. Answer concisely.
         assert "Hello world" in captured_prompt[0]
 
     def test_agent_def_default(self, temp_run_dir, mock_backend, loop_with_agents):
-        """agent_def defaults to 'default' when available."""
+        """Without agent_def, no agent definition is loaded."""
         from loopflow.runtime import RunContext, set_context, agent
         ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
         set_context(ctx)
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk", "content": "ok"},
+                {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -461,8 +564,8 @@ You are a helpful assistant. Answer concisely.
                 agent("test")
 
         assert len(captured_prompt) == 1
-        assert "helpful assistant" in captured_prompt[0]
-        assert "test" in captured_prompt[0]
+        # Without agent_def, prompt is used as-is (no system prompt wrapper)
+        assert captured_prompt[0] == "test"
 
     def test_agent_def_without_loop_dir(self, temp_run_dir, mock_backend):
         """Without loop_dir, agent_def is ignored and works as plain prompt."""
@@ -472,10 +575,10 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk", "content": "ok"},
+                {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -495,10 +598,10 @@ You are a helpful assistant. Answer concisely.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk", "content": "ok"},
+                {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -520,6 +623,104 @@ You are a helpful assistant. Answer concisely.
             with pytest.raises(ValueError, match="language"):
                 agent("Hello", agent_def="translator")  # missing language=
 
+    def test_agent_def_no_skills_no_warning(self, temp_run_dir, mock_backend,
+                                             loop_with_agents):
+        """Agent without skills declared → no warning."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        captured_logs = []
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                    agent("translate to Chinese", agent_def="translator", language="Chinese")
+
+        warnings = [m for m in captured_logs if "skills not found" in m]
+        assert len(warnings) == 0  # translator has no skills declared
+
+    def test_agent_def_missing_skills_warns(self, temp_run_dir, mock_backend,
+                                             loop_with_agents):
+        """Agent with skills declared but not installed → warning."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        # Create an agent that requires a non-existent skill
+        (loop_with_agents / "agents" / "researcher.md").write_text("""---
+name: researcher
+description: Research agent
+skills:
+  - nonexistent-skill-xyz-123
+---
+Research: {{}}
+""")
+
+        captured_logs = []
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                    agent("test", agent_def="researcher")
+
+        warnings = [m for m in captured_logs if "skills not found" in m]
+        assert len(warnings) == 1
+        assert "nonexistent-skill-xyz-123" in warnings[0]
+
+    def test_agent_def_skill_found_no_warning(self, temp_run_dir, mock_backend,
+                                                loop_with_agents):
+        """Agent with skill that exists in loop_dir/.skills/ → no warning."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
+        set_context(ctx)
+
+        # Create a skill file in the loop's .skills/ directory
+        skill_dir = loop_with_agents / ".skills" / "test-skill-unique"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: test-skill-unique\ndescription: A test skill\n---\n"
+        )
+
+        # Create an agent that requires the skill
+        (loop_with_agents / "agents" / "researcher.md").write_text("""---
+name: researcher
+description: Research agent
+skills:
+  - test-skill-unique
+---
+Research task: {{}}
+""")
+
+        captured_logs = []
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                       agent_def=None, cache_path=None):
+            return [
+                {"type": "agent_message", "content": "ok"},
+                {"type": "agent_done", "exit_code": 0},
+            ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
+                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                    agent("test", agent_def="researcher")
+
+        # No warning about skills
+        warnings = [m for m in captured_logs if "skills not found" in m]
+        assert len(warnings) == 0
+
 
 # ── output schema ─────────────────────────────────────────────────────────────
 
@@ -535,7 +736,7 @@ class TestOutputSchema:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk",
+                [{"type": "agent_message",
                   "content": '{"verdict": "PASS", "score": 95}'},
                  {"type": "agent_done", "exit_code": 0}]
             )):
@@ -554,10 +755,10 @@ class TestOutputSchema:
         explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk", "content": '{"custom": "override"}'},
+                {"type": "agent_message", "content": '{"custom": "override"}'},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -576,10 +777,10 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk",
+                {"type": "agent_message",
                   "content": '{"verdict": "PASS", "score": 90}'},
                 {"type": "agent_done", "exit_code": 0},
             ]
@@ -604,18 +805,18 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First attempt: invalid JSON (missing closing brace)
                 return [
-                    {"type": "agent_message_chunk", "content": '{"verdict": "PASS"'},
+                    {"type": "agent_message", "content": '{"verdict": "PASS"'},
                     {"type": "agent_done", "exit_code": 0},
                 ]
             else:
                 # Second attempt: valid JSON
                 return [
-                    {"type": "agent_message_chunk",
+                    {"type": "agent_message",
                       "content": '{"verdict": "PASS", "score": 85}'},
                     {"type": "agent_done", "exit_code": 0},
                 ]
@@ -635,10 +836,10 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             call_count[0] += 1
             return [
-                {"type": "agent_message_chunk", "content": "not valid json at all"},
+                {"type": "agent_message", "content": "not valid json at all"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -658,10 +859,10 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, timeout=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
             captured_prompt.append(prompt)
             return [
-                {"type": "agent_message_chunk", "content": "plain text"},
+                {"type": "agent_message", "content": "plain text"},
                 {"type": "agent_done", "exit_code": 0},
             ]
 
@@ -786,7 +987,7 @@ class TestState:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "ok"},
+                [{"type": "agent_message", "content": "ok"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 state.attempt = 1
@@ -805,7 +1006,7 @@ class TestState:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
-                [{"type": "agent_message_chunk", "content": "ok"},
+                [{"type": "agent_message", "content": "ok"},
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 agent("test")

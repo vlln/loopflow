@@ -476,3 +476,129 @@ body""")
             f.flush()
             result = parse_agent(f.name)
             assert result.output is None
+
+class TestAgentExtends:
+    """Agent inheritance via extends field."""
+
+    def test_extends_merges_body(self):
+        """Child body is appended after parent body."""
+        import tempfile
+        from pathlib import Path
+        from loopflow.agent import parse_agent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agents_dir = Path(tmpdir)
+            (agents_dir / "_base.md").write_text("""---
+name: _base
+description: Base agent
+---
+Base conventions.
+""")
+            (agents_dir / "child.md").write_text("""---
+name: child
+description: Child agent
+extends: _base
+---
+Child specific instructions.
+""")
+            result = parse_agent(agents_dir / "child.md")
+            assert "Base conventions." in result.body
+            assert "Child specific instructions." in result.body
+            assert result.body.index("Base") < result.body.index("Child")
+
+    def test_extends_merges_skills(self):
+        """Skills from parent and child are merged."""
+        import tempfile
+        from pathlib import Path
+        from loopflow.agent import parse_agent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agents_dir = Path(tmpdir)
+            (agents_dir / "_base.md").write_text("""---
+name: _base
+description: Base
+skills:
+  - python
+---
+Base body.
+""")
+            (agents_dir / "child.md").write_text("""---
+name: child
+description: Child
+extends: _base
+skills:
+  - git
+---
+Child body.
+""")
+            result = parse_agent(agents_dir / "child.md")
+            assert result.skills == ["python", "git"]
+
+    def test_extends_child_scalar_overrides_parent(self):
+        """Child scalar fields override parent."""
+        import tempfile
+        from pathlib import Path
+        from loopflow.agent import parse_agent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agents_dir = Path(tmpdir)
+            (agents_dir / "_base.md").write_text("""---
+name: _base
+description: Base
+model: haiku
+---
+Base body.
+""")
+            (agents_dir / "child.md").write_text("""---
+name: child
+description: Child
+extends: _base
+model: sonnet
+---
+Child body.
+""")
+            result = parse_agent(agents_dir / "child.md")
+            assert result.model == "sonnet"
+
+    def test_extends_parent_not_found_raises(self):
+        """Raises ValueError if parent agent doesn't exist."""
+        import tempfile
+        from pathlib import Path
+        from loopflow.agent import parse_agent
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agents_dir = Path(tmpdir)
+            (agents_dir / "orphan.md").write_text("""---
+name: orphan
+description: Orphan agent
+extends: nonexistent
+---
+Body.
+""")
+            with pytest.raises(ValueError, match="nonexistent"):
+                parse_agent(agents_dir / "orphan.md")
+
+    def test_extends_list_agents_skips_abstract(self):
+        """list_agents skips agents with _ prefix."""
+        import tempfile
+        from pathlib import Path
+        from loopflow.agent import list_agents
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            agents_dir = Path(tmpdir)
+            (agents_dir / "_base.md").write_text("""---
+name: _base
+description: Base
+---
+Hidden.
+""")
+            (agents_dir / "real.md").write_text("""---
+name: real
+description: Real agent
+---
+Visible.
+""")
+            result = list_agents(agents_dir)
+            names = [a.name for a in result]
+            assert "real" in names
+            assert "_base" not in names

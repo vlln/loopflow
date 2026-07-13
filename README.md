@@ -12,6 +12,8 @@ pip install loopflow
 
 ### 2. 创建第一个 loop
 
+使用 `make-loop` skill（推荐）或手动创建：
+
 ```bash
 mkdir -p ~/.loopflow/loops/hello/agents
 ```
@@ -89,6 +91,8 @@ workflow.py 从头跑到尾。
 
 ## 创建 Loop
 
+推荐使用 `make-loop` skill 创建 loop，它包含了完整的结构定义和约定。手动创建时，参考以下结构。
+
 ### 目录结构
 
 ```
@@ -125,11 +129,13 @@ def run(agent, parallel, pipeline, phase, log, args, workflow, state):
 ---
 name: translator
 description: 专门负责翻译
-requires:
-  params:
-    - target_language
+input:
+  type: object
+  properties:
+    target_language:
+      type: string
 ---
-你是一个专业翻译。将输入内容翻译成 {{target_language}}。
+你是一个专业翻译。将输入内容翻译成 {{ target_language }}。
 ```
 
 引用方式：
@@ -302,6 +308,46 @@ loopflow 自动检测可用的 AI Agent 后端：
 也可以显式指定：`agent("...", backend="claude")`。
 
 没有安装任何后端时，可以用 `--mock` 模式测试——prompt 作为 shell 命令执行。
+
+---
+
+## Skills
+
+loopflow 提供 skill 来辅助 loop 开发：
+
+| Skill | 安装 | 描述 |
+|-------|------|------|
+| `make-loop` | `skit install loopflow/skills/make-loop` | 创建 loopflow workflow。包含 loop 结构定义、约定、设计原则。 |
+
+安装方式：
+
+```bash
+# 从 loopflow 项目安装
+skit install loopflow/skills/make-loop
+```
+
+---
+
+---
+
+## 开发
+
+```bash
+# 克隆并进入项目
+git clone https://github.com/vlln/loopflow.git
+cd loopflow
+
+# 激活 venv（uv 管理）
+source .venv/bin/activate
+
+# 安装 loopflow 可编辑模式
+pip install -e .
+
+# 测试：进入 loop 目录，激活 pixi 环境，运行
+cd ~/.loopflow/loops/bio-reproducer
+pixi shell
+loop run bio-reproducer --args '{"paper_doi": "10.1101/...", "language": "zh"}'
+```
 
 ---
 

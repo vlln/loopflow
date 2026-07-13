@@ -160,7 +160,7 @@ class TestResume:
         # Pre-write agent cache
         cache = run_dir / "0001.jsonl"
         cache.write_text(
-            json.dumps({"type": "agent_message_chunk", "content": "cached hello"}) + "\n" +
+            json.dumps({"type": "agent_message", "content": "cached hello"}) + "\n" +
             json.dumps({"type": "agent_done", "exit_code": 0}) + "\n"
         )
 

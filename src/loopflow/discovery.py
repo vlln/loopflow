@@ -77,6 +77,8 @@ def list_agents(loop_name: str) -> list[dict]:
 
     agents = []
     for entry in sorted(agents_dir.glob("*.md")):
+        if entry.name.startswith("_"):
+            continue  # skip abstract agents
         try:
             from loopflow.agent import parse_agent
             agent = parse_agent(entry)

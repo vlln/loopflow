@@ -18,7 +18,7 @@ class CliTransport:
     def __init__(self, backend_name: str | None = None) -> None:
         self._proc: subprocess.Popen | None = None
         self._backend_name = backend_name
-        self._timeout: float | None = None  # No default timeout; set per-call via agent(timeout=...)
+        self._timeout: float | None = None
         self._stderr_lines: list[str] = []
 
     @property

@@ -20,6 +20,34 @@ from pathlib import Path
 from typing import Any, Callable
 
 
+# ── infra retry ──────────────────────────────────────────────────────────
+
+INFRA_BACKOFF = [3, 9, 27]
+_TRANSIENT_PATTERNS: list[tuple[str, str]] = [
+    ("connection_error", "connection_error"),
+    ("terminated", "terminated"),
+    ("timeout", "timeout"),
+    ("rate_limit", "rate_limit"),
+    ("rate limited", "rate_limit"),
+    ("timed out", "timeout"),
+]
+
+
+def _is_transient_error(stderr: str) -> bool:
+    """Check if stderr contains a known transient error pattern."""
+    stderr_lower = stderr.lower()
+    return any(pattern in stderr_lower for pattern, _ in _TRANSIENT_PATTERNS)
+
+
+def _transient_reason(stderr: str) -> str:
+    """Extract the transient error reason from stderr."""
+    stderr_lower = stderr.lower()
+    for pattern, reason in _TRANSIENT_PATTERNS:
+        if pattern in stderr_lower:
+            return reason
+    return "unknown"
+
+
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _make_backend(backend: str | None = None, transport: str | None = None,
@@ -73,7 +101,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
 
 def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
-                  agent_def=None, timeout: float | None = None,
+                  agent_def=None,
                   cache_path: Path | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     # Collect real output from backend via text_handler
@@ -82,22 +110,24 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
     def text_handler(text: str) -> None:
         if text:
             output_parts.append(text)
-            _write_event({"type": "agent_message_chunk", "session": session, "content": text})
-            _append_cache(cache_path, {"type": "agent_message_chunk", "content": text})
+            _write_event({"type": "agent_message", "session": session, "content": text})
+            _append_cache(cache_path, {"type": "agent_message", "content": text})
             print(f"[agent] {text}", file=sys.stderr, flush=True)
 
     def thought_handler(text: str) -> None:
         if text:
-            _append_cache(cache_path, {"type": "agent_thought_chunk", "content": text})
-            print(f"[thinking] {text}", file=sys.stderr, flush=True)
+            _append_cache(cache_path, {"type": "agent_thought", "content": text})
 
     instance = _make_backend(backend, text_handler=text_handler, thought_handler=thought_handler, cwd=cwd)
-    if timeout is not None and hasattr(instance, '_transport'):
-        instance._transport._timeout = timeout
     try:
         _emit_log(f"Calling agent via {backend or 'auto'}...")
 
-        sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def)
+        # Pass loop-level skills directory to the backend
+        skills_dir = None
+        if _ctx.loop_dir is not None and (_ctx.loop_dir / ".skills").is_dir():
+            skills_dir = str(_ctx.loop_dir / ".skills")
+
+        sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def, skills_dir=skills_dir)
 
         text = "\n".join(output_parts) if output_parts else ""
         stderr_text = ""
@@ -106,17 +136,8 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if text:
             _emit_log(f"Agent responded: {len(text)} chars")
         return [
-            {"type": "agent_message_chunk", "content": text},
+            {"type": "agent_message", "content": text},
             {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text},
-        ]
-    except TimeoutError:
-        _emit_log(f"Agent timed out: {prompt[:80]}...")
-        stderr_text = ""
-        if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
-            stderr_text = instance._transport.stderr_text
-        return [
-            {"type": "agent_message_chunk", "content": ""},
-            {"type": "agent_done", "exit_code": 124, "stderr": stderr_text},
         ]
     except Exception as e:
         _emit_log(f"Agent backend error: {e}")
@@ -124,7 +145,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
             stderr_text = instance._transport.stderr_text
         return [
-            {"type": "agent_message_chunk", "content": ""},
+            {"type": "agent_message", "content": ""},
             {"type": "agent_done", "exit_code": 1, "stderr": stderr_text},
         ]
     finally:
@@ -135,7 +156,7 @@ def _extract_text(events: list[dict]) -> str:
     parts: list[str] = []
     for evt in events:
         t = evt.get("type")
-        if t in ("agent_message_chunk", "agent_text"):
+        if t in ("agent_message", "agent_message_chunk", "agent_text"):
             parts.append(evt["content"])
     return "\n".join(parts)
 
@@ -318,7 +339,6 @@ def agent(
     *,
     schema: dict | None = None,
     max_retries: int = 3,
-    timeout: float | None = None,
     isolation: str | None = None,
     label: str | None = None,
     backend: str | None = None,
@@ -333,9 +353,8 @@ def agent(
     # Resolve agent definition: load body from agents/<agent_def>.md
     resolved_prompt = prompt
     ad = None
-    if _ctx.loop_dir is not None:
-        def_name = agent_def if agent_def is not None else "default"
-        agent_path = _ctx.loop_dir / "agents" / f"{def_name}.md"
+    if _ctx.loop_dir is not None and agent_def is not None:
+        agent_path = _ctx.loop_dir / "agents" / f"{agent_def}.md"
         if agent_path.is_file():
             from loopflow.agent import parse_agent, render_template, resolve_params, _input_to_params
             try:
@@ -354,10 +373,20 @@ def agent(
 
                 # Inject skill descriptions into system prompt
                 if ad.skills:
-                    from loopflow.skills import build_skill_prompt
-                    skill_section = build_skill_prompt(ad.skills)
+                    from loopflow.skills import build_skill_prompt, check_skills
+                    missing = check_skills(ad.skills, _ctx.loop_dir)
+                    if missing:
+                        _emit_log(
+                            f"WARNING: skills not found: {', '.join(missing)}. "
+                            f"Install them in {_ctx.loop_dir}/.skills/"
+                        )
+                    skill_section = build_skill_prompt(ad.skills, _ctx.loop_dir)
                     if skill_section:
                         resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
+
+                # Auto-detect model from agent definition
+                if model is None and ad.model is not None:
+                    model = ad.model
 
     # Inject schema into prompt so the agent knows the expected output format
     if schema:
@@ -407,36 +436,62 @@ def agent(
             if exit_code != 0:
                 text = ""
         else:
-            if attempt > 0:
-                session = _ctx.next_session()  # New session for each retry
             # Create worktree for isolation (only on first attempt)
             cwd = None
             if isolation == "worktree" and attempt == 0:
                 cwd = _create_worktree(_ctx.run_id, _ctx._counter)
                 if cwd:
                     _emit_log(f"Worktree: {cwd}")
-            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
-            events = _run_subagent(
-                resolved_prompt + retry_hint,
-                session,
-                backend=backend,
-                model=model,
-                cwd=cwd,
-                agent_def=ad if ad else None,
-                timeout=timeout,
-                cache_path=cache_path,
-            )
-            exit_code = _extract_exit_code(events)
-            text = _extract_text(events) if exit_code == 0 else ""
 
-        # Infra failure → crash, let resume handle it (real backends only)
-        if not _mock_mode and exit_code != 0:
-            from loopflow.agent import AgentError
-            stderr = _extract_stderr(events)
-            msg = f"Agent call failed with exit code {exit_code}"
-            if stderr:
-                msg += f"\nStderr: {stderr}"
-            raise AgentError(msg)
+            # Infra retry loop: transient errors get retried with exponential backoff
+            for infra_attempt in range(len(INFRA_BACKOFF) + 1):
+                if attempt > 0 or infra_attempt > 0:
+                    session = _ctx.next_session()
+                _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
+                events = _run_subagent(
+                    resolved_prompt + retry_hint,
+                    session,
+                    backend=backend,
+                    model=model,
+                    cwd=cwd,
+                    agent_def=ad if ad else None,
+                    cache_path=cache_path,
+                )
+                exit_code = _extract_exit_code(events)
+                text = _extract_text(events) if exit_code == 0 else ""
+
+                if exit_code == 0:
+                    break  # Success
+
+                stderr = _extract_stderr(events)
+                if infra_attempt < len(INFRA_BACKOFF) and _is_transient_error(stderr):
+                    delay = INFRA_BACKOFF[infra_attempt]
+                    reason = _transient_reason(stderr)
+                    _write_event({
+                        "type": "agent_retry",
+                        "session": session,
+                        "attempt": infra_attempt + 1,
+                        "reason": reason,
+                        "delay": delay,
+                    })
+                    _emit_log(
+                        f"Agent infra error ({reason}), "
+                        f"retrying in {delay}s ({infra_attempt + 1}/{len(INFRA_BACKOFF)})..."
+                    )
+                    time.sleep(delay)
+                    continue
+
+                # Non-transient or retries exhausted → raise
+                from loopflow.agent import AgentError
+                msg = f"Agent call failed with exit code {exit_code}"
+                if stderr:
+                    msg += f"\nStderr: {stderr}"
+                if infra_attempt >= len(INFRA_BACKOFF):
+                    msg = (
+                        f"Agent call failed after {len(INFRA_BACKOFF)} infra retries: "
+                        f"{msg}"
+                    )
+                raise AgentError(msg)
 
         # Schema compliance check
         if schema:
@@ -617,7 +672,7 @@ def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> N
     try:
         done_event = {"type": "agent_done", "exit_code": exit_code}
         _append_cache(cache_path, done_event)
-        _write_event({"type": "agent_message_chunk", "content": text})
+        _write_event({"type": "agent_message", "content": text})
         _write_event(done_event)
     except OSError:
         pass
