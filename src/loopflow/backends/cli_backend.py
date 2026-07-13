@@ -53,11 +53,12 @@ class CliBackend(BaseBackend):
             sys.stdout.write(text)
             sys.stdout.flush()
 
-    def _apply_requires_to_cmd(self, cmd: list[str], agent_def: AgentDef | None) -> list[str]:
-        """Append skill flags from agent_def."""
-        if agent_def and agent_def.skills and self._skill_flag:
-            for skill in agent_def.skills:
-                cmd.extend([self._skill_flag, skill])
+    def _apply_requires_to_cmd(self, cmd: list[str], agent_def: AgentDef | None,
+                                skills_dir: str | None = None) -> list[str]:
+        """Append skill flags from agent_def. If skills_dir is provided,
+        pass it once as the skills directory for the backend to load."""
+        if skills_dir and self._skill_flag:
+            cmd.extend([self._skill_flag, skills_dir])
         return cmd
 
     def _normalize_line(self, line: str) -> str:
@@ -71,9 +72,10 @@ class CliBackend(BaseBackend):
         model: str | None = None,
         system_mode: str = "append",
         agent_def: AgentDef | None = None,
+        skills_dir: str | None = None,
     ) -> tuple[str, int]:
         cmd = self._cmd_create(user, system, model, system_mode)
-        cmd = self._apply_requires_to_cmd(cmd, agent_def)
+        cmd = self._apply_requires_to_cmd(cmd, agent_def, skills_dir)
         sid: str = ""
 
         if self._sid_on_stderr:
@@ -112,9 +114,10 @@ class CliBackend(BaseBackend):
         model: str | None = None,
         system_mode: str = "append",
         agent_def: AgentDef | None = None,
+        skills_dir: str | None = None,
     ) -> int:
         cmd = self._cmd_resume(session_id, user, system, model, system_mode)
-        cmd = self._apply_requires_to_cmd(cmd, requires)
+        cmd = self._apply_requires_to_cmd(cmd, agent_def, skills_dir)
 
         if self._sid_on_stderr:
             def _on_stdout_line(line: str) -> None:

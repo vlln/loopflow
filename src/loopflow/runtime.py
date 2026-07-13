@@ -122,7 +122,12 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
     try:
         _emit_log(f"Calling agent via {backend or 'auto'}...")
 
-        sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def)
+        # Pass loop-level skills directory to the backend
+        skills_dir = None
+        if _ctx.loop_dir is not None and (_ctx.loop_dir / ".skills").is_dir():
+            skills_dir = str(_ctx.loop_dir / ".skills")
+
+        sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def, skills_dir=skills_dir)
 
         text = "\n".join(output_parts) if output_parts else ""
         stderr_text = ""
@@ -368,8 +373,14 @@ def agent(
 
                 # Inject skill descriptions into system prompt
                 if ad.skills:
-                    from loopflow.skills import build_skill_prompt
-                    skill_section = build_skill_prompt(ad.skills)
+                    from loopflow.skills import build_skill_prompt, check_skills
+                    missing = check_skills(ad.skills, _ctx.loop_dir)
+                    if missing:
+                        _emit_log(
+                            f"WARNING: skills not found: {', '.join(missing)}. "
+                            f"Install them in {_ctx.loop_dir}/.skills/"
+                        )
+                    skill_section = build_skill_prompt(ad.skills, _ctx.loop_dir)
                     if skill_section:
                         resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
 

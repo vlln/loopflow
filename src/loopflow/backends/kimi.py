@@ -30,23 +30,23 @@ class KimiBackend(BaseBackend):
             self._acp = None
             self._cli = _KimiCli(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
 
-    def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> tuple[str, int]:
+    def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None, skills_dir: str | None = None) -> tuple[str, int]:
         if self._acp:
             try:
                 return self._acp.create_session(user, system, model, system_mode, agent_def)
             except Exception:
                 self._acp = None
                 self._cli = _KimiCli(text_handler=self._th, thought_handler=self._thought_handler)
-        return self._cli.create_session(user, system, model, system_mode, agent_def)
+        return self._cli.create_session(user, system, model, system_mode, agent_def, skills_dir)
 
-    def resume_session(self, sid: str, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> int:
+    def resume_session(self, sid: str, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None, skills_dir: str | None = None) -> int:
         if self._acp:
             try:
                 return self._acp.resume_session(sid, user, system, model, system_mode, agent_def)
             except Exception:
                 self._acp = None
                 self._cli = _KimiCli(text_handler=self._th, thought_handler=self._thought_handler)
-        return self._cli.resume_session(sid, user, system, model, system_mode, agent_def)
+        return self._cli.resume_session(sid, user, system, model, system_mode, agent_def, skills_dir)
 
     def list_sessions(self) -> list[dict]:
         return self._acp.list_sessions() if self._acp else []
@@ -88,9 +88,9 @@ class _KimiCli(CliBackend):
 
     def _flush_stdout(self) -> None:
         if self._stdout_buf:
-            text = "\n".join(self._stdout_buf)
+            text = "\n".join(self._stdout_buf).strip()
             self._stdout_buf = []
-            if self._text_handler:
+            if self._text_handler and text:
                 self._text_handler(text)
 
     # ── stderr: thinking + system messages ─────────────────────────────
@@ -112,25 +112,27 @@ class _KimiCli(CliBackend):
 
     def _flush_stderr(self) -> None:
         if self._stderr_buf:
-            text = "\n".join(self._stderr_buf)
+            text = "\n".join(self._stderr_buf).strip()
             self._stderr_buf = []
-            if self._thought_handler:
+            if self._thought_handler and text:
                 self._thought_handler(text)
 
     # ── session lifecycle ──────────────────────────────────────────────
 
     def create_session(self, user: str, system: str | None = None,
                        model: str | None = None, system_mode: str = "append",
-                       agent_def: AgentDef | None = None) -> tuple[str, int]:
-        sid, ec = super().create_session(user, system, model, system_mode, agent_def)
+                       agent_def: AgentDef | None = None,
+                       skills_dir: str | None = None) -> tuple[str, int]:
+        sid, ec = super().create_session(user, system, model, system_mode, agent_def, skills_dir)
         self._flush_stdout()
         self._flush_stderr()
         return sid, ec
 
     def resume_session(self, sid: str, user: str, system: str | None = None,
                        model: str | None = None, system_mode: str = "append",
-                       agent_def: AgentDef | None = None) -> int:
-        ec = super().resume_session(sid, user, system, model, system_mode, agent_def)
+                       agent_def: AgentDef | None = None,
+                       skills_dir: str | None = None) -> int:
+        ec = super().resume_session(sid, user, system, model, system_mode, agent_def, skills_dir)
         self._flush_stdout()
         self._flush_stderr()
         return ec
