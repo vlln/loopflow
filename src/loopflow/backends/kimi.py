@@ -59,8 +59,83 @@ class KimiBackend(BaseBackend):
 
 
 class _KimiCli(CliBackend):
+    """Kimi CLI backend with message-level buffering.
+
+    Both stdout (text) and stderr (thinking) use • prefix as
+    message delimiter. Lines are buffered until the next • or
+    end-of-stream, then flushed as complete messages.
+    """
+
     _sid_on_stderr = True
     _skill_flag = "--skills-dir"
+
+    def __init__(self, text_handler=None, thought_handler=None, backend_name: str = "kimi"):
+        super().__init__(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
+        self._stdout_buf: list[str] = []
+        self._stderr_buf: list[str] = []
+
+    # ── stdout: text messages ──────────────────────────────────────────
+
+    def _normalize_line(self, line: str) -> str:
+        """Buffer stdout lines by • delimiter. Returns empty string
+        — complete messages are flushed directly to text_handler."""
+        if line.startswith("• "):
+            self._flush_stdout()
+            self._stdout_buf = [line[2:]]  # strip "• "
+        else:
+            self._stdout_buf.append(line)
+        return ""
+
+    def _flush_stdout(self) -> None:
+        if self._stdout_buf:
+            text = "\n".join(self._stdout_buf)
+            self._stdout_buf = []
+            if self._text_handler:
+                self._text_handler(text)
+
+    # ── stderr: thinking + system messages ─────────────────────────────
+
+    def _on_stderr_line(self, line: str) -> None:
+        if line.startswith("•"):
+            self._flush_stderr()
+            # Strip bullet prefix (with or without trailing space)
+            prefix_len = 2 if line.startswith("• ") else 1
+            self._stderr_buf = [line[prefix_len:]]
+        elif "To resume this session:" in line:
+            return
+        elif self._stderr_buf:
+            self._stderr_buf.append(line)
+        elif self._thought_handler:
+            self._thought_handler(line)
+        else:
+            print(line, file=sys.stderr, flush=True)
+
+    def _flush_stderr(self) -> None:
+        if self._stderr_buf:
+            text = "\n".join(self._stderr_buf)
+            self._stderr_buf = []
+            if self._thought_handler:
+                self._thought_handler(text)
+
+    # ── session lifecycle ──────────────────────────────────────────────
+
+    def create_session(self, user: str, system: str | None = None,
+                       model: str | None = None, system_mode: str = "append",
+                       agent_def: AgentDef | None = None) -> tuple[str, int]:
+        sid, ec = super().create_session(user, system, model, system_mode, agent_def)
+        self._flush_stdout()
+        self._flush_stderr()
+        return sid, ec
+
+    def resume_session(self, sid: str, user: str, system: str | None = None,
+                       model: str | None = None, system_mode: str = "append",
+                       agent_def: AgentDef | None = None) -> int:
+        ec = super().resume_session(sid, user, system, model, system_mode, agent_def)
+        self._flush_stdout()
+        self._flush_stderr()
+        return ec
+
+    # ── commands ───────────────────────────────────────────────────────
 
     def _cmd_create(self, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]:
         prompt = f"System: {system}\n\nTask: {user}" if system else user
@@ -76,20 +151,6 @@ class _KimiCli(CliBackend):
             cmd.extend(["-m", model])
         return cmd
 
-    def _normalize_line(self, line: str) -> str:
-        """Strip kimi's hardcoded bullet prefix."""
-        if line.startswith("• "):
-            return line[2:]
-        return line
-
     def _parse_line(self, line: str) -> tuple[str | None, str | None]:
         m = _SESSION_ID_RE.search(line)
         return (None, m.group(1) if m else None)
-
-    def _on_stderr_line(self, line: str) -> None:
-        if line.startswith("\u2022") or "To resume this session:" in line:
-            return
-        if self._thought_handler:
-            self._thought_handler(line)
-        else:
-            print(line, file=sys.stderr, flush=True)
