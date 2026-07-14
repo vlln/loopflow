@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | v0.15.0 候选：goal mode agent 反馈循环, 195/195 pass |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | Agent 层重构: ADR 0028 accepted, AC 0003 active, Spec v10 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

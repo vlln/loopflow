@@ -3,7 +3,7 @@ title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、运行实例管理、崩溃恢复。CLI 工具，无 API，无 UI。
 type: spec
 status: active
-version: 9
+version: 10
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -40,6 +40,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 |------|-----------|---------|---------|
 | CLI | loop run / resume / status / list / stop 命令解析和路由 | `src/loopflow/cli.py` | P0 |
 | Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/log/args/workflow 运行时 API，支持 goal 反馈循环 | `src/loopflow/runtime.py` | P0 |
+| Agent | Agent = Backend + Capabilities：能力声明（skills/schema/goal/model）的 marshalling，遵循"尽力而为"原则（backend 原生支持优先，否则框架降级） | `src/loopflow/agent.py` | P0 |
 | Backend Layer | 适配 8 种 AI Agent 后端，默认 CLI 传输，输出归一化为 ACP 兼容事件 | `src/loopflow/backends/` | P0 |
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
