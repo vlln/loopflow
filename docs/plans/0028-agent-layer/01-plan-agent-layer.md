@@ -2,7 +2,7 @@
 title: 01-plan-agent-layer
 description: 实现 Agent 类，将能力 marshalling 从 runtime.py 抽取到 agent.py，Agent = Backend + Capabilities
 type: plan
-status: pending
+status: done
 created: 2026-07-13T00:00:00Z
 ---
 
