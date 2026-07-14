@@ -20,34 +20,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-# ── infra retry ──────────────────────────────────────────────────────────
-
-INFRA_BACKOFF = [3, 9, 27]
-_TRANSIENT_PATTERNS: list[tuple[str, str]] = [
-    ("connection_error", "connection_error"),
-    ("terminated", "terminated"),
-    ("timeout", "timeout"),
-    ("rate_limit", "rate_limit"),
-    ("rate limited", "rate_limit"),
-    ("timed out", "timeout"),
-]
-
-
-def _is_transient_error(stderr: str) -> bool:
-    """Check if stderr contains a known transient error pattern."""
-    stderr_lower = stderr.lower()
-    return any(pattern in stderr_lower for pattern, _ in _TRANSIENT_PATTERNS)
-
-
-def _transient_reason(stderr: str) -> str:
-    """Extract the transient error reason from stderr."""
-    stderr_lower = stderr.lower()
-    for pattern, reason in _TRANSIENT_PATTERNS:
-        if pattern in stderr_lower:
-            return reason
-    return "unknown"
-
-
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _make_backend(backend: str | None = None, transport: str | None = None,
@@ -353,81 +325,6 @@ def _run_mock_auto(schema: dict | None) -> tuple[str, int]:
     return json.dumps(_generate(schema)), 0
 
 
-def _call_agent_once(
-    resolved_prompt: str,
-    session: str,
-    schema: dict | None,
-    backend: str | None,
-    model: str | None,
-    isolation: str | None,
-    ad,
-    cache_path: Path,
-    retry_hint: str,
-    max_retries: int,
-    resume_session_id: str | None = None,
-) -> tuple[dict | str, str | None]:
-    """Run a single agent call (create or resume) and return (result, backend_session_id).
-
-    Returns parsed dict if schema is set, raw text otherwise.
-    Raises AgentError on failure.
-    """
-    t0 = time.time()
-    backend_sid: str | None = None
-
-    if _mock_mode == "auto":
-        _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
-        text, exit_code = _run_mock_auto(schema)
-    elif _mock_mode == "bash":
-        _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
-        text, exit_code = _run_mock(resolved_prompt + retry_hint)
-        if exit_code != 0:
-            text = ""
-    else:
-        cwd = None
-        if isolation == "worktree":
-            cwd = _create_worktree(_ctx.run_id, _ctx._counter)
-            if cwd:
-                _emit_log(f"Worktree: {cwd}")
-
-        events = _run_subagent(
-            resolved_prompt + retry_hint,
-            session,
-            backend=backend,
-            model=model,
-            cwd=cwd,
-            agent_def=ad if ad else None,
-            cache_path=cache_path,
-            resume_session_id=resume_session_id,
-        )
-        exit_code = _extract_exit_code(events)
-        text = _extract_text(events) if exit_code == 0 else ""
-        backend_sid = _extract_session_id(events)
-
-        if exit_code != 0:
-            stderr = _extract_stderr(events)
-            from loopflow.agent import AgentError
-            msg = f"Agent call failed with exit code {exit_code}"
-            if stderr:
-                msg += f"\nStderr: {stderr}"
-            raise AgentError(msg)
-
-    if schema:
-        try:
-            return json.loads(text), backend_sid
-        except json.JSONDecodeError:
-            from loopflow.agent import extract_json
-            extracted = extract_json(text, schema)
-            if extracted is not None:
-                return extracted, backend_sid
-            from loopflow.agent import AgentError
-            raise AgentError(
-                f"Agent failed to return valid JSON after "
-                f"{max_retries} retries"
-            )
-
-    return text, backend_sid
-
-
 # ── public API ───────────────────────────────────────────────────────────
 
 def agent(
@@ -444,11 +341,9 @@ def agent(
     goal_max_iterations: int = 10,
     **kwargs: str,
 ) -> Any:
-    from loopflow.agent import Agent, parse_agent
-
-    session = _ctx.next_session()
-    seq = _ctx._counter
-    cache_path = _ctx.run_dir / f"{seq:04d}.jsonl"
+    """Run an agent call. Thin facade over AgentRunner."""
+    from loopflow.agent import parse_agent
+    from loopflow.runner import AgentRunner
 
     # Load agent definition
     ad = None
@@ -460,180 +355,44 @@ def agent(
             except (ValueError, FileNotFoundError):
                 ad = None
 
-    # Agent layer: marshal capabilities
-    # Create a temporary backend instance for capability queries
-    backend_instance = _make_backend(backend) if not _mock_mode else None
+    # Create backend once — AgentRunner owns it
+    backend_instance = None if _mock_mode else _make_backend(backend)
     try:
-        agent_obj = Agent(ad)
-        resolved_prompt, detected_schema, native_goal = agent_obj.marshal(
-            prompt, goal, backend_instance, **kwargs,
+        # Build invoke closure that calls _run_subagent
+        def _invoke(prompt_str, session_name, **kw):
+            return _run_subagent(
+                prompt_str, session_name, backend=backend,
+                model=kw.get("model"), cwd=kw.get("cwd"),
+                agent_def=kw.get("agent_def"),
+                cache_path=kw.get("cache_path"),
+                resume_session_id=kw.get("resume_session_id"),
+            )
+
+        runner = AgentRunner(
+            ad, backend_instance, _ctx,
+            invoke_fn=_invoke,
+            log_fn=_emit_log,
+            write_event_fn=_write_event,
+            write_cache_fn=_write_cache,
+            persist_state_fn=_persist_state,
+            create_worktree_fn=_create_worktree,
+            mock_mode=_mock_mode,
+            mock_fn=_run_mock,
+            mock_auto_fn=_run_mock_auto,
+        )
+        return runner.run(
+            prompt,
+            goal=goal,
+            model=model,
+            schema=schema,
+            isolation=isolation,
+            max_retries=max_retries,
+            goal_max_iterations=goal_max_iterations,
+            **kwargs,
         )
     finally:
         if backend_instance:
             backend_instance.close()
-
-    # Schema: agent output > explicit parameter
-    if schema is None and detected_schema is not None:
-        schema = detected_schema
-
-    # Model: agent definition > explicit parameter
-    if model is None and ad is not None and ad.model is not None:
-        model = ad.model
-
-    # Skills: check and inject
-    if ad is not None and ad.skills:
-        from loopflow.skills import build_skill_prompt, check_skills
-        missing = check_skills(ad.skills, _ctx.loop_dir)
-        if missing:
-            skills_dir_hint = f"{_ctx.loop_dir}/.skills/" if _ctx.loop_dir else "~/.loopflow/skills/ or ~/.agents/skills/"
-            raise RuntimeError(
-                f"Skills not found: {', '.join(missing)}. "
-                f"Install them to {skills_dir_hint}"
-            )
-        skill_section = build_skill_prompt(ad.skills, _ctx.loop_dir)
-        if skill_section:
-            resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
-
-    # Schema hint injection (unless native goal handles it)
-    if schema and not native_goal:
-        import json as json_mod
-        schema_hint = (
-            f"\n\n---\n"
-            f"Output format — you MUST respond with a single JSON object "
-            f"matching this schema:\n{json_mod.dumps(schema, indent=2)}\n\n"
-            f"Do NOT wrap the JSON in markdown code blocks. "
-            f"Return ONLY the JSON object."
-        )
-        resolved_prompt = resolved_prompt + schema_hint
-
-    # Goal mode: loopflow goal loop (native goal already handled in marshal)
-    if goal and not native_goal:
-        goal_schema = agent_obj.add_goal_to_schema(schema)
-
-        def _goal_call(p: str, s: str, rid: str | None) -> tuple[Any, str | None]:
-            return _call_agent_once(
-                p, s, goal_schema, backend, model, isolation, ad,
-                cache_path, "", max_retries, rid,
-            )
-        return agent_obj.run_goal_loop(
-            resolved_prompt, schema, goal, goal_max_iterations,
-            _goal_call, _emit_log,
-        )
-
-    # Normal single call (or native goal)
-    retry_hint = ""
-    for attempt in range(max_retries + 1):
-        if attempt > 0:
-            _emit_log(f"JSON parse failed, retrying ({attempt}/{max_retries})...")
-            retry_hint = (
-                f"\n\n---\n"
-                f"Your previous response was not valid JSON. "
-                f"Please respond with ONLY a JSON object matching the schema above."
-            )
-
-        # Resume: skip if already completed (first attempt only)
-        if _ctx.resume and attempt == 0:
-            cached = _ctx.try_resume()
-            if cached is not None:
-                if schema:
-                    try:
-                        return json.loads(cached)
-                    except json.JSONDecodeError:
-                        pass
-                else:
-                    return cached
-
-        t0 = time.time()
-
-        if _mock_mode == "auto":
-            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
-            text, exit_code = _run_mock_auto(schema)
-        elif _mock_mode == "bash":
-            _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
-            text, exit_code = _run_mock(resolved_prompt + retry_hint)
-            if exit_code != 0:
-                text = ""
-        else:
-            cwd = None
-            if isolation == "worktree" and attempt == 0:
-                cwd = _create_worktree(_ctx.run_id, _ctx._counter)
-                if cwd:
-                    _emit_log(f"Worktree: {cwd}")
-
-            for infra_attempt in range(len(INFRA_BACKOFF) + 1):
-                if attempt > 0 or infra_attempt > 0:
-                    session = _ctx.next_session()
-                _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
-                events = _run_subagent(
-                    resolved_prompt + retry_hint,
-                    session,
-                    backend=backend,
-                    model=model,
-                    cwd=cwd,
-                    agent_def=ad if ad else None,
-                    cache_path=cache_path,
-                )
-                exit_code = _extract_exit_code(events)
-                text = _extract_text(events) if exit_code == 0 else ""
-
-                if exit_code == 0:
-                    break
-
-                stderr = _extract_stderr(events)
-                if infra_attempt < len(INFRA_BACKOFF) and _is_transient_error(stderr):
-                    delay = INFRA_BACKOFF[infra_attempt]
-                    reason = _transient_reason(stderr)
-                    _write_event({
-                        "type": "agent_retry",
-                        "session": session,
-                        "attempt": infra_attempt + 1,
-                        "reason": reason,
-                        "delay": delay,
-                    })
-                    _emit_log(
-                        f"Agent infra error ({reason}), "
-                        f"retrying in {delay}s ({infra_attempt + 1}/{len(INFRA_BACKOFF)})..."
-                    )
-                    time.sleep(delay)
-                    continue
-
-                from loopflow.agent import AgentError
-                msg = f"Agent call failed with exit code {exit_code}"
-                if stderr:
-                    msg += f"\nStderr: {stderr}"
-                if infra_attempt >= len(INFRA_BACKOFF):
-                    msg = (
-                        f"Agent call failed after {len(INFRA_BACKOFF)} infra retries: "
-                        f"{msg}"
-                    )
-                raise AgentError(msg)
-
-        # Schema compliance check
-        if schema:
-            try:
-                result = json.loads(text)
-                _write_cache(cache_path, session, exit_code, text)
-                _persist_state()
-                return result
-            except json.JSONDecodeError:
-                from loopflow.agent import extract_json
-                extracted = extract_json(text, schema)
-                if extracted is not None:
-                    _write_cache(cache_path, session, exit_code, text)
-                    _persist_state()
-                    return extracted
-                if attempt >= max_retries:
-                    from loopflow.agent import AgentError
-                    raise AgentError(
-                        f"Agent failed to return valid JSON after "
-                        f"{max_retries} retries"
-                    )
-                continue
-
-        # No schema → return text
-        _write_cache(cache_path, session, exit_code, text)
-        _persist_state()
-        return text
 
 
 def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:

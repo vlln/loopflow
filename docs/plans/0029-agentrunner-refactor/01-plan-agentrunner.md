@@ -2,7 +2,7 @@
 title: Plan 01 — AgentRunner 重构实施
 description: 将 Agent 类重构为 AgentRunner + 模块级函数，消除 backend 双重创建和两条执行路径重复
 type: plan
-status: pending
+status: done
 created: 2026-07-14T00:00:00Z
 ---
 

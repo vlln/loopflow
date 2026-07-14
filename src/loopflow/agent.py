@@ -1,4 +1,4 @@
-"""Agent definition parser and runtime — Agent = Backend + Capabilities."""
+"""Agent definition, marshalling, and goal loop — domain layer."""
 
 from __future__ import annotations
 
@@ -432,217 +432,205 @@ def validate_json(obj: dict, schema: dict) -> bool:
         return False
 
 
-# ── Agent class ────────────────────────────────────────────────────────────
+# ── Marshalling: domain service ──────────────────────────────────────────────
 
-# Callable type: (prompt, session, resume_session_id) -> (result, backend_session_id)
-CallFn = Callable[[str, str, str | None], tuple[dict | str, str | None]]
+def marshal(
+    ad: AgentDef | None,
+    prompt: str,
+    goal: str | None = None,
+    backend: Any = None,
+    **params: str,
+) -> tuple[str, dict | None, bool]:
+    """Assemble the final prompt from agent capabilities.
 
+    Follows "best effort" principle: use backend native support when
+    available, otherwise fall back to text injection or framework loops.
 
-class Agent:
-    """Agent = Backend + Capabilities.
+    Args:
+        ad: Agent definition (or None for raw prompt).
+        prompt: The user task prompt.
+        goal: Optional goal for feedback loop.
+        backend: Backend instance for capability queries.
+        **params: Template parameters for body rendering.
 
-    Encapsulates marshalling of agent capabilities (skills, schema, goal,
-    model) into backend calls. Follows "best effort" principle: use backend
-    native support when available, otherwise fall back to text injection
-    or framework-level loops.
+    Returns:
+        (resolved_prompt, schema, use_native_goal)
     """
+    resolved = prompt
+    schema = None
 
-    def __init__(self, ad: AgentDef | None = None):
-        self.ad = ad
+    # 3. Goal — query backend capability (independent of ad)
+    native_goal = (
+        goal
+        and backend is not None
+        and getattr(backend, 'supports_native_goal', False)
+    )
+    if native_goal:
+        resolved = f"/goal {goal}\n\n{resolved}"
 
-    # ── public API ──────────────────────────────────────────────────────
-
-    def marshal(
-        self,
-        prompt: str,
-        goal: str | None = None,
-        backend: Any = None,
-        **params: str,
-    ) -> tuple[str, dict | None, bool]:
-        """Assemble the final prompt from capabilities.
-
-        Args:
-            prompt: The user task prompt.
-            goal: Optional goal for feedback loop.
-            backend: Backend instance (for capability queries). None if unknown.
-            **params: Template parameters for body rendering.
-
-        Returns:
-            (resolved_prompt, schema, use_native_goal)
-        """
-        resolved = prompt
-        schema = None
-
-        if self.ad is None:
-            return resolved, schema, False
-
-        # 1. Body + template rendering
-        body = render_template(self.ad.body, **resolve_params(_input_to_params(self.ad.input), **params))
-        if body:
-            resolved = f"{body}\n\n---\n\nTask: {prompt}"
-
-        # 2. Schema
-        schema = self.ad.output
-
-        # 3. Goal — query backend capability
-        native_goal = (
-            goal
-            and backend is not None
-            and getattr(backend, 'supports_native_goal', False)
-        )
-        if native_goal:
-            resolved = f"/goal {goal}\n\n{resolved}"
-
+    if ad is None:
         return resolved, schema, native_goal
 
-    def build_goal_steering(self, goal: str, iteration: int,
-                            max_iterations: int) -> str:
-        """Generate steering prompt for goal mode."""
-        if iteration == 1:
-            return (
-                f"<goal-steering>\n"
-                f"You are working toward a goal. Continue working until the "
-                f"goal is fully accomplished.\n\n"
-                f"## Goal\n{goal}\n\n"
-                f"## Completion Audit\n"
-                f"Before declaring complete, verify:\n"
-                f"1. Each requirement in the goal is met\n"
-                f"2. Verification is based on evidence (files, command "
-                f"output, test results)\n"
-                f"3. \"I made a plan\" or \"I wrote a summary\" is NOT "
-                f"completion\n\n"
-                f"## Blocked Audit\n"
-                f"Before declaring blocked:\n"
-                f"1. The same blocking condition must persist for 3 "
-                f"consecutive attempts\n"
-                f"2. \"Difficult\", \"slow\", or \"not fully done\" is NOT "
-                f"a blocker\n"
-                f"3. Only truly insurmountable obstacles qualify (missing "
-                f"credentials, external service down, etc.)\n\n"
-                f"Signal your status in the __goal field of your response.\n"
-                f"</goal-steering>"
-            )
-        else:
-            return (
-                f"<goal-steering>\n"
-                f"Continue working toward the goal. "
-                f"Iteration {iteration}/{max_iterations}.\n\n"
-                f"## Goal\n{goal}\n\n"
-                f"Same completion and blocked audit rules apply. "
-                f"Continue from where you left off.\n"
-                f"</goal-steering>"
-            )
+    # 1. Body + template rendering
+    body = render_template(ad.body, **resolve_params(_input_to_params(ad.input), **params))
+    if body:
+        resolved = f"{body}\n\n---\n\nTask: {prompt}"
 
-    def add_goal_to_schema(self, schema: dict | None) -> dict:
-        """Wrap business schema with __goal framework schema."""
-        goal_prop = {
-            "__goal": {
-                "type": "object",
-                "properties": {
-                    "status": {
-                        "type": "string",
-                        "enum": ["active", "complete", "blocked"],
-                    },
-                    "reason": {"type": "string"},
-                },
-                "required": ["status"],
-            }
-        }
-        if schema is None:
-            return {
-                "type": "object",
-                "properties": {**goal_prop},
-                "required": ["__goal"],
-            }
-        if "__goal" in (schema.get("properties") or {}):
-            import warnings
-            warnings.warn(
-                "Business schema contains '__goal' field which is reserved "
-                "for goal mode. Framework will override it."
-            )
-        return {
-            **schema,
-            "properties": {
-                **(schema.get("properties") or {}),
-                **goal_prop,
-            },
-            "required": (schema.get("required") or []) + ["__goal"],
-        }
+    # 2. Schema
+    schema = ad.output
 
-    def run_goal_loop(
-        self,
-        resolved_prompt: str,
-        schema: dict | None,
-        goal: str,
-        goal_max_iterations: int,
-        call_fn: CallFn,
-        emit_log: Callable[[str], None] | None = None,
-    ) -> Any:
-        """Run goal loop: iterate until complete or blocked.
+    return resolved, schema, native_goal
 
-        call_fn(prompt, session, resume_session_id) -> (result, backend_sid)
-        """
-        goal_schema = self.add_goal_to_schema(schema)
 
-        session = "goal_1"
-        resume_session_id: str | None = None
-        blocked_reason: str | None = None
-        blocked_count = 0
-
-        def _log(msg: str) -> None:
-            if emit_log:
-                emit_log(msg)
-
-        for iteration in range(1, goal_max_iterations + 1):
-            steering = self.build_goal_steering(goal, iteration,
-                                                goal_max_iterations)
-            full_prompt = f"{steering}\n\n{resolved_prompt}"
-
-            # Inject goal schema
-            schema_hint = (
-                f"\n\n---\nOutput format — you MUST respond with a single "
-                f"JSON object matching this schema:\n"
-                f"{json_mod.dumps(goal_schema, indent=2)}\n\n"
-                f"Do NOT wrap the JSON in markdown code blocks. "
-                f"Return ONLY the JSON object."
-            )
-
-            try:
-                result, backend_sid = call_fn(
-                    full_prompt + schema_hint, session, resume_session_id,
-                )
-            except Exception as e:
-                msg = str(e)
-                if "valid JSON" not in msg:
-                    raise
-                _log(f"Goal iter {iteration}: JSON parse error, retrying...")
-                continue
-
-            # Extract goal state
-            goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
-            status = goal_state.get("status", "active")
-
-            if status == "complete":
-                return result
-
-            if status == "blocked":
-                reason = goal_state.get("reason") or "unknown"
-                if reason == blocked_reason:
-                    blocked_count += 1
-                else:
-                    blocked_reason = reason
-                    blocked_count = 1
-                _log(f"Goal blocked ({blocked_count}/3): {reason}")
-                if blocked_count >= 3:
-                    raise GoalBlocked(
-                        f"Goal blocked after {iteration} iterations: "
-                        f"{reason} (3 consecutive identical reasons)"
-                    )
-
-            # Setup for next iteration
-            resume_session_id = backend_sid
-            session = f"goal_{iteration + 1}"
-
-        raise GoalBlocked(
-            f"Goal not completed after {goal_max_iterations} iterations"
+def build_goal_steering(goal: str, iteration: int,
+                        max_iterations: int) -> str:
+    """Generate steering prompt for goal mode."""
+    if iteration == 1:
+        return (
+            f"<goal-steering>\n"
+            f"You are working toward a goal. Continue working until the "
+            f"goal is fully accomplished.\n\n"
+            f"## Goal\n{goal}\n\n"
+            f"## Completion Audit\n"
+            f"Before declaring complete, verify:\n"
+            f"1. Each requirement in the goal is met\n"
+            f"2. Verification is based on evidence (files, command "
+            f"output, test results)\n"
+            f"3. \"I made a plan\" or \"I wrote a summary\" is NOT "
+            f"completion\n\n"
+            f"## Blocked Audit\n"
+            f"Before declaring blocked:\n"
+            f"1. The same blocking condition must persist for 3 "
+            f"consecutive attempts\n"
+            f"2. \"Difficult\", \"slow\", or \"not fully done\" is NOT "
+            f"a blocker\n"
+            f"3. Only truly insurmountable obstacles qualify (missing "
+            f"credentials, external service down, etc.)\n\n"
+            f"Signal your status in the __goal field of your response.\n"
+            f"</goal-steering>"
         )
+    else:
+        return (
+            f"<goal-steering>\n"
+            f"Continue working toward the goal. "
+            f"Iteration {iteration}/{max_iterations}.\n\n"
+            f"## Goal\n{goal}\n\n"
+            f"Same completion and blocked audit rules apply. "
+            f"Continue from where you left off.\n"
+            f"</goal-steering>"
+        )
+
+
+def add_goal_to_schema(schema: dict | None) -> dict:
+    """Wrap business schema with __goal framework schema."""
+    goal_prop = {
+        "__goal": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "complete", "blocked"],
+                },
+                "reason": {"type": "string"},
+            },
+            "required": ["status"],
+        }
+    }
+    if schema is None:
+        return {
+            "type": "object",
+            "properties": {**goal_prop},
+            "required": ["__goal"],
+        }
+    if "__goal" in (schema.get("properties") or {}):
+        import warnings
+        warnings.warn(
+            "Business schema contains '__goal' field which is reserved "
+            "for goal mode. Framework will override it."
+        )
+    return {
+        **schema,
+        "properties": {
+            **(schema.get("properties") or {}),
+            **goal_prop,
+        },
+        "required": (schema.get("required") or []) + ["__goal"],
+    }
+
+
+def run_goal_loop(
+    resolved_prompt: str,
+    schema: dict | None,
+    goal: str,
+    goal_max_iterations: int,
+    call_fn: Callable,
+    emit_log: Callable[[str], None] | None = None,
+) -> Any:
+    """Run goal loop: iterate until complete or blocked.
+
+    call_fn(prompt, session, resume_session_id) -> (result, backend_sid)
+    """
+    goal_schema = add_goal_to_schema(schema)
+
+    session = "goal_1"
+    resume_session_id: str | None = None
+    blocked_reason: str | None = None
+    blocked_count = 0
+
+    def _log(msg: str) -> None:
+        if emit_log:
+            emit_log(msg)
+
+    for iteration in range(1, goal_max_iterations + 1):
+        steering = build_goal_steering(goal, iteration,
+                                        goal_max_iterations)
+        full_prompt = f"{steering}\n\n{resolved_prompt}"
+
+        # Inject goal schema
+        schema_hint = (
+            f"\n\n---\nOutput format — you MUST respond with a single "
+            f"JSON object matching this schema:\n"
+            f"{json_mod.dumps(goal_schema, indent=2)}\n\n"
+            f"Do NOT wrap the JSON in markdown code blocks. "
+            f"Return ONLY the JSON object."
+        )
+
+        try:
+            result, backend_sid = call_fn(
+                full_prompt + schema_hint, session, resume_session_id,
+            )
+        except Exception as e:
+            msg = str(e)
+            if "valid JSON" not in msg:
+                raise
+            _log(f"Goal iter {iteration}: JSON parse error, retrying...")
+            continue
+
+        # Extract goal state
+        goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
+        status = goal_state.get("status", "active")
+
+        if status == "complete":
+            return result
+
+        if status == "blocked":
+            reason = goal_state.get("reason") or "unknown"
+            if reason == blocked_reason:
+                blocked_count += 1
+            else:
+                blocked_reason = reason
+                blocked_count = 1
+            _log(f"Goal blocked ({blocked_count}/3): {reason}")
+            if blocked_count >= 3:
+                raise GoalBlocked(
+                    f"Goal blocked after {iteration} iterations: "
+                    f"{reason} (3 consecutive identical reasons)"
+                )
+
+        # Setup for next iteration
+        resume_session_id = backend_sid
+        session = f"goal_{iteration + 1}"
+
+    raise GoalBlocked(
+        f"Goal not completed after {goal_max_iterations} iterations"
+    )

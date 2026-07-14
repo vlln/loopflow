@@ -196,7 +196,7 @@ class TestAgent:
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return [
@@ -224,7 +224,7 @@ class TestAgent:
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             return [
                 {"type": "agent_done", "exit_code": 1,
@@ -250,7 +250,7 @@ class TestAgent:
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             return [
                 {"type": "agent_done", "exit_code": 1,
@@ -272,7 +272,7 @@ class TestAgent:
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             if call_count[0] <= 2:
                 return [
@@ -308,7 +308,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -334,7 +334,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             if "fail" in prompt:
                 raise Exception("boom")
             return [
@@ -361,7 +361,7 @@ class TestPipeline:
         set_context(ctx)
 
         # Use a dict-based mock that returns content based on prompt
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -389,7 +389,7 @@ class TestPipeline:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_done", "exit_code": 1},  # fails, returns None
             ]
@@ -529,7 +529,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "translated"},
@@ -553,7 +553,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "ok"},
@@ -576,7 +576,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "ok"},
@@ -599,7 +599,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "ok"},
@@ -633,7 +633,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_logs = []
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
@@ -665,7 +665,7 @@ Research: {{}}
 """)
 
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
@@ -702,7 +702,7 @@ Research task: {{}}
 
         captured_logs = []
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
@@ -749,7 +749,7 @@ class TestOutputSchema:
         explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": '{"custom": "override"}'},
@@ -771,7 +771,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message",
@@ -799,7 +799,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First attempt: invalid JSON (missing closing brace)
@@ -830,7 +830,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             return [
                 {"type": "agent_message", "content": "not valid json at all"},
@@ -853,7 +853,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "plain text"},
