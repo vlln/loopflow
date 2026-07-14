@@ -16,7 +16,7 @@ dev = [
 ]
 
 [project.scripts]
-loop = "loopflow.cli:main"
+loop = "loopflow.presentation.cli:main"
 
 [build-system]
 requires = ["hatchling"]

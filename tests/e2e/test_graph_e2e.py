@@ -95,7 +95,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -131,7 +131,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "ok"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -163,7 +163,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -200,7 +200,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -240,7 +240,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -287,7 +287,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -329,7 +329,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -372,7 +372,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 

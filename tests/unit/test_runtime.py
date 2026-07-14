@@ -117,7 +117,7 @@ class TestAgent:
 
     def test_agent_failed_raises_agent_error(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -219,7 +219,7 @@ class TestAgent:
                                                          mock_backend):
         """Transient errors on all attempts → raise AgentError after backoff."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -245,7 +245,7 @@ class TestAgent:
                                                   mock_backend):
         """Non-transient errors raise immediately without retry."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -826,7 +826,7 @@ class TestOutputSchema:
                                                     loop_with_output_agent):
         """After max_retries failed JSON attempts, raises AgentError."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
         set_context(ctx)
 
@@ -875,69 +875,69 @@ class TestJsonExtraction:
     """Best-effort JSON extraction from text-mode agent responses."""
 
     def test_pure_json_parses_directly(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         result = extract_json('{"verdict": "PASS"}', schema)
         assert result == {"verdict": "PASS"}
 
     def test_json_in_markdown(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
         text = '以下是分析结果：\n\n{"verdict": "PASS", "score": 95}\n\n以上是完整报告。'
         result = extract_json(text, schema)
         assert result == {"verdict": "PASS", "score": 95}
 
     def test_json_in_code_block(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         text = '```json\n{"verdict": "PASS"}\n```'
         result = extract_json(text, schema)
         assert result == {"verdict": "PASS"}
 
     def test_wrong_type_rejected(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         result = extract_json('{"verdict": 123}', schema)
         assert result is None  # 123 is not string
 
     def test_enum_mismatch_rejected(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["PASS", "FAIL"]}}}
         result = extract_json('{"verdict": "UNKNOWN"}', schema)
         assert result is None  # UNKNOWN not in enum
 
     def test_missing_key_rejected(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
         result = extract_json('{"verdict": "PASS"}', schema)
         assert result is None  # missing "score" key
 
     def test_multiple_json_blocks_first_match(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         text = '{"other": 1}\n{"verdict": "PASS"}\n{"more": 2}'
         result = extract_json(text, schema)
         assert result == {"verdict": "PASS"}
 
     def test_no_matching_json(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         result = extract_json("no json here at all", schema)
         assert result is None
 
     def test_empty_schema_properties(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object"}
         result = extract_json('{"anything": "goes"}', schema)
         assert result is None  # no properties to match against
 
     def test_validate_json_accepts_valid(self):
-        from loopflow.agent import validate_json
+        from loopflow.domain import validate_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         assert validate_json({"verdict": "PASS"}, schema) is True
 
     def test_validate_json_rejects_invalid(self):
-        from loopflow.agent import validate_json
+        from loopflow.domain import validate_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         assert validate_json({"verdict": 123}, schema) is False
 
@@ -1234,7 +1234,7 @@ class TestGoalMode:
     def test_goal_max_iterations_exceeded(self, temp_run_dir, mock_backend):
         """AC-001-F-1: Max iterations reached → GoalBlocked."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import GoalBlocked
+        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1254,7 +1254,7 @@ class TestGoalMode:
     def test_goal_three_blocked_raises(self, temp_run_dir, mock_backend):
         """AC-001-F-2: 3 consecutive blocked → GoalBlocked."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import GoalBlocked
+        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1271,7 +1271,7 @@ class TestGoalMode:
     def test_blocked_different_reasons_reset_counter(self, temp_run_dir, mock_backend):
         """AC-002-N-1: Different blocked reasons don't accumulate."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import GoalBlocked
+        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1316,7 +1316,7 @@ class TestGoalMode:
     def test_blocked_no_reason_defaults_unknown(self, temp_run_dir, mock_backend):
         """AC-002-B-1: Blocked without reason → 'unknown'."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import GoalBlocked
+        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1402,7 +1402,7 @@ class TestGoalMode:
     def test_goal_blocked_agent_error_propagates(self, temp_run_dir, mock_backend):
         """AC-001-E-3: Backend error in goal mode propagates."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 

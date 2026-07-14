@@ -1,50 +1,10 @@
-"""Agent module — compatibility re-exports from domain layer.
+"""Agent definition repository — file I/O for agent .md files (infrastructure layer)."""
 
-parse_agent() and list_agents() are kept here for backward compatibility.
-They will move to infrastructure/repository.py in a future refactoring.
-"""
+from __future__ import annotations
 
 from pathlib import Path
 
-# Re-export domain entities and services
-from loopflow.domain.agent_def import (
-    AgentDef,
-    AgentError,
-    GoalBlocked,
-    ParamSpec,
-    _input_to_params,
-    _merge_agents,
-    _merge_schemas,
-    render_template,
-    resolve_params,
-)
-from loopflow.domain.capabilities import Capabilities
-from loopflow.domain.marshalling import (
-    add_goal_to_schema,
-    build_goal_steering,
-    extract_json,
-    marshal,
-    validate_json,
-)
-from loopflow.domain.goal_loop import run_goal_loop
-
-__all__ = [
-    "AgentDef",
-    "AgentError",
-    "Capabilities",
-    "GoalBlocked",
-    "ParamSpec",
-    "add_goal_to_schema",
-    "build_goal_steering",
-    "extract_json",
-    "list_agents",
-    "marshal",
-    "parse_agent",
-    "render_template",
-    "resolve_params",
-    "run_goal_loop",
-    "validate_json",
-]
+from loopflow.domain.agent_def import AgentDef, _merge_agents
 
 
 def parse_agent(file_path: str | Path) -> AgentDef:
@@ -57,7 +17,6 @@ def parse_agent(file_path: str | Path) -> AgentDef:
 
     content = path.read_text(encoding="utf-8")
 
-    # Extract frontmatter between --- markers
     parts = content.split("---", 2)
     if len(parts) < 3:
         raise ValueError(f"No YAML frontmatter found in {file_path}")
@@ -81,12 +40,10 @@ def parse_agent(file_path: str | Path) -> AgentDef:
     if not description:
         raise ValueError(f"'description' is required in frontmatter of {file_path}")
 
-    # Parse input schema
     input_schema = fm.get("input")
     if input_schema is not None and not isinstance(input_schema, dict):
         input_schema = None
 
-    # Parse output schema
     output = fm.get("output")
     if output is not None and not isinstance(output, dict):
         output = None
@@ -124,7 +81,6 @@ def parse_agent(file_path: str | Path) -> AgentDef:
         output=output,
     )
 
-    # Resolve extends: load parent agent and merge
     if ad.extends:
         parent_path = path.parent / f"{ad.extends}.md"
         if not parent_path.is_file():

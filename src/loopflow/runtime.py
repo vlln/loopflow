@@ -25,15 +25,15 @@ from typing import Any, Callable
 def _make_backend(backend: str | None = None, transport: str | None = None,
                   text_handler=None, thought_handler=None, cwd: str | None = None):
     """Create a backend instance. Detects available backend if not specified."""
-    from loopflow.backends.base import BaseBackend
-    from loopflow.backends.claude import ClaudeBackend
-    from loopflow.backends.codex import CodexBackend
-    from loopflow.backends.gemini import GeminiBackend
-    from loopflow.backends.kimi import KimiBackend
-    from loopflow.backends.kiro import KiroBackend
-    from loopflow.backends.opencode import OpencodeBackend
-    from loopflow.backends.pi import PiBackend
-    from loopflow.backends.qwen import QwenBackend
+    from loopflow.infrastructure.backends.base import BaseBackend
+    from loopflow.infrastructure.backends.claude import ClaudeBackend
+    from loopflow.infrastructure.backends.codex import CodexBackend
+    from loopflow.infrastructure.backends.gemini import GeminiBackend
+    from loopflow.infrastructure.backends.kimi import KimiBackend
+    from loopflow.infrastructure.backends.kiro import KiroBackend
+    from loopflow.infrastructure.backends.opencode import OpencodeBackend
+    from loopflow.infrastructure.backends.pi import PiBackend
+    from loopflow.infrastructure.backends.qwen import QwenBackend
 
     BACKEND_MAP: dict[str, type[BaseBackend]] = {
         "kimi": KimiBackend,
@@ -47,7 +47,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
     }
 
     if backend is None:
-        from loopflow.backends.diagnostics import list_available_backends
+        from loopflow.infrastructure.backends.diagnostics import list_available_backends
         available = list_available_backends()
         if not available:
             print("[loopflow] No agent backends found on PATH.", file=sys.stderr)
@@ -342,8 +342,8 @@ def agent(
     **kwargs: str,
 ) -> Any:
     """Run an agent call. Thin facade over AgentRunner."""
-    from loopflow.agent import parse_agent
-    from loopflow.runner import AgentRunner
+    from loopflow.infrastructure.repository import parse_agent
+    from loopflow.application.runner import AgentRunner
 
     # Load agent definition
     ad = None
@@ -497,7 +497,7 @@ def _emit_phase(title: str) -> None:
         _ctx.graph.record(_ctx._prev_phase, title)
         _ctx._prev_phase = title
         if _ctx.live is not None:
-            from loopflow.display.graph_renderer import TerminalGraphRenderer
+            from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
             renderer = TerminalGraphRenderer(_ctx.graph)
             _ctx.live.update(renderer.render())
 

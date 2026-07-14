@@ -80,7 +80,7 @@ def list_agents(loop_name: str) -> list[dict]:
         if entry.name.startswith("_"):
             continue  # skip abstract agents
         try:
-            from loopflow.agent import parse_agent
+            from loopflow.infrastructure.repository import parse_agent
             agent = parse_agent(entry)
             agents.append({
                 "name": agent.name,

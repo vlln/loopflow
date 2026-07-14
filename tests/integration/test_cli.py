@@ -69,7 +69,7 @@ class TestCLIRun:
         loops, runs = env_dirs
         _create_test_loop(loops)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -83,7 +83,7 @@ class TestCLIRun:
         loops, runs = env_dirs
         _create_test_loop(loops)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["list"])
         assert result.exit_code == 0
@@ -93,32 +93,32 @@ class TestCLIRun:
     def test_list_empty(self, env_dirs):
         loops, runs = env_dirs
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["list"])
         assert result.exit_code == 0
         assert "(none)" in result.output
 
     def test_status_nonexistent(self, env_dirs):
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["status", "nonexistent"])
         assert result.exit_code == 1
 
     def test_resume_nonexistent(self, env_dirs):
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["resume", "nonexistent"])
         assert result.exit_code == 1
 
     def test_stop_nonexistent(self, env_dirs):
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["stop", "nonexistent"])
         assert result.exit_code == 1
 
     def test_run_nonexistent_loop(self, env_dirs):
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["run", "nonexistent"])
         assert result.exit_code == 1
@@ -135,7 +135,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return f"Hello, {name}!"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -174,7 +174,7 @@ class TestResume:
         }
         (run_dir / "run.json").write_text(json.dumps(run_meta))
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -218,7 +218,7 @@ class TestGraph:
             "counter": 0,
         }))
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -246,7 +246,7 @@ class TestGraph:
             "counter": 0,
         }))
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["status", run_id])
         assert result.exit_code == 0
@@ -278,7 +278,7 @@ class TestGraph:
             "counter": 0,
         }))
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["status", "--no-graph", run_id])
         assert result.exit_code == 0
@@ -299,7 +299,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 

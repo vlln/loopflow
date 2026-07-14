@@ -2,7 +2,7 @@
 
 import sys
 
-from loopflow.graph import Edge, PhaseGraph
+from loopflow.presentation.graph import Edge, PhaseGraph
 
 
 class TestPhaseGraphRecord:
@@ -151,9 +151,9 @@ class TestPhaseGraphNoRich:
 
     def test_no_rich_import(self):
         # Reload graph module to check imports
-        if "loopflow.graph" in sys.modules:
-            del sys.modules["loopflow.graph"]
+        if "loopflow.presentation.graph" in sys.modules:
+            del sys.modules["loopflow.presentation.graph"]
         # rich should not be in the module's imports
-        import loopflow.graph as gmod
+        import loopflow.presentation.graph as gmod
         assert "rich" not in dir(gmod)
-        assert "rich" not in sys.modules.get("loopflow.graph", object()).__dict__
+        assert "rich" not in sys.modules.get("loopflow.presentation.graph", object()).__dict__
