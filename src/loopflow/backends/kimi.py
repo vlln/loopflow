@@ -19,6 +19,8 @@ _SESSION_ID_RE = re.compile(r"kimi -r (session_[a-f0-9-]+)")
 class KimiBackend(BaseBackend):
     """Backend for kimi-code. CLI mode (default), ACP when explicitly requested."""
 
+    _supports_native_goal: bool = True  # kimi -p "/goal xxx" internal goal loop
+
     def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, backend_name: str = "kimi", **kwargs):
         use_acp = transport == "acp"
         self._th = text_handler
@@ -68,6 +70,7 @@ class _KimiCli(CliBackend):
 
     _sid_on_stderr = True
     _skill_flag = "--skills-dir"
+    _supports_native_goal = True
 
     def __init__(self, text_handler=None, thought_handler=None, backend_name: str = "kimi"):
         super().__init__(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)

@@ -99,6 +99,41 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
     return instance
 
 
+def _backend_supports_native_goal(backend: str | None = None) -> bool:
+    """Check if the backend supports native /goal in -p mode."""
+    from loopflow.backends.claude import ClaudeBackend
+    from loopflow.backends.codex import CodexBackend
+    from loopflow.backends.gemini import GeminiBackend
+    from loopflow.backends.kimi import KimiBackend
+    from loopflow.backends.kiro import KiroBackend
+    from loopflow.backends.opencode import OpencodeBackend
+    from loopflow.backends.pi import PiBackend
+    from loopflow.backends.qwen import QwenBackend
+
+    BACKEND_MAP: dict[str, type] = {
+        "kimi": KimiBackend,
+        "claude": ClaudeBackend,
+        "codex": CodexBackend,
+        "pi": PiBackend,
+        "kiro": KiroBackend,
+        "opencode": OpencodeBackend,
+        "qwen": QwenBackend,
+        "gemini": GeminiBackend,
+    }
+
+    if backend is None:
+        from loopflow.backends.diagnostics import list_available_backends
+        available = list_available_backends()
+        if not available:
+            return False
+        backend = available[0]
+
+    cls = BACKEND_MAP.get(backend)
+    if cls is None:
+        return False
+    return bool(getattr(cls, '_supports_native_goal', False))
+
+
 def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
                   agent_def=None,
@@ -693,21 +728,26 @@ def agent(
         )
         resolved_prompt = resolved_prompt + schema_hint
 
-    # Goal mode: delegate to goal loop
+    # Goal mode: delegate to goal loop or native goal
     if goal:
-        return _run_with_goal(
-            resolved_prompt=resolved_prompt,
-            schema=schema,
-            goal=goal,
-            goal_max_iterations=goal_max_iterations,
-            max_retries=max_retries,
-            backend=backend,
-            model=model,
-            isolation=isolation,
-            ad=ad,
-            agent_def=agent_def,
-            cache_path=cache_path,
-        )
+        if _backend_supports_native_goal(backend):
+            # Backend handles /goal internally — prepend to prompt, single call
+            resolved_prompt = f"/goal {goal}\n\n{resolved_prompt}"
+            # Fall through to normal single-call flow (no __goal schema)
+        else:
+            return _run_with_goal(
+                resolved_prompt=resolved_prompt,
+                schema=schema,
+                goal=goal,
+                goal_max_iterations=goal_max_iterations,
+                max_retries=max_retries,
+                backend=backend,
+                model=model,
+                isolation=isolation,
+                ad=ad,
+                agent_def=agent_def,
+                cache_path=cache_path,
+            )
 
     # Retry loop for schema compliance
     retry_hint = ""

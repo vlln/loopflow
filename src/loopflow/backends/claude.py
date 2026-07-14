@@ -6,6 +6,8 @@ from loopflow.backends.cli_backend import CliBackend
 
 
 class ClaudeBackend(CliBackend):
+    _supports_native_goal = True
+
     def _cmd_create(self, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]:
         cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"]
         if system:
