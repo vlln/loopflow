@@ -218,13 +218,12 @@ class AgentRunner:
 
         # 7. Native goal: single call, wrap in GoalResult
         if native_goal:
-            try:
-                result = self._execute_once(
-                    resolved, schema, model, isolation, max_retries,
-                )[0]
-                return GoalResult(status="complete", value=result)
-            except AgentError as e:
-                return GoalResult(status="blocked", reason=str(e))
+            result, backend_sid = self._execute_once(
+                resolved, schema, model, isolation, max_retries,
+            )
+            if isinstance(result, str) and result.startswith("Goal ["):
+                return GoalResult(status="blocked", reason=result)
+            return GoalResult(status="complete", value=result)
 
         # 8. Normal single call
         return self._execute_once(
@@ -305,6 +304,11 @@ class AgentRunner:
                     resume_session_id, attempt,
                 )
 
+                # Native goal: return goal summary text directly
+                if exit_code in _GOAL_EXIT_CODES:
+                    self._write_cache(cache_path, session, exit_code, text)
+                    return text, backend_sid
+
             # Schema compliance check
             if schema:
                 try:
@@ -372,6 +376,11 @@ class AgentRunner:
             backend_sid = _extract_session_id(events)
 
             if exit_code == 0:
+                return text, exit_code, backend_sid
+
+            # Native goal: blocked(3) / paused(6) are expected outcomes
+            if exit_code in _GOAL_EXIT_CODES:
+                text = _extract_text(events)
                 return text, exit_code, backend_sid
 
             stderr = _extract_stderr(events)
