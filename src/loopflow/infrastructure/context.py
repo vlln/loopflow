@@ -129,6 +129,18 @@ def _extract_session_id(events: list[dict]) -> str | None:
     return None
 
 
+# ── log output ───────────────────────────────────────────────────────────
+
+def _emit_log(message: str) -> None:
+    """Emit a log message to stderr and events.jsonl."""
+    import sys
+    if _ctx.live is not None:
+        _ctx.live.console.log(f"[loopflow] {message}")
+    else:
+        print(f"[loopflow] {message}", file=sys.stderr, flush=True)
+    _write_event({"type": "log", "message": message, "ts": __import__("time").time()})
+
+
 # ── cache / persist ──────────────────────────────────────────────────────
 
 def _write_event(event: dict) -> None:

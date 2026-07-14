@@ -12,7 +12,7 @@ from loopflow.infrastructure.backends.base import BaseBackend
 from loopflow.infrastructure.transports.cli import CliTransport
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentDef
+    from loopflow.domain import AgentDef
 
 
 class CliBackend(BaseBackend):

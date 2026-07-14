@@ -62,13 +62,13 @@ description: {a['description']}
 
 class TestListLoops:
     def test_empty_directory(self, loops_dir):
-        from loopflow.discovery import list_loops
+        from loopflow.infrastructure.discovery import list_loops
         result = list_loops()
         assert result == []
 
     def test_single_loop(self, loops_dir):
         _create_loop(loops_dir, "hello", {"name": "hello", "description": "A test loop"})
-        from loopflow.discovery import list_loops
+        from loopflow.infrastructure.discovery import list_loops
         result = list_loops()
         assert len(result) == 1
         assert result[0][0] == "hello"
@@ -77,7 +77,7 @@ class TestListLoops:
     def test_multiple_loops(self, loops_dir):
         _create_loop(loops_dir, "loop-a", {"name": "loop-a", "description": "First"})
         _create_loop(loops_dir, "loop-b", {"name": "loop-b", "description": "Second"})
-        from loopflow.discovery import list_loops
+        from loopflow.infrastructure.discovery import list_loops
         result = list_loops()
         assert len(result) == 2
 
@@ -85,7 +85,7 @@ class TestListLoops:
 class TestLoadLoop:
     def test_load_valid_loop(self, loops_dir):
         _create_loop(loops_dir, "hello", {"name": "hello", "description": "A test loop"})
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         mod, meta, loop_dir = load_loop("hello")
         assert meta["name"] == "hello"
         assert hasattr(mod, "run")
@@ -94,7 +94,7 @@ class TestLoadLoop:
     def test_load_missing_workflow(self, loops_dir):
         loop_dir = loops_dir / "empty"
         loop_dir.mkdir(parents=True)
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         with pytest.raises(SystemExit):
             load_loop("empty")
 
@@ -102,7 +102,7 @@ class TestLoadLoop:
         loop_dir = loops_dir / "bad"
         loop_dir.mkdir(parents=True)
         (loop_dir / "workflow.py").write_text("meta = {'name': 'bad'}\n# no run()")
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         with pytest.raises(SystemExit):
             load_loop("bad")
 
@@ -114,7 +114,7 @@ class TestListAgents:
                          {"name": "reviewer", "description": "Code reviewer"},
                          {"name": "merger", "description": "Merge decision maker"},
                      ])
-        from loopflow.discovery import list_agents
+        from loopflow.infrastructure.discovery import list_agents
         agents = list_agents("hello")
         assert len(agents) == 2
         assert agents[0]["name"] == "merger"
@@ -122,7 +122,7 @@ class TestListAgents:
 
     def test_list_agents_empty(self, loops_dir):
         _create_loop(loops_dir, "hello", {"name": "hello", "description": "Test"})
-        from loopflow.discovery import list_agents
+        from loopflow.infrastructure.discovery import list_agents
         agents = list_agents("hello")
         assert agents == []
 
@@ -133,7 +133,7 @@ class TestMetaPhases:
     def test_meta_without_phases(self, loops_dir):
         """meta without phases field is valid."""
         _create_loop(loops_dir, "hello", {"name": "hello", "description": "Test"})
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         mod, meta, _ = load_loop("hello")
         assert meta["name"] == "hello"
         assert "phases" not in meta
@@ -149,7 +149,7 @@ class TestMetaPhases:
             ],
         }
         _create_loop(loops_dir, "hello", meta)
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         mod, loaded_meta, _ = load_loop("hello")
         assert loaded_meta["phases"] == meta["phases"]
 
@@ -157,7 +157,7 @@ class TestMetaPhases:
         """phases must be a list."""
         meta = {"name": "hello", "description": "Test", "phases": "not-a-list"}
         _create_loop(loops_dir, "hello", meta)
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         with pytest.raises(SystemExit):
             load_loop("hello")
 
@@ -169,7 +169,7 @@ class TestMetaPhases:
             "phases": [{"detail": "no title here"}],
         }
         _create_loop(loops_dir, "hello", meta)
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         with pytest.raises(SystemExit):
             load_loop("hello")
 
@@ -177,6 +177,6 @@ class TestMetaPhases:
         """Empty phases list is valid."""
         meta = {"name": "hello", "description": "Test", "phases": []}
         _create_loop(loops_dir, "hello", meta)
-        from loopflow.discovery import load_loop
+        from loopflow.infrastructure.discovery import load_loop
         mod, loaded_meta, _ = load_loop("hello")
         assert loaded_meta["phases"] == []

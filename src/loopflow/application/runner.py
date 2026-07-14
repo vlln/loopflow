@@ -167,7 +167,7 @@ class AgentRunner:
 
         # 4. Skills check and injection
         if self.ad is not None and self.ad.skills:
-            from loopflow.skills import build_skill_prompt, check_skills
+            from loopflow.infrastructure.skills import build_skill_prompt, check_skills
             missing = check_skills(self.ad.skills, self.ctx.loop_dir)
             if missing:
                 skills_dir_hint = (

@@ -112,7 +112,7 @@ def main():
 @click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
 def run(name, wf_args, mock, watch):
     """Run a loop."""
-    from loopflow.discovery import load_loop
+    from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
 
@@ -222,7 +222,7 @@ def run(name, wf_args, mock, watch):
 @click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
 def resume(run_id, mock, watch):
     """Resume a crashed loop run."""
-    from loopflow.discovery import load_loop
+    from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
 
@@ -383,7 +383,7 @@ def status(run_id, graph):
 @main.command()
 def list():
     """List all loops and runs."""
-    from loopflow.discovery import list_loops
+    from loopflow.infrastructure.discovery import list_loops
 
     print("Loops:")
     loops = list_loops()

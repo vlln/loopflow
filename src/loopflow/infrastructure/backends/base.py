@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from loopflow.domain.capabilities import Capabilities
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentDef
+    from loopflow.domain import AgentDef
 
 
 class BaseBackend(ABC):

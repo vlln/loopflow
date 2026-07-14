@@ -22,7 +22,7 @@ def test_agent_module():
 
 
 def test_lock_module():
-    from loopflow.lock import acquire, release, check
+    from loopflow.infrastructure.lock import acquire, release, check
     assert callable(acquire)
     assert callable(release)
     assert callable(check)

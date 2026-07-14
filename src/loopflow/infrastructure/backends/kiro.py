@@ -9,7 +9,7 @@ from loopflow.infrastructure.backends.acp_backend import AcpBackend
 from loopflow.infrastructure.backends.cli_backend import CliBackend
 
 if TYPE_CHECKING:
-    from loopflow.agent import AgentDef
+    from loopflow.domain import AgentDef
 
 
 class KiroBackend(BaseBackend):

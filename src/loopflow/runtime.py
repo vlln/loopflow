@@ -20,27 +20,20 @@ from loopflow.infrastructure.context import (
     _write_event,
     set_context,
 )
-from loopflow.infrastructure.backends.manager import (
-    _make_backend,
-    _run_mock,
-    _run_mock_auto,
-    _run_subagent,
-    set_mock,
-)
+from loopflow.infrastructure.backends import manager as _backend_manager
 from loopflow.infrastructure.worktree import _create_worktree
 from loopflow.presentation.events import _emit_log, _emit_phase
 
+# Mutable state accessed via module attribute (not import-time binding)
+import loopflow.infrastructure.context as _ctx_module
 
-def _get_ctx():
-    """Get the current RunContext. Always returns the latest value."""
-    import loopflow.infrastructure.context as _ctx_module
-    return _ctx_module._ctx
-
-
-def _get_mock_mode():
-    """Get the current mock mode. Always returns the latest value."""
-    import loopflow.infrastructure.backends.manager as _mgr
-    return _mgr._mock_mode
+# Re-export for backward compatibility
+set_mock = _backend_manager.set_mock
+_make_backend = _backend_manager._make_backend
+_run_subagent = _backend_manager._run_subagent
+_run_mock = _backend_manager._run_mock
+_run_mock_auto = _backend_manager._run_mock_auto
+_mock_mode = _backend_manager._mock_mode
 
 
 # ── public API ───────────────────────────────────────────────────────────
@@ -64,7 +57,7 @@ def agent(
     from loopflow.application.runner import AgentRunner
 
     ad = None
-    ctx = _get_ctx()
+    ctx = _ctx_module._ctx
     if ctx.loop_dir is not None and agent_def is not None:
         agent_path = ctx.loop_dir / "agents" / f"{agent_def}.md"
         if agent_path.is_file():
@@ -73,7 +66,7 @@ def agent(
             except (ValueError, FileNotFoundError):
                 ad = None
 
-    backend_instance = None if _get_mock_mode() else _make_backend(backend)
+    backend_instance = None if _backend_manager._mock_mode else _make_backend(backend)
     try:
         def _invoke(prompt_str, session_name, **kw):
             return _run_subagent(
@@ -92,7 +85,7 @@ def agent(
             write_cache_fn=_write_cache,
             persist_state_fn=_persist_state,
             create_worktree_fn=_create_worktree,
-            mock_mode=_get_mock_mode(),
+            mock_mode=_backend_manager._mock_mode,
             mock_fn=_run_mock,
             mock_auto_fn=_run_mock_auto,
         )
@@ -165,7 +158,7 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
         return None
 
     spec = importlib.util.spec_from_file_location(
-        f"wf_sub_{_get_ctx().run_id}_{path.stem}", path)
+        f"wf_sub_{_ctx_module._ctx.run_id}_{path.stem}", path)
     if spec is None or spec.loader is None:
         return None
 
@@ -186,7 +179,7 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
         workflow=workflow,
     )
     if "state" in sig.parameters:
-        run_kwargs["state"] = _get_ctx().state
+        run_kwargs["state"] = _ctx_module._ctx.state
     return mod.run(**run_kwargs)
 
 

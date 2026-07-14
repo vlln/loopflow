@@ -11,6 +11,7 @@ from typing import Any
 from loopflow.infrastructure.context import (
     _append_cache,
     _ctx,
+    _emit_log,
     _extract_exit_code,
     _extract_stderr,
     _extract_text,
@@ -127,8 +128,6 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   cache_path: Path | None = None,
                   resume_session_id: str | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
-    from loopflow.presentation.events import _emit_log
-
     output_parts: list[str] = []
 
     def text_handler(text: str) -> None:
