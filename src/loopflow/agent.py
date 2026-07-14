@@ -456,16 +456,19 @@ class Agent:
         self,
         prompt: str,
         goal: str | None = None,
-        backend_name: str | None = None,
+        backend: Any = None,
         **params: str,
     ) -> tuple[str, dict | None, bool]:
         """Assemble the final prompt from capabilities.
 
+        Args:
+            prompt: The user task prompt.
+            goal: Optional goal for feedback loop.
+            backend: Backend instance (for capability queries). None if unknown.
+            **params: Template parameters for body rendering.
+
         Returns:
             (resolved_prompt, schema, use_native_goal)
-            - resolved_prompt: the assembled prompt string
-            - schema: output schema (None if no schema)
-            - use_native_goal: True if backend handles goal natively
         """
         resolved = prompt
         schema = None
@@ -478,15 +481,15 @@ class Agent:
         if body:
             resolved = f"{body}\n\n---\n\nTask: {prompt}"
 
-        # 2. Skills — text injection (backend native skill support is handled
-        #    by runtime via _apply_requires_to_cmd)
-        #    Skill injection into prompt is handled by runtime.build_skill_prompt
-
-        # 3. Schema
+        # 2. Schema
         schema = self.ad.output
 
-        # 4. Goal — native goal check
-        native_goal = goal and self._backend_supports_native_goal(backend_name)
+        # 3. Goal — query backend capability
+        native_goal = (
+            goal
+            and backend is not None
+            and getattr(backend, 'supports_native_goal', False)
+        )
         if native_goal:
             resolved = f"/goal {goal}\n\n{resolved}"
 
@@ -643,33 +646,3 @@ class Agent:
         raise GoalBlocked(
             f"Goal not completed after {goal_max_iterations} iterations"
         )
-
-    def _backend_supports_native_goal(self, backend_name: str | None) -> bool:
-        """Check if backend supports /goal in -p mode."""
-        # Import here to avoid circular dependency
-        from loopflow.backends.claude import ClaudeBackend
-        from loopflow.backends.codex import CodexBackend
-        from loopflow.backends.gemini import GeminiBackend
-        from loopflow.backends.kimi import KimiBackend
-        from loopflow.backends.kiro import KiroBackend
-        from loopflow.backends.opencode import OpencodeBackend
-        from loopflow.backends.pi import PiBackend
-        from loopflow.backends.qwen import QwenBackend
-
-        BACKEND_MAP: dict[str, type] = {
-            "kimi": KimiBackend,
-            "claude": ClaudeBackend,
-            "codex": CodexBackend,
-            "pi": PiBackend,
-            "kiro": KiroBackend,
-            "opencode": OpencodeBackend,
-            "qwen": QwenBackend,
-            "gemini": GeminiBackend,
-        }
-
-        if backend_name is None:
-            return False
-        cls = BACKEND_MAP.get(backend_name)
-        if cls is None:
-            return False
-        return bool(getattr(cls, '_supports_native_goal', False))

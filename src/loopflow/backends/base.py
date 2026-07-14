@@ -17,6 +17,9 @@ class BaseBackend(ABC):
     loopflow only needs create_session, resume_session, and close.
     """
 
+    # Capability flags — subclasses override to declare support
+    supports_native_goal: bool = False  # Backend handles /goal in -p mode
+
     @abstractmethod
     def create_session(
         self,

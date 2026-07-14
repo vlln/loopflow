@@ -461,10 +461,16 @@ def agent(
                 ad = None
 
     # Agent layer: marshal capabilities
-    agent_obj = Agent(ad)
-    resolved_prompt, detected_schema, native_goal = agent_obj.marshal(
-        prompt, goal, backend, **kwargs,
-    )
+    # Create a temporary backend instance for capability queries
+    backend_instance = _make_backend(backend) if not _mock_mode else None
+    try:
+        agent_obj = Agent(ad)
+        resolved_prompt, detected_schema, native_goal = agent_obj.marshal(
+            prompt, goal, backend_instance, **kwargs,
+        )
+    finally:
+        if backend_instance:
+            backend_instance.close()
 
     # Schema: agent output > explicit parameter
     if schema is None and detected_schema is not None:

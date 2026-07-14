@@ -32,6 +32,7 @@ def mock_backend():
     backend = MagicMock()
     backend.create_session.return_value = ("test-sid", 0)
     backend.resume_session.return_value = 0
+    backend.supports_native_goal = False
     return backend
 
 
@@ -1091,12 +1092,6 @@ class TestMockAuto:
 
 class TestGoalMode:
     """Goal mode tests per AC-001 to AC-005."""
-
-    @pytest.fixture(autouse=True)
-    def _mock_native_goal(self):
-        """Force loopflow goal mode (not native) in all tests."""
-        with patch('loopflow.agent.Agent._backend_supports_native_goal', return_value=False):
-            yield
 
     def _make_events(self, text: str, exit_code: int = 0) -> list[dict]:
         return [
