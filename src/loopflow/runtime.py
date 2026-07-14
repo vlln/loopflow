@@ -99,41 +99,6 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
     return instance
 
 
-def _backend_supports_native_goal(backend: str | None = None) -> bool:
-    """Check if the backend supports native /goal in -p mode."""
-    from loopflow.backends.claude import ClaudeBackend
-    from loopflow.backends.codex import CodexBackend
-    from loopflow.backends.gemini import GeminiBackend
-    from loopflow.backends.kimi import KimiBackend
-    from loopflow.backends.kiro import KiroBackend
-    from loopflow.backends.opencode import OpencodeBackend
-    from loopflow.backends.pi import PiBackend
-    from loopflow.backends.qwen import QwenBackend
-
-    BACKEND_MAP: dict[str, type] = {
-        "kimi": KimiBackend,
-        "claude": ClaudeBackend,
-        "codex": CodexBackend,
-        "pi": PiBackend,
-        "kiro": KiroBackend,
-        "opencode": OpencodeBackend,
-        "qwen": QwenBackend,
-        "gemini": GeminiBackend,
-    }
-
-    if backend is None:
-        from loopflow.backends.diagnostics import list_available_backends
-        available = list_available_backends()
-        if not available:
-            return False
-        backend = available[0]
-
-    cls = BACKEND_MAP.get(backend)
-    if cls is None:
-        return False
-    return bool(getattr(cls, '_supports_native_goal', False))
-
-
 def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
                   agent_def=None,
@@ -388,94 +353,6 @@ def _run_mock_auto(schema: dict | None) -> tuple[str, int]:
     return json.dumps(_generate(schema)), 0
 
 
-# ── goal mode helpers ────────────────────────────────────────────────────
-
-def _add_goal_to_schema(schema: dict | None) -> dict:
-    """Wrap business schema with __goal framework schema.
-
-    Returns a new schema dict; does not modify the input.
-    """
-    goal_prop = {
-        "__goal": {
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string",
-                    "enum": ["active", "complete", "blocked"],
-                },
-                "reason": {"type": "string"},
-            },
-            "required": ["status"],
-        }
-    }
-
-    if schema is None:
-        return {
-            "type": "object",
-            "properties": {**goal_prop},
-            "required": ["__goal"],
-        }
-
-    # Warn if business schema already uses __goal
-    if "__goal" in (schema.get("properties") or {}):
-        import warnings
-        warnings.warn(
-            "Business schema contains '__goal' field which is reserved "
-            "for goal mode. Framework will override it."
-        )
-
-    return {
-        **schema,
-        "properties": {
-            **(schema.get("properties") or {}),
-            **goal_prop,
-        },
-        "required": (schema.get("required") or []) + ["__goal"],
-    }
-
-
-def _build_goal_steering(goal: str, iteration: int, max_iterations: int) -> str:
-    """Generate steering prompt for goal mode.
-
-    First iteration: full rules (completion audit, blocked audit).
-    Subsequent iterations: lightweight continuation notice.
-    """
-    if iteration == 1:
-        return (
-            f"<goal-steering>\n"
-            f"You are working toward a goal. Continue working until the goal "
-            f"is fully accomplished.\n\n"
-            f"## Goal\n"
-            f"{goal}\n\n"
-            f"## Completion Audit\n"
-            f"Before declaring complete, verify:\n"
-            f"1. Each requirement in the goal is met\n"
-            f"2. Verification is based on evidence (files, command output, "
-            f"test results)\n"
-            f"3. \"I made a plan\" or \"I wrote a summary\" is NOT completion\n\n"
-            f"## Blocked Audit\n"
-            f"Before declaring blocked:\n"
-            f"1. The same blocking condition must persist for 3 consecutive "
-            f"attempts\n"
-            f"2. \"Difficult\", \"slow\", or \"not fully done\" is NOT a blocker\n"
-            f"3. Only truly insurmountable obstacles qualify (missing "
-            f"credentials, external service down, etc.)\n\n"
-            f"Signal your status in the __goal field of your response.\n"
-            f"</goal-steering>"
-        )
-    else:
-        return (
-            f"<goal-steering>\n"
-            f"Continue working toward the goal. "
-            f"Iteration {iteration}/{max_iterations}.\n\n"
-            f"## Goal\n"
-            f"{goal}\n\n"
-            f"Same completion and blocked audit rules apply. "
-            f"Continue from where you left off.\n"
-            f"</goal-steering>"
-        )
-
-
 def _call_agent_once(
     resolved_prompt: str,
     session: str,
@@ -551,112 +428,6 @@ def _call_agent_once(
     return text, backend_sid
 
 
-def _run_with_goal(
-    resolved_prompt: str,
-    schema: dict | None,
-    goal: str,
-    goal_max_iterations: int,
-    max_retries: int,
-    backend: str | None,
-    model: str | None,
-    isolation: str | None,
-    ad,
-    agent_def: str | None,
-    cache_path: Path,
-) -> Any:
-    """Run agent in goal mode: iterate until complete or blocked."""
-    from loopflow.agent import GoalBlocked
-
-    goal_schema = _add_goal_to_schema(schema)
-
-    session = _ctx.next_session()
-    resume_session_id: str | None = None
-    blocked_reason: str | None = None
-    blocked_count = 0
-
-    for iteration in range(1, goal_max_iterations + 1):
-        steering = _build_goal_steering(goal, iteration, goal_max_iterations)
-        full_prompt = f"{steering}\n\n{resolved_prompt}"
-
-        # Inject goal schema into prompt
-        import json as json_mod
-        schema_hint = (
-            f"\n\n---\n"
-            f"Output format — you MUST respond with a single JSON object "
-            f"matching this schema:\n{json_mod.dumps(goal_schema, indent=2)}\n\n"
-            f"Do NOT wrap the JSON in markdown code blocks. "
-            f"Return ONLY the JSON object."
-        )
-
-        # Retry loop for schema compliance
-        retry_hint = ""
-        for attempt in range(max_retries + 1):
-            if attempt > 0:
-                _emit_log(f"Goal iter {iteration}: JSON parse failed, retrying ({attempt}/{max_retries})...")
-                retry_hint = (
-                    f"\n\n---\n"
-                    f"Your previous response was not valid JSON. "
-                    f"Please respond with ONLY a JSON object matching the schema above."
-                )
-            try:
-                result, backend_sid = _call_agent_once(
-                    resolved_prompt=full_prompt,
-                    session=session,
-                    schema=goal_schema,
-                    backend=backend,
-                    model=model,
-                    isolation=isolation,
-                    ad=ad,
-                    cache_path=cache_path,
-                    retry_hint=retry_hint,
-                    max_retries=max_retries,
-                    resume_session_id=resume_session_id,
-                )
-                break
-            except Exception as e:
-                # Only retry on JSON parse errors, not infra errors
-                msg = str(e)
-                if "valid JSON" not in msg:
-                    raise
-                if attempt >= max_retries:
-                    raise
-                continue
-
-        # Extract goal state
-        goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
-        status = goal_state.get("status", "active")
-
-        if status == "complete":
-            _write_cache(cache_path, session, 0, json.dumps(result))
-            _persist_state()
-            return result
-
-        if status == "blocked":
-            reason = goal_state.get("reason") or "unknown"
-            if reason == blocked_reason:
-                blocked_count += 1
-            else:
-                blocked_reason = reason
-                blocked_count = 1
-
-            _emit_log(f"Goal blocked ({blocked_count}/3): {reason}")
-
-            if blocked_count >= 3:
-                raise GoalBlocked(
-                    f"Goal blocked after {iteration} iterations: {reason} "
-                    f"(3 consecutive identical reasons)"
-                )
-
-        # active or first/second blocked → set up resume for next iteration
-        resume_session_id = backend_sid
-        session = _ctx.next_session()
-
-    # Max iterations reached
-    raise GoalBlocked(
-        f"Goal not completed after {goal_max_iterations} iterations"
-    )
-
-
 # ── public API ───────────────────────────────────────────────────────────
 
 def agent(
@@ -673,51 +444,52 @@ def agent(
     goal_max_iterations: int = 10,
     **kwargs: str,
 ) -> Any:
+    from loopflow.agent import Agent, parse_agent
+
     session = _ctx.next_session()
     seq = _ctx._counter
     cache_path = _ctx.run_dir / f"{seq:04d}.jsonl"
 
-    # Resolve agent definition: load body from agents/<agent_def>.md
-    resolved_prompt = prompt
+    # Load agent definition
     ad = None
     if _ctx.loop_dir is not None and agent_def is not None:
         agent_path = _ctx.loop_dir / "agents" / f"{agent_def}.md"
         if agent_path.is_file():
-            from loopflow.agent import parse_agent, render_template, resolve_params, _input_to_params
             try:
                 ad = parse_agent(agent_path)
             except (ValueError, FileNotFoundError):
                 ad = None
-            if ad is not None:
-                params = _input_to_params(ad.input)
-                resolved_kwargs = resolve_params(params, **kwargs)
-                body = render_template(ad.body, **resolved_kwargs)
-                resolved_prompt = f"{body}\n\n---\n\nTask: {prompt}"
 
-                # Auto-detect output schema from agent definition
-                if schema is None and ad.output is not None:
-                    schema = ad.output
+    # Agent layer: marshal capabilities
+    agent_obj = Agent(ad)
+    resolved_prompt, detected_schema, native_goal = agent_obj.marshal(
+        prompt, goal, backend, **kwargs,
+    )
 
-                # Inject skill descriptions into system prompt
-                if ad.skills:
-                    from loopflow.skills import build_skill_prompt, check_skills
-                    missing = check_skills(ad.skills, _ctx.loop_dir)
-                    if missing:
-                        skills_dir_hint = f"{_ctx.loop_dir}/.skills/" if _ctx.loop_dir else "~/.loopflow/skills/ or ~/.agents/skills/"
-                        raise RuntimeError(
-                            f"Skills not found: {', '.join(missing)}. "
-                            f"Install them to {skills_dir_hint}"
-                        )
-                    skill_section = build_skill_prompt(ad.skills, _ctx.loop_dir)
-                    if skill_section:
-                        resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
+    # Schema: agent output > explicit parameter
+    if schema is None and detected_schema is not None:
+        schema = detected_schema
 
-                # Auto-detect model from agent definition
-                if model is None and ad.model is not None:
-                    model = ad.model
+    # Model: agent definition > explicit parameter
+    if model is None and ad is not None and ad.model is not None:
+        model = ad.model
 
-    # Inject schema into prompt so the agent knows the expected output format
-    if schema:
+    # Skills: check and inject
+    if ad is not None and ad.skills:
+        from loopflow.skills import build_skill_prompt, check_skills
+        missing = check_skills(ad.skills, _ctx.loop_dir)
+        if missing:
+            skills_dir_hint = f"{_ctx.loop_dir}/.skills/" if _ctx.loop_dir else "~/.loopflow/skills/ or ~/.agents/skills/"
+            raise RuntimeError(
+                f"Skills not found: {', '.join(missing)}. "
+                f"Install them to {skills_dir_hint}"
+            )
+        skill_section = build_skill_prompt(ad.skills, _ctx.loop_dir)
+        if skill_section:
+            resolved_prompt = f"{skill_section}\n\n{resolved_prompt}"
+
+    # Schema hint injection (unless native goal handles it)
+    if schema and not native_goal:
         import json as json_mod
         schema_hint = (
             f"\n\n---\n"
@@ -728,28 +500,21 @@ def agent(
         )
         resolved_prompt = resolved_prompt + schema_hint
 
-    # Goal mode: delegate to goal loop or native goal
-    if goal:
-        if _backend_supports_native_goal(backend):
-            # Backend handles /goal internally — prepend to prompt, single call
-            resolved_prompt = f"/goal {goal}\n\n{resolved_prompt}"
-            # Fall through to normal single-call flow (no __goal schema)
-        else:
-            return _run_with_goal(
-                resolved_prompt=resolved_prompt,
-                schema=schema,
-                goal=goal,
-                goal_max_iterations=goal_max_iterations,
-                max_retries=max_retries,
-                backend=backend,
-                model=model,
-                isolation=isolation,
-                ad=ad,
-                agent_def=agent_def,
-                cache_path=cache_path,
-            )
+    # Goal mode: loopflow goal loop (native goal already handled in marshal)
+    if goal and not native_goal:
+        goal_schema = agent_obj.add_goal_to_schema(schema)
 
-    # Retry loop for schema compliance
+        def _goal_call(p: str, s: str, rid: str | None) -> tuple[Any, str | None]:
+            return _call_agent_once(
+                p, s, goal_schema, backend, model, isolation, ad,
+                cache_path, "", max_retries, rid,
+            )
+        return agent_obj.run_goal_loop(
+            resolved_prompt, schema, goal, goal_max_iterations,
+            _goal_call, _emit_log,
+        )
+
+    # Normal single call (or native goal)
     retry_hint = ""
     for attempt in range(max_retries + 1):
         if attempt > 0:
@@ -768,7 +533,7 @@ def agent(
                     try:
                         return json.loads(cached)
                     except json.JSONDecodeError:
-                        pass  # Cached result invalid, fall through to retry
+                        pass
                 else:
                     return cached
 
@@ -780,19 +545,15 @@ def agent(
         elif _mock_mode == "bash":
             _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
             text, exit_code = _run_mock(resolved_prompt + retry_hint)
-            # Mock bash mode: shell commands may fail on non-shell prompts.
-            # Treat non-zero exit as empty output, not infra failure.
             if exit_code != 0:
                 text = ""
         else:
-            # Create worktree for isolation (only on first attempt)
             cwd = None
             if isolation == "worktree" and attempt == 0:
                 cwd = _create_worktree(_ctx.run_id, _ctx._counter)
                 if cwd:
                     _emit_log(f"Worktree: {cwd}")
 
-            # Infra retry loop: transient errors get retried with exponential backoff
             for infra_attempt in range(len(INFRA_BACKOFF) + 1):
                 if attempt > 0 or infra_attempt > 0:
                     session = _ctx.next_session()
@@ -810,7 +571,7 @@ def agent(
                 text = _extract_text(events) if exit_code == 0 else ""
 
                 if exit_code == 0:
-                    break  # Success
+                    break
 
                 stderr = _extract_stderr(events)
                 if infra_attempt < len(INFRA_BACKOFF) and _is_transient_error(stderr):
@@ -830,7 +591,6 @@ def agent(
                     time.sleep(delay)
                     continue
 
-                # Non-transient or retries exhausted → raise
                 from loopflow.agent import AgentError
                 msg = f"Agent call failed with exit code {exit_code}"
                 if stderr:
@@ -846,12 +606,10 @@ def agent(
         if schema:
             try:
                 result = json.loads(text)
-                # Write cache on success
                 _write_cache(cache_path, session, exit_code, text)
                 _persist_state()
                 return result
             except json.JSONDecodeError:
-                # Best-effort extraction from text-mode responses
                 from loopflow.agent import extract_json
                 extracted = extract_json(text, schema)
                 if extracted is not None:

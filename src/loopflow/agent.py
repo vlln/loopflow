@@ -1,10 +1,12 @@
-"""Agent definition parser for .md files with YAML frontmatter."""
+"""Agent definition parser and runtime — Agent = Backend + Capabilities."""
 
 from __future__ import annotations
 
+import json as json_mod
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 
 class AgentError(Exception):
@@ -428,3 +430,246 @@ def validate_json(obj: dict, schema: dict) -> bool:
         return True
     except jsonschema.ValidationError:
         return False
+
+
+# ── Agent class ────────────────────────────────────────────────────────────
+
+# Callable type: (prompt, session, resume_session_id) -> (result, backend_session_id)
+CallFn = Callable[[str, str, str | None], tuple[dict | str, str | None]]
+
+
+class Agent:
+    """Agent = Backend + Capabilities.
+
+    Encapsulates marshalling of agent capabilities (skills, schema, goal,
+    model) into backend calls. Follows "best effort" principle: use backend
+    native support when available, otherwise fall back to text injection
+    or framework-level loops.
+    """
+
+    def __init__(self, ad: AgentDef | None = None):
+        self.ad = ad
+
+    # ── public API ──────────────────────────────────────────────────────
+
+    def marshal(
+        self,
+        prompt: str,
+        goal: str | None = None,
+        backend_name: str | None = None,
+        **params: str,
+    ) -> tuple[str, dict | None, bool]:
+        """Assemble the final prompt from capabilities.
+
+        Returns:
+            (resolved_prompt, schema, use_native_goal)
+            - resolved_prompt: the assembled prompt string
+            - schema: output schema (None if no schema)
+            - use_native_goal: True if backend handles goal natively
+        """
+        resolved = prompt
+        schema = None
+
+        if self.ad is None:
+            return resolved, schema, False
+
+        # 1. Body + template rendering
+        body = render_template(self.ad.body, **resolve_params(_input_to_params(self.ad.input), **params))
+        if body:
+            resolved = f"{body}\n\n---\n\nTask: {prompt}"
+
+        # 2. Skills — text injection (backend native skill support is handled
+        #    by runtime via _apply_requires_to_cmd)
+        #    Skill injection into prompt is handled by runtime.build_skill_prompt
+
+        # 3. Schema
+        schema = self.ad.output
+
+        # 4. Goal — native goal check
+        native_goal = goal and self._backend_supports_native_goal(backend_name)
+        if native_goal:
+            resolved = f"/goal {goal}\n\n{resolved}"
+
+        return resolved, schema, native_goal
+
+    def build_goal_steering(self, goal: str, iteration: int,
+                            max_iterations: int) -> str:
+        """Generate steering prompt for goal mode."""
+        if iteration == 1:
+            return (
+                f"<goal-steering>\n"
+                f"You are working toward a goal. Continue working until the "
+                f"goal is fully accomplished.\n\n"
+                f"## Goal\n{goal}\n\n"
+                f"## Completion Audit\n"
+                f"Before declaring complete, verify:\n"
+                f"1. Each requirement in the goal is met\n"
+                f"2. Verification is based on evidence (files, command "
+                f"output, test results)\n"
+                f"3. \"I made a plan\" or \"I wrote a summary\" is NOT "
+                f"completion\n\n"
+                f"## Blocked Audit\n"
+                f"Before declaring blocked:\n"
+                f"1. The same blocking condition must persist for 3 "
+                f"consecutive attempts\n"
+                f"2. \"Difficult\", \"slow\", or \"not fully done\" is NOT "
+                f"a blocker\n"
+                f"3. Only truly insurmountable obstacles qualify (missing "
+                f"credentials, external service down, etc.)\n\n"
+                f"Signal your status in the __goal field of your response.\n"
+                f"</goal-steering>"
+            )
+        else:
+            return (
+                f"<goal-steering>\n"
+                f"Continue working toward the goal. "
+                f"Iteration {iteration}/{max_iterations}.\n\n"
+                f"## Goal\n{goal}\n\n"
+                f"Same completion and blocked audit rules apply. "
+                f"Continue from where you left off.\n"
+                f"</goal-steering>"
+            )
+
+    def add_goal_to_schema(self, schema: dict | None) -> dict:
+        """Wrap business schema with __goal framework schema."""
+        goal_prop = {
+            "__goal": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                        "enum": ["active", "complete", "blocked"],
+                    },
+                    "reason": {"type": "string"},
+                },
+                "required": ["status"],
+            }
+        }
+        if schema is None:
+            return {
+                "type": "object",
+                "properties": {**goal_prop},
+                "required": ["__goal"],
+            }
+        if "__goal" in (schema.get("properties") or {}):
+            import warnings
+            warnings.warn(
+                "Business schema contains '__goal' field which is reserved "
+                "for goal mode. Framework will override it."
+            )
+        return {
+            **schema,
+            "properties": {
+                **(schema.get("properties") or {}),
+                **goal_prop,
+            },
+            "required": (schema.get("required") or []) + ["__goal"],
+        }
+
+    def run_goal_loop(
+        self,
+        resolved_prompt: str,
+        schema: dict | None,
+        goal: str,
+        goal_max_iterations: int,
+        call_fn: CallFn,
+        emit_log: Callable[[str], None] | None = None,
+    ) -> Any:
+        """Run goal loop: iterate until complete or blocked.
+
+        call_fn(prompt, session, resume_session_id) -> (result, backend_sid)
+        """
+        goal_schema = self.add_goal_to_schema(schema)
+
+        session = "goal_1"
+        resume_session_id: str | None = None
+        blocked_reason: str | None = None
+        blocked_count = 0
+
+        def _log(msg: str) -> None:
+            if emit_log:
+                emit_log(msg)
+
+        for iteration in range(1, goal_max_iterations + 1):
+            steering = self.build_goal_steering(goal, iteration,
+                                                goal_max_iterations)
+            full_prompt = f"{steering}\n\n{resolved_prompt}"
+
+            # Inject goal schema
+            schema_hint = (
+                f"\n\n---\nOutput format — you MUST respond with a single "
+                f"JSON object matching this schema:\n"
+                f"{json_mod.dumps(goal_schema, indent=2)}\n\n"
+                f"Do NOT wrap the JSON in markdown code blocks. "
+                f"Return ONLY the JSON object."
+            )
+
+            try:
+                result, backend_sid = call_fn(
+                    full_prompt + schema_hint, session, resume_session_id,
+                )
+            except Exception as e:
+                msg = str(e)
+                if "valid JSON" not in msg:
+                    raise
+                _log(f"Goal iter {iteration}: JSON parse error, retrying...")
+                continue
+
+            # Extract goal state
+            goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
+            status = goal_state.get("status", "active")
+
+            if status == "complete":
+                return result
+
+            if status == "blocked":
+                reason = goal_state.get("reason") or "unknown"
+                if reason == blocked_reason:
+                    blocked_count += 1
+                else:
+                    blocked_reason = reason
+                    blocked_count = 1
+                _log(f"Goal blocked ({blocked_count}/3): {reason}")
+                if blocked_count >= 3:
+                    raise GoalBlocked(
+                        f"Goal blocked after {iteration} iterations: "
+                        f"{reason} (3 consecutive identical reasons)"
+                    )
+
+            # Setup for next iteration
+            resume_session_id = backend_sid
+            session = f"goal_{iteration + 1}"
+
+        raise GoalBlocked(
+            f"Goal not completed after {goal_max_iterations} iterations"
+        )
+
+    def _backend_supports_native_goal(self, backend_name: str | None) -> bool:
+        """Check if backend supports /goal in -p mode."""
+        # Import here to avoid circular dependency
+        from loopflow.backends.claude import ClaudeBackend
+        from loopflow.backends.codex import CodexBackend
+        from loopflow.backends.gemini import GeminiBackend
+        from loopflow.backends.kimi import KimiBackend
+        from loopflow.backends.kiro import KiroBackend
+        from loopflow.backends.opencode import OpencodeBackend
+        from loopflow.backends.pi import PiBackend
+        from loopflow.backends.qwen import QwenBackend
+
+        BACKEND_MAP: dict[str, type] = {
+            "kimi": KimiBackend,
+            "claude": ClaudeBackend,
+            "codex": CodexBackend,
+            "pi": PiBackend,
+            "kiro": KiroBackend,
+            "opencode": OpencodeBackend,
+            "qwen": QwenBackend,
+            "gemini": GeminiBackend,
+        }
+
+        if backend_name is None:
+            return False
+        cls = BACKEND_MAP.get(backend_name)
+        if cls is None:
+            return False
+        return bool(getattr(cls, '_supports_native_goal', False))

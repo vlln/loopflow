@@ -1095,7 +1095,7 @@ class TestGoalMode:
     @pytest.fixture(autouse=True)
     def _mock_native_goal(self):
         """Force loopflow goal mode (not native) in all tests."""
-        with patch('loopflow.runtime._backend_supports_native_goal', return_value=False):
+        with patch('loopflow.agent.Agent._backend_supports_native_goal', return_value=False):
             yield
 
     def _make_events(self, text: str, exit_code: int = 0) -> list[dict]:
