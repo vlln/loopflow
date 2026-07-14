@@ -1,0 +1,89 @@
+"""Qwen backend — CLI mode (default), ACP when explicitly requested."""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from loopflow.infrastructure.backends.base import BaseBackend
+from loopflow.infrastructure.backends.acp_backend import AcpBackend
+from loopflow.infrastructure.backends.cli_backend import CliBackend
+
+if TYPE_CHECKING:
+    from loopflow.agent import AgentDef
+
+
+class QwenBackend(BaseBackend):
+    """Backend for qwen-code. CLI mode (default), ACP when explicitly requested."""
+
+    def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, backend_name: str = "qwen"):
+        use_acp = transport == "acp"
+        self._th = text_handler
+        self._thought_handler = thought_handler
+        if use_acp:
+            self._acp = AcpBackend(["qwen", "--acp"], text_handler=text_handler)
+            self._cli = None
+        else:
+            self._acp = None
+            self._cli = _QwenCli(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
+
+    def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> tuple[str, int]:
+        if self._acp:
+            try:
+                return self._acp.create_session(user, system, model, system_mode, agent_def)
+            except Exception:
+                self._acp = None
+                self._cli = _QwenCli(text_handler=self._th, thought_handler=self._thought_handler)
+        return self._cli.create_session(user, system, model, system_mode, agent_def)
+
+    def resume_session(self, sid: str, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> int:
+        if self._acp:
+            try:
+                return self._acp.resume_session(sid, user, system, model, system_mode, agent_def)
+            except Exception:
+                self._acp = None
+                self._cli = _QwenCli(text_handler=self._th, thought_handler=self._thought_handler)
+        return self._cli.resume_session(sid, user, system, model, system_mode, agent_def)
+
+    def list_sessions(self) -> list[dict]:
+        return self._acp.list_sessions() if self._acp else []
+
+    def close(self) -> None:
+        if self._acp:
+            self._acp.close()
+        if self._cli:
+            self._cli.close()
+
+
+class _QwenCli(CliBackend):
+    def _cmd_create(self, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]:
+        cmd = ["qwen", "-y", "-o", "stream-json"]
+        if system:
+            if system_mode == "overwrite":
+                cmd.extend(["--system-prompt", system])
+            else:
+                cmd.extend(["--append-system-prompt", system])
+        cmd.append(user)
+        if model:
+            cmd.extend(["-m", model])
+        return cmd
+
+    def _cmd_resume(self, sid: str, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]:
+        cmd = ["qwen", "-y", "-o", "stream-json", "-r", sid, user]
+        if model:
+            cmd.extend(["-m", model])
+        return cmd
+
+    def _parse_line(self, line: str) -> tuple[str | None, str | None]:
+        data = self._try_parse_json(line)
+        if data is None:
+            return (line, None)
+        tp = data.get("type", "")
+        if tp == "system":
+            return (None, data.get("session_id") or None)
+        if tp == "assistant":
+            content = data.get("message", {}).get("content", [])
+            texts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
+            return ("".join(texts), data.get("session_id") or None)
+        if tp == "result":
+            return (None, data.get("session_id") or None)
+        return (None, None)

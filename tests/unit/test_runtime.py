@@ -33,6 +33,7 @@ def mock_backend():
     backend.create_session.return_value = ("test-sid", 0)
     backend.resume_session.return_value = 0
     backend.supports_native_goal = False
+    backend.capabilities.native_goal = False
     return backend
 
 

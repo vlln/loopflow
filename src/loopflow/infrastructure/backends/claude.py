@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from loopflow.backends.cli_backend import CliBackend
+from loopflow.infrastructure.backends.cli_backend import CliBackend
 
 
 class ClaudeBackend(CliBackend):

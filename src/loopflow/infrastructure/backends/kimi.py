@@ -6,9 +6,9 @@ import re
 import sys
 from typing import TYPE_CHECKING
 
-from loopflow.backends.base import BaseBackend
-from loopflow.backends.acp_backend import AcpBackend
-from loopflow.backends.cli_backend import CliBackend
+from loopflow.infrastructure.backends.base import BaseBackend
+from loopflow.infrastructure.backends.acp_backend import AcpBackend
+from loopflow.infrastructure.backends.cli_backend import CliBackend
 
 if TYPE_CHECKING:
     from loopflow.agent import AgentDef

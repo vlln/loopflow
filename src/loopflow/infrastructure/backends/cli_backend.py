@@ -8,8 +8,8 @@ import time
 from abc import abstractmethod
 from typing import Callable, ClassVar, TYPE_CHECKING
 
-from loopflow.backends.base import BaseBackend
-from loopflow.transports.cli import CliTransport
+from loopflow.infrastructure.backends.base import BaseBackend
+from loopflow.infrastructure.transports.cli import CliTransport
 
 if TYPE_CHECKING:
     from loopflow.agent import AgentDef
