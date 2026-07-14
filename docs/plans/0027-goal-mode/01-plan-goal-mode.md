@@ -2,7 +2,7 @@
 title: 01-plan-goal-mode
 description: 实现 agent goal 反馈循环：runtime.agent() 的 goal 参数、__goal schema wrapper、blocked audit、steering prompt 注入
 type: plan
-status: pending
+status: done
 created: 2026-07-13T00:00:00Z
 ---
 
