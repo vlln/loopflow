@@ -11,6 +11,10 @@ class AgentError(Exception):
     """Raised when an agent call fails at the infrastructure level."""
 
 
+class GoalBlocked(Exception):
+    """Raised when goal mode exits due to blocked or max_iterations."""
+
+
 @dataclass
 class ParamSpec:
     """Specification for a template parameter."""

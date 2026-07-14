@@ -102,8 +102,13 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
 def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
                   agent_def=None,
-                  cache_path: Path | None = None) -> list[dict]:
-    """Run a subagent session and return JSONL events."""
+                  cache_path: Path | None = None,
+                  resume_session_id: str | None = None) -> list[dict]:
+    """Run a subagent session and return JSONL events.
+
+    If resume_session_id is set, resumes the existing session instead of
+    creating a new one.
+    """
     # Collect real output from backend via text_handler
     output_parts: list[str] = []
 
@@ -127,7 +132,14 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if _ctx.loop_dir is not None and (_ctx.loop_dir / ".skills").is_dir():
             skills_dir = str(_ctx.loop_dir / ".skills")
 
-        sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def, skills_dir=skills_dir)
+        if resume_session_id:
+            _emit_log(f"Resuming session {resume_session_id}...")
+            exit_code = instance.resume_session(
+                resume_session_id, prompt, model=model,
+                agent_def=agent_def, skills_dir=skills_dir,
+            )
+        else:
+            sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def, skills_dir=skills_dir)
 
         text = "\n".join(output_parts) if output_parts else ""
         stderr_text = ""
@@ -332,6 +344,274 @@ def _run_mock_auto(schema: dict | None) -> tuple[str, int]:
     return json.dumps(_generate(schema)), 0
 
 
+# ── goal mode helpers ────────────────────────────────────────────────────
+
+def _add_goal_to_schema(schema: dict | None) -> dict:
+    """Wrap business schema with __goal framework schema.
+
+    Returns a new schema dict; does not modify the input.
+    """
+    goal_prop = {
+        "__goal": {
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string",
+                    "enum": ["active", "complete", "blocked"],
+                },
+                "reason": {"type": "string"},
+            },
+            "required": ["status"],
+        }
+    }
+
+    if schema is None:
+        return {
+            "type": "object",
+            "properties": {**goal_prop},
+            "required": ["__goal"],
+        }
+
+    # Warn if business schema already uses __goal
+    if "__goal" in (schema.get("properties") or {}):
+        import warnings
+        warnings.warn(
+            "Business schema contains '__goal' field which is reserved "
+            "for goal mode. Framework will override it."
+        )
+
+    return {
+        **schema,
+        "properties": {
+            **(schema.get("properties") or {}),
+            **goal_prop,
+        },
+        "required": (schema.get("required") or []) + ["__goal"],
+    }
+
+
+def _build_goal_steering(goal: str, iteration: int, max_iterations: int) -> str:
+    """Generate steering prompt for goal mode.
+
+    First iteration: full rules (completion audit, blocked audit).
+    Subsequent iterations: lightweight continuation notice.
+    """
+    if iteration == 1:
+        return (
+            f"<goal-steering>\n"
+            f"You are working toward a goal. Continue working until the goal "
+            f"is fully accomplished.\n\n"
+            f"## Goal\n"
+            f"{goal}\n\n"
+            f"## Completion Audit\n"
+            f"Before declaring complete, verify:\n"
+            f"1. Each requirement in the goal is met\n"
+            f"2. Verification is based on evidence (files, command output, "
+            f"test results)\n"
+            f"3. \"I made a plan\" or \"I wrote a summary\" is NOT completion\n\n"
+            f"## Blocked Audit\n"
+            f"Before declaring blocked:\n"
+            f"1. The same blocking condition must persist for 3 consecutive "
+            f"attempts\n"
+            f"2. \"Difficult\", \"slow\", or \"not fully done\" is NOT a blocker\n"
+            f"3. Only truly insurmountable obstacles qualify (missing "
+            f"credentials, external service down, etc.)\n\n"
+            f"Signal your status in the __goal field of your response.\n"
+            f"</goal-steering>"
+        )
+    else:
+        return (
+            f"<goal-steering>\n"
+            f"Continue working toward the goal. "
+            f"Iteration {iteration}/{max_iterations}.\n\n"
+            f"## Goal\n"
+            f"{goal}\n\n"
+            f"Same completion and blocked audit rules apply. "
+            f"Continue from where you left off.\n"
+            f"</goal-steering>"
+        )
+
+
+def _call_agent_once(
+    resolved_prompt: str,
+    session: str,
+    schema: dict | None,
+    backend: str | None,
+    model: str | None,
+    isolation: str | None,
+    ad,
+    cache_path: Path,
+    retry_hint: str,
+    max_retries: int,
+    resume_session_id: str | None = None,
+) -> dict | str:
+    """Run a single agent call (create or resume) and return result.
+
+    Returns parsed dict if schema is set, raw text otherwise.
+    Raises AgentError on failure.
+    """
+    t0 = time.time()
+
+    if _mock_mode == "auto":
+        _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
+        text, exit_code = _run_mock_auto(schema)
+    elif _mock_mode == "bash":
+        _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
+        text, exit_code = _run_mock(resolved_prompt + retry_hint)
+        if exit_code != 0:
+            text = ""
+    else:
+        cwd = None
+        if isolation == "worktree":
+            cwd = _create_worktree(_ctx.run_id, _ctx._counter)
+            if cwd:
+                _emit_log(f"Worktree: {cwd}")
+
+        events = _run_subagent(
+            resolved_prompt + retry_hint,
+            session,
+            backend=backend,
+            model=model,
+            cwd=cwd,
+            agent_def=ad if ad else None,
+            cache_path=cache_path,
+            resume_session_id=resume_session_id,
+        )
+        exit_code = _extract_exit_code(events)
+        text = _extract_text(events) if exit_code == 0 else ""
+
+        if exit_code != 0:
+            stderr = _extract_stderr(events)
+            from loopflow.agent import AgentError
+            msg = f"Agent call failed with exit code {exit_code}"
+            if stderr:
+                msg += f"\nStderr: {stderr}"
+            raise AgentError(msg)
+
+    if schema:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            from loopflow.agent import extract_json
+            extracted = extract_json(text, schema)
+            if extracted is not None:
+                return extracted
+            from loopflow.agent import AgentError
+            raise AgentError(
+                f"Agent failed to return valid JSON after "
+                f"{max_retries} retries"
+            )
+
+    return text
+
+
+def _run_with_goal(
+    resolved_prompt: str,
+    schema: dict | None,
+    goal: str,
+    goal_max_iterations: int,
+    max_retries: int,
+    backend: str | None,
+    model: str | None,
+    isolation: str | None,
+    ad,
+    agent_def: str | None,
+    cache_path: Path,
+) -> Any:
+    """Run agent in goal mode: iterate until complete or blocked."""
+    from loopflow.agent import GoalBlocked
+
+    goal_schema = _add_goal_to_schema(schema)
+
+    session = _ctx.next_session()
+    resume_session_id: str | None = None
+    blocked_reason: str | None = None
+    blocked_count = 0
+
+    for iteration in range(1, goal_max_iterations + 1):
+        steering = _build_goal_steering(goal, iteration, goal_max_iterations)
+        full_prompt = f"{steering}\n\n{resolved_prompt}"
+
+        # Inject goal schema into prompt
+        import json as json_mod
+        schema_hint = (
+            f"\n\n---\n"
+            f"Output format — you MUST respond with a single JSON object "
+            f"matching this schema:\n{json_mod.dumps(goal_schema, indent=2)}\n\n"
+            f"Do NOT wrap the JSON in markdown code blocks. "
+            f"Return ONLY the JSON object."
+        )
+
+        # Retry loop for schema compliance
+        retry_hint = ""
+        for attempt in range(max_retries + 1):
+            if attempt > 0:
+                _emit_log(f"Goal iter {iteration}: JSON parse failed, retrying ({attempt}/{max_retries})...")
+                retry_hint = (
+                    f"\n\n---\n"
+                    f"Your previous response was not valid JSON. "
+                    f"Please respond with ONLY a JSON object matching the schema above."
+                )
+            try:
+                result = _call_agent_once(
+                    resolved_prompt=full_prompt,
+                    session=session,
+                    schema=goal_schema,
+                    backend=backend,
+                    model=model,
+                    isolation=isolation,
+                    ad=ad,
+                    cache_path=cache_path,
+                    retry_hint=retry_hint,
+                    max_retries=max_retries,
+                    resume_session_id=resume_session_id,
+                )
+                break
+            except Exception as e:
+                # Only retry on JSON parse errors, not infra errors
+                msg = str(e)
+                if "valid JSON" not in msg:
+                    raise
+                if attempt >= max_retries:
+                    raise
+                continue
+
+        # Extract goal state
+        goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
+        status = goal_state.get("status", "active")
+
+        if status == "complete":
+            _write_cache(cache_path, session, 0, json.dumps(result))
+            _persist_state()
+            return result
+
+        if status == "blocked":
+            reason = goal_state.get("reason") or "unknown"
+            if reason == blocked_reason:
+                blocked_count += 1
+            else:
+                blocked_reason = reason
+                blocked_count = 1
+
+            _emit_log(f"Goal blocked ({blocked_count}/3): {reason}")
+
+            if blocked_count >= 3:
+                raise GoalBlocked(
+                    f"Goal blocked after {iteration} iterations: {reason} "
+                    f"(3 consecutive identical reasons)"
+                )
+
+        # active or first/second blocked → set up resume for next iteration
+        resume_session_id = session
+        # New session name for next iteration (but we'll resume the old one)
+        session = _ctx.next_session()
+
+    # Max iterations reached
+    raise GoalBlocked(
+        f"Goal not completed after {goal_max_iterations} iterations"
+    )
+
+
 # ── public API ───────────────────────────────────────────────────────────
 
 def agent(
@@ -344,6 +624,8 @@ def agent(
     backend: str | None = None,
     model: str | None = None,
     agent_def: str | None = None,
+    goal: str | None = None,
+    goal_max_iterations: int = 10,
     **kwargs: str,
 ) -> Any:
     session = _ctx.next_session()
@@ -376,9 +658,10 @@ def agent(
                     from loopflow.skills import build_skill_prompt, check_skills
                     missing = check_skills(ad.skills, _ctx.loop_dir)
                     if missing:
-                        _emit_log(
-                            f"WARNING: skills not found: {', '.join(missing)}. "
-                            f"Install them in {_ctx.loop_dir}/.skills/"
+                        skills_dir_hint = f"{_ctx.loop_dir}/.skills/" if _ctx.loop_dir else "~/.loopflow/skills/ or ~/.agents/skills/"
+                        raise RuntimeError(
+                            f"Skills not found: {', '.join(missing)}. "
+                            f"Install them to {skills_dir_hint}"
                         )
                     skill_section = build_skill_prompt(ad.skills, _ctx.loop_dir)
                     if skill_section:
@@ -399,6 +682,22 @@ def agent(
             f"Return ONLY the JSON object."
         )
         resolved_prompt = resolved_prompt + schema_hint
+
+    # Goal mode: delegate to goal loop
+    if goal:
+        return _run_with_goal(
+            resolved_prompt=resolved_prompt,
+            schema=schema,
+            goal=goal,
+            goal_max_iterations=goal_max_iterations,
+            max_retries=max_retries,
+            backend=backend,
+            model=model,
+            isolation=isolation,
+            ad=ad,
+            agent_def=agent_def,
+            cache_path=cache_path,
+        )
 
     # Retry loop for schema compliance
     retry_hint = ""
