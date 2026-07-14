@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | v0.14.0 已发布：infra retry + message-level events + loop-level skill discovery, 180/180 pass |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | Goal mode: ADR 0027 accepted, AC 0002 active, Spec v9 追加 US-010/BR-017 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

@@ -3,7 +3,7 @@ title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、运行实例管理、崩溃恢复。CLI 工具，无 API，无 UI。
 type: spec
 status: active
-version: 8
+version: 9
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -30,6 +30,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-007 | 开发者 | 在工作流中并行调用多个 Agent（parallel） | 同一轮迭代内并发审查，提高效率 | P0 |
 | US-008 | 开发者 | 在工作流中流水线处理多个 item（pipeline） | 每个 item 独立流经多个 stage，无屏障 | P1 |
 | US-009 | 开发者 | 嵌套调用子 workflow（workflow） | 复用已有 loop 定义 | P2 |
+| US-010 | 开发者 | 在 agent 调用层设置 goal 反馈循环 | agent 内部自主迭代直到目标完成或阻塞，无需 workflow 层处理重试逻辑 | P1 |
 
 ---
 
@@ -38,7 +39,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | 模块 | 提供的能力 | 目录路径 | 优先级 |
 |------|-----------|---------|---------|
 | CLI | loop run / resume / status / list / stop 命令解析和路由 | `src/loopflow/cli.py` | P0 |
-| Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/log/args/workflow 运行时 API | `src/loopflow/runtime.py` | P0 |
+| Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/log/args/workflow 运行时 API，支持 goal 反馈循环 | `src/loopflow/runtime.py` | P0 |
 | Backend Layer | 适配 8 种 AI Agent 后端，默认 CLI 传输，输出归一化为 ACP 兼容事件 | `src/loopflow/backends/` | P0 |
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
@@ -237,6 +238,7 @@ Agent 隔离层级体系（递进）：
 | BR-014 | 环境文件校验 | `loop run` 启动时 `meta.requires.environment` 存在 | 检查环境文件是否存在（相对于 workflow 目录）。存在则通过，不存在则报错退出。不解析文件内容，不激活环境，不安装依赖 |
 | BR-015 | Agent 输出实时可见 | `agent()` 执行期间 | `text_handler` 流式写入时同步 append `agent_message_chunk` 事件到 `<seq>.jsonl` 和 `events.jsonl`。完成后写入 `agent_done`。用户可通过 `cat <seq>.jsonl` 实时查看 agent 输出进度 |
 | BR-016 | 缓存事件 ACP 归一化 | `agent()` 执行时 | CLI 后端将原生输出转换为 ACP `SessionNotification` 兼容事件（`agent_message_chunk`/`agent_thought_chunk`/`tool_call`/`tool_call_update`/`usage_update`）。未来 ACP 后端直接透传 |
+| BR-017 | Goal 反馈循环 | `agent()` 调用时 `goal` 参数非空 | 框架进入 goal 模式：内部循环调用 agent，每次迭代复用同一 session（首次 create，后续 resume）。Agent 通过 `__goal.status` 声明状态（active/complete/blocked）。complete 时剥离 `__goal` 返回业务 result。同一 reason 连续 3 次 blocked 抛 `GoalBlocked`。达到 `goal_max_iterations`（默认 10）抛 `GoalBlocked`。`__goal` schema wrapper 由框架自动注入和剥离，对业务层透明 |
 
 ---
 
