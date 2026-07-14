@@ -99,10 +99,9 @@ def agent(
                 goal_max_iterations=goal_max_iterations,
                 **kwargs,
             )
-        if result.status == "complete":
-            return result.value
-        _emit_log(f"Agent blocked: {result.reason}")
-        return None
+        if result.status != "complete":
+            _emit_log(f"Agent blocked: {result.reason}")
+        return result
     finally:
         if backend_instance:
             backend_instance.close()

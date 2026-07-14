@@ -229,7 +229,7 @@ meta = {"name": "branch", "description": "Branch test"}
 def run(agent, parallel, pipeline, phase, log, args, workflow):
     phase("Start")
     result = agent("echo yes")
-    if "yes" in (result or ""):
+    if "yes" in (result.value or ""):
         phase("PathA")
         agent("echo took A")
     else:

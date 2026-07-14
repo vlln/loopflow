@@ -52,7 +52,7 @@ meta = {"name": "hello", "description": "Test loop"}
 
 def run(agent, parallel, pipeline, phase, log, args, workflow):
     result = agent("say hello")
-    return result
+    return result.value
 """)
     agents_dir = loop_dir / "agents"
     agents_dir.mkdir(parents=True)

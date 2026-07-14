@@ -113,7 +113,7 @@ class TestAgent:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("say hello")
-                assert result == "hello world"
+                assert result.value == "hello world"
 
     def test_agent_failed_raises_agent_error(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
@@ -156,7 +156,7 @@ class TestAgent:
 
         with patch('loopflow.runtime._run_subagent') as mock_run:
             result = agent("should be cached")
-            assert result == "cached"
+            assert result.value == "cached"
             mock_run.assert_not_called()
 
     def test_agent_resume_cache_miss(self, temp_run_dir, mock_backend):
@@ -170,7 +170,7 @@ class TestAgent:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("new prompt")
-                assert result == "fresh"
+                assert result.value == "fresh"
 
     def test_agent_corrupted_cache_re_executes(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
@@ -187,7 +187,7 @@ class TestAgent:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("should re-execute")
-                assert result == "recovered"
+                assert result.value == "recovered"
 
     def test_agent_retries_on_transient_error(self, temp_run_dir, mock_backend):
         """Transient errors (connection_error) get retried, succeed on retry."""
@@ -212,7 +212,7 @@ class TestAgent:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test")
-                assert result == "recovered"
+                assert result.value == "recovered"
                 assert call_count[0] == 2
 
     def test_agent_raises_after_infra_retries_exhausted(self, temp_run_dir,
@@ -322,7 +322,7 @@ class TestParallel:
                     lambda: agent("task b"),
                     lambda: agent("task c"),
                 ])
-                assert results == ["result:task a", "result:task b", "result:task c"]
+                assert [r.value for r in results] == ["result:task a", "result:task b", "result:task c"]
 
     def test_parallel_empty(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, parallel
@@ -350,7 +350,7 @@ class TestParallel:
                     lambda: agent("fail"),
                     lambda: agent("c"),
                 ])
-                assert results == ["result:a", None, "result:c"]
+                assert [r.value if r is not None else None for r in results] == ["result:a", None, "result:c"]
 
 
 # ── pipeline() ────────────────────────────────────────────────────────────
@@ -376,8 +376,8 @@ class TestPipeline:
                     lambda prev, item, idx: agent(f"fix:{item}"),
                 )
                 # Results come back in input order
-                assert results[0] == "result:fix:a"
-                assert results[1] == "result:fix:b"
+                assert results[0].value == "result:fix:a"
+                assert results[1].value == "result:fix:b"
 
     def test_pipeline_empty(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, pipeline
@@ -736,9 +736,9 @@ class TestOutputSchema:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("Report results", agent_def="reporter")
-                assert isinstance(result, dict)
-                assert result["verdict"] == "PASS"
-                assert result["score"] == 95
+                assert isinstance(result.value, dict)
+                assert result.value["verdict"] == "PASS"
+                assert result.value["score"] == 95
 
     def test_explicit_schema_overrides_output(self, temp_run_dir, mock_backend,
                                                loop_with_output_agent):
@@ -760,7 +760,7 @@ class TestOutputSchema:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test", agent_def="reporter", schema=explicit_schema)
-                assert result == {"custom": "override"}
+                assert result.value == {"custom": "override"}
                 # Explicit schema should be in the prompt, not the agent's output
                 assert '"custom"' in captured_prompt[0]
 
@@ -820,7 +820,7 @@ class TestOutputSchema:
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test", agent_def="reporter")
                 assert call_count[0] == 2
-                assert result == {"verdict": "PASS", "score": 85}
+                assert result.value == {"verdict": "PASS", "score": 85}
 
     def test_schema_retry_raises_after_max_retries(self, temp_run_dir, mock_backend,
                                                     loop_with_output_agent):
@@ -865,7 +865,7 @@ class TestOutputSchema:
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test", agent_def="default")
 
-        assert result == "plain text"
+        assert result.value == "plain text"
         assert "Output format" not in captured_prompt[0]
 
 
@@ -1022,7 +1022,7 @@ class TestMockAuto:
         set_context(ctx)
 
         result = agent("test")
-        assert result == "mock response"
+        assert result.value == "mock response"
 
     def test_mock_auto_with_schema(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, set_mock, agent
@@ -1040,7 +1040,7 @@ class TestMockAuto:
             "required": ["verdict", "score"],
         }
         result = agent("test", schema=schema)
-        assert result == {"verdict": "PASS", "score": 0, "tags": []}
+        assert result.value == {"verdict": "PASS", "score": 0, "tags": []}
 
     def test_mock_auto_first_enum(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, set_mock, agent
@@ -1055,7 +1055,7 @@ class TestMockAuto:
             },
         }
         result = agent("test", schema=schema)
-        assert result == {"status": "REPRODUCED"}
+        assert result.value == {"status": "REPRODUCED"}
 
     def test_mock_auto_nested_object(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, set_mock, agent
@@ -1076,7 +1076,7 @@ class TestMockAuto:
             },
         }
         result = agent("test", schema=schema)
-        assert result == {"dimension_scores": {"data": 0, "process": 0}}
+        assert result.value == {"dimension_scores": {"data": 0, "process": 0}}
 
     def test_mock_auto_with_agent_def_output(self, temp_run_dir,
                                                loop_with_output_agent):
@@ -1086,7 +1086,7 @@ class TestMockAuto:
         set_context(ctx)
 
         result = agent("test", agent_def="reporter")
-        assert isinstance(result, dict)
+        assert isinstance(result.value, dict)
 
 
 # ── goal mode ─────────────────────────────────────────────────────────────
@@ -1124,8 +1124,8 @@ class TestGoalMode:
                     schema={"type": "object", "properties": {"status": {}, "payload": {}}},
                     goal="Complete the task",
                 )
-                assert result == {"status": "done", "payload": {"x": 1}}
-                assert "__goal" not in result
+                assert result.value == {"status": "done", "payload": {"x": 1}}
+                assert "__goal" not in result.value
 
     def test_goal_completes_after_multiple_iterations(self, temp_run_dir, mock_backend):
         """AC-001-N-2: Multiple iterations before complete."""
@@ -1149,7 +1149,7 @@ class TestGoalMode:
                     schema={"type": "object", "properties": {"status": {}}},
                     goal="Persist until done",
                 )
-                assert result == {"status": "done"}
+                assert result.value == {"status": "done"}
                 # 3 iterations: first create, then 2 resumes
                 assert mock_run.call_count == 3
                 # First call: no resume_session_id
@@ -1169,7 +1169,7 @@ class TestGoalMode:
                 self._make_events("plain text")
             )):
                 result = agent("say hello")
-                assert result == "plain text"
+                assert result.value == "plain text"
                 # Goal helpers should not be called
                 mock_backend.resume_session.assert_not_called()
 
@@ -1198,7 +1198,7 @@ class TestGoalMode:
                     goal="Finish",
                     goal_max_iterations=3,
                 )
-                assert result == {"status": "ok"}
+                assert result.value == {"status": "ok"}
 
     def test_goal_empty_string_behaves_as_none(self, temp_run_dir, mock_backend):
         """AC-001-B-2: Empty goal string → normal mode."""
@@ -1211,7 +1211,7 @@ class TestGoalMode:
                 self._make_events("plain")
             )):
                 result = agent("task", goal="")
-                assert result == "plain"
+                assert result.value == "plain"
 
     def test_goal_no_schema_extracts_goal_from_text(self, temp_run_dir, mock_backend):
         """AC-001-B-3: No business schema, framework creates __goal schema."""
@@ -1226,8 +1226,8 @@ class TestGoalMode:
                 self._make_events(self._json_result(complete))
             )):
                 result = agent("task", goal="Do it")
-                assert result == {}
-                assert "__goal" not in result
+                assert result.value == {}
+                assert "__goal" not in result.value
 
     # ── AC-001: Goal loop failure ────────────────────────────────────────
 
@@ -1247,7 +1247,7 @@ class TestGoalMode:
                     goal="Never finish",
                     goal_max_iterations=5,
                 )
-                assert result is None
+                assert result.status != "complete"
                 assert mock_run.call_count == 5
 
     def test_goal_three_blocked_raises(self, temp_run_dir, mock_backend):
@@ -1262,7 +1262,7 @@ class TestGoalMode:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=calls):
                 result = agent("task", goal="Download data")
-                assert result is None
+                assert result.status != "complete"
 
     # ── AC-002: Blocked audit ────────────────────────────────────────────
 
@@ -1287,7 +1287,7 @@ class TestGoalMode:
                 # Different reasons reset counter, so 3 iterations is not enough
                 # Different reasons reset counter, so 3 iterations is not enough
                 # to exhaust — max_iterations is reached instead
-                assert result is None
+                assert result.status != "complete"
 
     def test_blocked_twice_then_complete(self, temp_run_dir, mock_backend):
         """AC-002-N-2: 2 blocked then complete → success."""
@@ -1311,7 +1311,7 @@ class TestGoalMode:
                     schema={"type": "object", "properties": {"status": {}}},
                     goal="Retry",
                 )
-                assert result == {"status": "ok"}
+                assert result.value == {"status": "ok"}
 
     def test_blocked_no_reason_defaults_unknown(self, temp_run_dir, mock_backend):
         """AC-002-B-1: Blocked without reason → 'unknown'."""
@@ -1325,7 +1325,7 @@ class TestGoalMode:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=calls):
                 result = agent("task", goal="Test")
-                assert result is None
+                assert result.status != "complete"
 
     # ── AC-003: Schema wrapper transparency ──────────────────────────────
 
@@ -1353,9 +1353,9 @@ class TestGoalMode:
                     },
                     goal="Generate figures",
                 )
-                assert "figures" in result
-                assert "summary" in result
-                assert "__goal" not in result
+                assert "figures" in result.value
+                assert "summary" in result.value
+                assert "__goal" not in result.value
 
     def test_goal_does_not_mutate_input_schema(self, temp_run_dir, mock_backend):
         """AC-003-N-2: Input schema object is not modified."""
@@ -1396,7 +1396,7 @@ class TestGoalMode:
                     "test",
                     schema={"type": "object", "properties": {"status": {}}},
                 )
-                assert result == {"status": "ok"}
+                assert result.value == {"status": "ok"}
 
     def test_goal_blocked_agent_error_propagates(self, temp_run_dir, mock_backend):
         """AC-001-E-3: Backend error in goal mode propagates."""
