@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
-| **设计评估** | ADR 0029: AgentRunner 重构 — 消除 Agent 贫血、Backend 双重创建、执行路径重复 |
+| **当前阶段** | `SYSTEM_TEST` |
+| **设计评估** | ADR 0029: AgentRunner 重构完成 — 195/195 pass, E2E kimi+claude native goal 通过 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
