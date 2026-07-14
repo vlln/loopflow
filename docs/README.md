@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | v0.15.0 候选：goal mode + Agent 层重构, 195/195 pass |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | ADR 0029: AgentRunner 重构 — 消除 Agent 贫血、Backend 双重创建、执行路径重复 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
