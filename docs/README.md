@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | ADR 0030: DDD 四层架构完成 — 195/195 pass, E2E kimi+claude native goal 通过 |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | v0.16.0: DDD 四层架构 — domain/infrastructure/application/presentation, 195/195 pass |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

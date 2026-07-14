@@ -2,6 +2,30 @@
 
 ## [Unreleased]
 
+## [0.16.0] — 2026-07-14
+
+### Changed
+- **DDD 四层架构**：domain / infrastructure / application / presentation
+- `Agent` 类 → `AgentRunner` 类 + 模块级函数 `marshal()` 等
+- `marshal()` 接受 `Capabilities` 值对象而非 `Backend` 实例
+- `BaseBackend.capabilities` property，各后端覆写
+- `parse_agent()` / `list_agents()` → `infrastructure/repository.py`
+- `discovery.py` / `lock.py` / `skills.py` → `infrastructure/`
+- `runtime.py` 582 → 197 行，纯应用协调
+- 后端文件移入 `infrastructure/backends/`，传输文件移入 `infrastructure/transports/`
+- CLI / graph / display 移入 `presentation/`
+
+### Removed
+- `Agent` 类（贫血 marshalling 工具）
+- 所有兼容层（旧 `agent.py` / `graph.py` / `cli.py` / `runner.py` / `backends/` / `transports/` / `display/`）
+- `_get_ctx()` / `_get_mock_mode()` 全局状态 workaround
+
+### Fixed
+- Backend 双重创建（marshalling 查询 + 执行调用）
+- 两条执行路径重复（统一为 `AgentRunner._execute_once()`）
+- infrastructure → presentation 依赖方向违规
+- 8 个 TYPE_CHECKING 死引用（`loopflow.agent` → `loopflow.domain`）
+
 ## [0.13.0] — 2026-07-12
 
 ### Changed
