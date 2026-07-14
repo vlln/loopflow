@@ -138,6 +138,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
                 resume_session_id, prompt, model=model,
                 agent_def=agent_def, skills_dir=skills_dir,
             )
+            sid = resume_session_id
         else:
             sid, exit_code = instance.create_session(prompt, model=model, agent_def=agent_def, skills_dir=skills_dir)
 
@@ -149,7 +150,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
             _emit_log(f"Agent responded: {len(text)} chars")
         return [
             {"type": "agent_message", "content": text},
-            {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text},
+            {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text, "session_id": sid},
         ]
     except Exception as e:
         _emit_log(f"Agent backend error: {e}")
@@ -185,6 +186,14 @@ def _extract_stderr(events: list[dict]) -> str:
         if evt.get("type") == "agent_done":
             return evt.get("stderr", "")
     return ""
+
+
+def _extract_session_id(events: list[dict]) -> str | None:
+    """Extract backend session ID from agent_done event."""
+    for evt in events:
+        if evt.get("type") == "agent_done":
+            return evt.get("session_id")
+    return None
 
 
 # ── context ──────────────────────────────────────────────────────────────
@@ -444,13 +453,14 @@ def _call_agent_once(
     retry_hint: str,
     max_retries: int,
     resume_session_id: str | None = None,
-) -> dict | str:
-    """Run a single agent call (create or resume) and return result.
+) -> tuple[dict | str, str | None]:
+    """Run a single agent call (create or resume) and return (result, backend_session_id).
 
     Returns parsed dict if schema is set, raw text otherwise.
     Raises AgentError on failure.
     """
     t0 = time.time()
+    backend_sid: str | None = None
 
     if _mock_mode == "auto":
         _write_event({"type": "agent_start", "session": session, "phase": _ctx._current_phase})
@@ -479,6 +489,7 @@ def _call_agent_once(
         )
         exit_code = _extract_exit_code(events)
         text = _extract_text(events) if exit_code == 0 else ""
+        backend_sid = _extract_session_id(events)
 
         if exit_code != 0:
             stderr = _extract_stderr(events)
@@ -490,19 +501,19 @@ def _call_agent_once(
 
     if schema:
         try:
-            return json.loads(text)
+            return json.loads(text), backend_sid
         except json.JSONDecodeError:
             from loopflow.agent import extract_json
             extracted = extract_json(text, schema)
             if extracted is not None:
-                return extracted
+                return extracted, backend_sid
             from loopflow.agent import AgentError
             raise AgentError(
                 f"Agent failed to return valid JSON after "
                 f"{max_retries} retries"
             )
 
-    return text
+    return text, backend_sid
 
 
 def _run_with_goal(
@@ -553,7 +564,7 @@ def _run_with_goal(
                     f"Please respond with ONLY a JSON object matching the schema above."
                 )
             try:
-                result = _call_agent_once(
+                result, backend_sid = _call_agent_once(
                     resolved_prompt=full_prompt,
                     session=session,
                     schema=goal_schema,
@@ -602,8 +613,7 @@ def _run_with_goal(
                 )
 
         # active or first/second blocked → set up resume for next iteration
-        resume_session_id = session
-        # New session name for next iteration (but we'll resume the old one)
+        resume_session_id = backend_sid
         session = _ctx.next_session()
 
     # Max iterations reached

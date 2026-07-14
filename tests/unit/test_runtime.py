@@ -1095,7 +1095,8 @@ class TestGoalMode:
     def _make_events(self, text: str, exit_code: int = 0) -> list[dict]:
         return [
             {"type": "agent_message", "content": text},
-            {"type": "agent_done", "exit_code": exit_code},
+            {"type": "agent_done", "exit_code": exit_code,
+             "session_id": "mock-backend-sid-001"},
         ]
 
     def _json_result(self, data: dict) -> str:
@@ -1151,9 +1152,9 @@ class TestGoalMode:
                 assert mock_run.call_count == 3
                 # First call: no resume_session_id
                 assert mock_run.call_args_list[0][1].get("resume_session_id") is None
-                # Second and third calls: resume_session_id is set
-                assert mock_run.call_args_list[1][1].get("resume_session_id") is not None
-                assert mock_run.call_args_list[2][1].get("resume_session_id") is not None
+                # Second and third calls: resume_session_id is the backend session ID
+                assert mock_run.call_args_list[1][1].get("resume_session_id") == "mock-backend-sid-001"
+                assert mock_run.call_args_list[2][1].get("resume_session_id") == "mock-backend-sid-001"
 
     def test_goal_without_goal_behaves_normally(self, temp_run_dir, mock_backend):
         """AC-005-N-1: No goal → normal behavior."""
