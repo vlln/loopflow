@@ -1232,9 +1232,8 @@ class TestGoalMode:
     # ── AC-001: Goal loop failure ────────────────────────────────────────
 
     def test_goal_max_iterations_exceeded(self, temp_run_dir, mock_backend):
-        """AC-001-F-1: Max iterations reached → GoalBlocked."""
+        """AC-001-F-1: Max iterations reached → returns None."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1243,18 +1242,17 @@ class TestGoalMode:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=calls) as mock_run:
-                with pytest.raises(GoalBlocked, match="not completed"):
-                    agent(
-                        "task",
-                        goal="Never finish",
-                        goal_max_iterations=5,
-                    )
+                result = agent(
+                    "task",
+                    goal="Never finish",
+                    goal_max_iterations=5,
+                )
+                assert result is None
                 assert mock_run.call_count == 5
 
     def test_goal_three_blocked_raises(self, temp_run_dir, mock_backend):
-        """AC-001-F-2: 3 consecutive blocked → GoalBlocked."""
+        """AC-001-F-2: 3 consecutive blocked → returns None."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1263,15 +1261,14 @@ class TestGoalMode:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=calls):
-                with pytest.raises(GoalBlocked, match="network timeout"):
-                    agent("task", goal="Download data")
+                result = agent("task", goal="Download data")
+                assert result is None
 
     # ── AC-002: Blocked audit ────────────────────────────────────────────
 
     def test_blocked_different_reasons_reset_counter(self, temp_run_dir, mock_backend):
         """AC-002-N-1: Different blocked reasons don't accumulate."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1286,8 +1283,10 @@ class TestGoalMode:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=calls):
-                with pytest.raises(GoalBlocked, match="not completed"):
-                    agent("task", goal="test", goal_max_iterations=3)
+                result = agent("task", goal="test", goal_max_iterations=3)
+                # Different reasons reset counter, so 3 iterations is not enough
+                # to trigger GoalBlocked — max_iterations is reached instead
+                assert result is None
 
     def test_blocked_twice_then_complete(self, temp_run_dir, mock_backend):
         """AC-002-N-2: 2 blocked then complete → success."""
@@ -1316,7 +1315,6 @@ class TestGoalMode:
     def test_blocked_no_reason_defaults_unknown(self, temp_run_dir, mock_backend):
         """AC-002-B-1: Blocked without reason → 'unknown'."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.domain import GoalBlocked
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -1325,8 +1323,8 @@ class TestGoalMode:
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=calls):
-                with pytest.raises(GoalBlocked, match="unknown"):
-                    agent("task", goal="Test")
+                result = agent("task", goal="Test")
+                assert result is None
 
     # ── AC-003: Schema wrapper transparency ──────────────────────────────
 

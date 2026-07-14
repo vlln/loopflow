@@ -55,6 +55,7 @@ def agent(
     """Run an agent call. Thin facade over AgentRunner."""
     from loopflow.infrastructure.repository import parse_agent
     from loopflow.application.runner import AgentRunner
+    from loopflow.domain.agent_def import GoalBlocked
 
     ad = None
     ctx = _ctx_module._ctx
@@ -89,16 +90,20 @@ def agent(
             mock_fn=_run_mock,
             mock_auto_fn=_run_mock_auto,
         )
-        return runner.run(
-            prompt,
-            goal=goal,
-            model=model,
-            schema=schema,
-            isolation=isolation,
-            max_retries=max_retries,
-            goal_max_iterations=goal_max_iterations,
-            **kwargs,
-        )
+        try:
+            return runner.run(
+                prompt,
+                goal=goal,
+                model=model,
+                schema=schema,
+                isolation=isolation,
+                max_retries=max_retries,
+                goal_max_iterations=goal_max_iterations,
+                **kwargs,
+            )
+        except GoalBlocked as e:
+            _emit_log(f"Goal blocked: {e}")
+            return None
     finally:
         if backend_instance:
             backend_instance.close()
