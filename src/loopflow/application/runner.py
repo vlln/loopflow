@@ -15,6 +15,7 @@ from loopflow.domain import (
     AgentDef,
     AgentError,
     Capabilities,
+    GoalResult,
     add_goal_to_schema,
     build_goal_steering,
     extract_json,
@@ -34,6 +35,12 @@ _TRANSIENT_PATTERNS: list[tuple[str, str]] = [
     ("rate limited", "rate_limit"),
     ("timed out", "timeout"),
 ]
+
+# Native goal exit codes (kimi/claude headless mode)
+_GOAL_EXIT_CODES: dict[int, str] = {
+    3: "blocked",
+    6: "paused",
+}
 
 
 def _is_transient_error(stderr: str) -> bool:
@@ -209,7 +216,17 @@ class AgentRunner:
                 _goal_call, self._log,
             )
 
-        # 7. Normal single call (or native goal)
+        # 7. Native goal: single call, wrap in GoalResult
+        if native_goal:
+            try:
+                result = self._execute_once(
+                    resolved, schema, model, isolation, max_retries,
+                )[0]
+                return GoalResult(status="complete", value=result)
+            except AgentError as e:
+                return GoalResult(status="blocked", reason=str(e))
+
+        # 8. Normal single call
         return self._execute_once(
             resolved, schema, model, isolation, max_retries,
         )[0]

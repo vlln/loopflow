@@ -6,12 +6,12 @@ Zero dependencies on infrastructure, application, or presentation layers.
 from loopflow.domain.agent_def import (
     AgentDef,
     AgentError,
-    GoalBlocked,
     ParamSpec,
     render_template,
     resolve_params,
 )
 from loopflow.domain.capabilities import Capabilities
+from loopflow.domain.goal_loop import GoalResult, run_goal_loop
 from loopflow.domain.marshalling import (
     add_goal_to_schema,
     build_goal_steering,
@@ -19,13 +19,12 @@ from loopflow.domain.marshalling import (
     marshal,
     validate_json,
 )
-from loopflow.domain.goal_loop import run_goal_loop
 
 __all__ = [
     "AgentDef",
     "AgentError",
     "Capabilities",
-    "GoalBlocked",
+    "GoalResult",
     "ParamSpec",
     "add_goal_to_schema",
     "build_goal_steering",

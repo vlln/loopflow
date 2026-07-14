@@ -1285,7 +1285,8 @@ class TestGoalMode:
             with patch('loopflow.runtime._run_subagent', side_effect=calls):
                 result = agent("task", goal="test", goal_max_iterations=3)
                 # Different reasons reset counter, so 3 iterations is not enough
-                # to trigger GoalBlocked — max_iterations is reached instead
+                # Different reasons reset counter, so 3 iterations is not enough
+                # to exhaust — max_iterations is reached instead
                 assert result is None
 
     def test_blocked_twice_then_complete(self, temp_run_dir, mock_backend):
