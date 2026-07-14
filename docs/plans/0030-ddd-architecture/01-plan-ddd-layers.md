@@ -2,7 +2,7 @@
 title: Plan 01 — DDD 四层架构重构
 description: 按 ADR 0030 将 loopflow 重构为 domain/infrastructure/application/presentation 四层
 type: plan
-status: pending
+status: done
 created: 2026-07-14T00:00:00Z
 ---
 
