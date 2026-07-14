@@ -15,7 +15,7 @@ from loopflow.domain import (
     AgentDef,
     AgentError,
     Capabilities,
-    GoalResult,
+    AgentResult,
     add_goal_to_schema,
     build_goal_steering,
     extract_json,
@@ -216,19 +216,20 @@ class AgentRunner:
                 _goal_call, self._log,
             )
 
-        # 7. Native goal: single call, wrap in GoalResult
+        # 7. Native goal: single call, wrap in AgentResult
         if native_goal:
             result, backend_sid = self._execute_once(
                 resolved, schema, model, isolation, max_retries,
             )
             if isinstance(result, str) and result.startswith("Goal ["):
-                return GoalResult(status="blocked", reason=result)
-            return GoalResult(status="complete", value=result)
+                return AgentResult(status="blocked", reason=result)
+            return AgentResult(status="complete", value=result)
 
         # 8. Normal single call
-        return self._execute_once(
+        result = self._execute_once(
             resolved, schema, model, isolation, max_retries,
         )[0]
+        return AgentResult(status="complete", value=result)
 
     # ── internal ─────────────────────────────────────────────────────────
 

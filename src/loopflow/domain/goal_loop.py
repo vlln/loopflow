@@ -13,15 +13,17 @@ CallFn = Callable[[str, str, str | None], tuple[dict | str, str | None]]
 
 
 @dataclass(frozen=True)
-class GoalResult:
-    """Outcome of a goal-mode agent call.
+class AgentResult:
+    """Outcome of a single agent() call.
 
-    Unified across loopflow goal loop and native goal (kimi/claude).
+    Unified across all modes: normal, goal, loopflow goal loop, native goal.
     """
 
-    status: str          # "complete" | "blocked" | "exhausted"
-    reason: str = ""     # failure reason (empty if complete)
-    value: Any = None    # business result (None if not complete)
+    status: str                # "complete" | "blocked" | "exhausted" | "paused"
+    reason: str = ""           # failure reason (empty if complete)
+    value: Any = None          # business result (None if not complete)
+    turns: int = 1             # number of agent calls
+    tokens: int | None = None  # total tokens consumed
 
 
 def run_goal_loop(
@@ -31,7 +33,7 @@ def run_goal_loop(
     goal_max_iterations: int,
     call_fn: CallFn,
     emit_log: Callable[[str], None] | None = None,
-) -> GoalResult:
+) -> AgentResult:
     """Run goal loop: iterate until complete or blocked.
 
     call_fn(prompt, session, resume_session_id) -> (result, backend_sid)
@@ -78,7 +80,7 @@ def run_goal_loop(
         status = goal_state.get("status", "active")
 
         if status == "complete":
-            return GoalResult(status="complete", value=result)
+            return AgentResult(status="complete", value=result, turns=iteration)
 
         if status == "blocked":
             reason = goal_state.get("reason") or "unknown"
@@ -89,16 +91,18 @@ def run_goal_loop(
                 blocked_count = 1
             _log(f"Goal blocked ({blocked_count}/3): {reason}")
             if blocked_count >= 3:
-                return GoalResult(
+                return AgentResult(
                     status="blocked",
                     reason=f"{reason} (3 consecutive identical reasons)",
+                    turns=iteration,
                 )
 
         # Setup for next iteration
         resume_session_id = backend_sid
         session = f"goal_{iteration + 1}"
 
-    return GoalResult(
+    return AgentResult(
         status="exhausted",
         reason=f"Goal not completed after {goal_max_iterations} iterations",
+        turns=goal_max_iterations,
     )
