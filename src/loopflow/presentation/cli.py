@@ -163,6 +163,7 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     if from_phase:
         ctx.from_phase = from_phase
     if only_phase:
+        ctx.from_phase = only_phase  # --only-phase implies --from-phase
         ctx.only_phase = only_phase
 
     # Create state from meta declaration
