@@ -56,7 +56,9 @@ class RunContext:
         self._prev_phase: str | None = None
         self._current_phase: str | None = None
         self.from_phase: str | None = None  # --from-phase: skip phases before this
+        self.only_phase: str | None = None  # --only-phase: stop after this phase
         self._reached_from_phase: bool = False
+        self._past_only_phase: bool = False
         self.graph = graph
         self.live = live
         self.loop_dir = loop_dir

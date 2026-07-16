@@ -63,6 +63,10 @@ def agent(
     if ctx.from_phase and not ctx._reached_from_phase:
         return AgentResult(status="complete", turns=0, reason="skipped")
 
+    # --only-phase: stop after the target phase completed
+    if ctx.only_phase and ctx._past_only_phase:
+        return AgentResult(status="blocked", turns=0, reason="stopped-after-phase")
+
     ad = None
     if ctx.loop_dir is not None and agent_def is not None:
         agent_path = ctx.loop_dir / "agents" / f"{agent_def}.md"
