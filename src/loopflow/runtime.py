@@ -23,6 +23,7 @@ from loopflow.infrastructure.context import (
 from loopflow.infrastructure.backends import manager as _backend_manager
 from loopflow.infrastructure.worktree import _create_worktree
 from loopflow.presentation.events import _emit_log, _emit_phase
+from loopflow.domain.goal_loop import AgentResult
 
 # Mutable state accessed via module attribute (not import-time binding)
 import loopflow.infrastructure.context as _ctx_module
@@ -56,8 +57,13 @@ def agent(
     from loopflow.infrastructure.repository import parse_agent
     from loopflow.application.runner import AgentRunner
 
-    ad = None
     ctx = _ctx_module._ctx
+
+    # --from-phase: skip agent calls before the target phase
+    if ctx.from_phase and not ctx._reached_from_phase:
+        return AgentResult(status="complete", turns=0, reason="skipped")
+
+    ad = None
     if ctx.loop_dir is not None and agent_def is not None:
         agent_path = ctx.loop_dir / "agents" / f"{agent_def}.md"
         if agent_path.is_file():

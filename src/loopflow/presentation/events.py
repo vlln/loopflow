@@ -14,6 +14,10 @@ def _emit_phase(title: str) -> None:
     _ctx = _ctx_module._ctx
     _ctx._current_phase = title
 
+    # Check if we've reached the --from-phase target
+    if _ctx.from_phase and title == _ctx.from_phase:
+        _ctx._reached_from_phase = True
+
     if _ctx.live is not None:
         _ctx.live.console.log(f"[loopflow] Phase: {title}")
     else:

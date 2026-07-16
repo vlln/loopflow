@@ -110,7 +110,8 @@ def main():
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
               help="Mock mode: bash (shell execution) or auto (schema-based generation)")
 @click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
-def run(name, wf_args, mock, watch):
+@click.option("--from-phase", default=None, help="Start execution from this phase")
+def run(name, wf_args, mock, watch, from_phase):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
@@ -158,6 +159,8 @@ def run(name, wf_args, mock, watch):
     ctx = RunContext(run_id=run_id, run_dir=run_dir, graph=pg, live=live,
                      loop_dir=loop_dir)
     set_context(ctx)
+    if from_phase:
+        ctx.from_phase = from_phase
 
     # Create state from meta declaration
     from loopflow.runtime import State
