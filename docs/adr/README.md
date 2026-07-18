@@ -4,6 +4,8 @@
 |------|------|------|-------------|
 | [0031](0031-loop-definition.md) | loop.md — loop 定义文件格式（frontmatter + body） | accepted | — |
 | [0032](0032-dispatch-queue.md) | 调度机制：dispatch + queue + resource lock | accepted | — |
+| [0033](0033-webui-architecture.md) | 本地 WebUI 技术栈与分层 | accepted | Spec v12 |
+| [0034](0034-web-event-run-lifecycle.md) | Web 事件与 Run 生命周期契约 | accepted | Spec v12 |
 
 ## 状态说明
 
@@ -14,4 +16,3 @@
 | accepted | 审查通过，当前生效 |
 | superseded | 被新版 ADR 替代 |
 | deprecated | 已废弃，不再适用 |
-
