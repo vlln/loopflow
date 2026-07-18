@@ -141,8 +141,8 @@ src/loopflow/infrastructure/      # 文件、进程、事件、Backend 适配
 
 | 验证项 | 复现步骤 | 结论 | 经验 | 验证 Branch |
 |--------|---------|------|------|------------|
-| SSE 重放与持续推送 | 用临时 `events.jsonl` 启动标准库 server；以 `last_event_id` 连接，验证先重放后增量、断线重连无丢失 | 待验证 | — | spike/0033-webui-architecture |
-| 慢客户端与连接清理 | 并发建立多个 SSE 连接，模拟客户端断开和慢读取，确认 Run 写入不被阻塞且线程/文件句柄可回收 | 待验证 | — | spike/0033-webui-architecture |
-| Vite 资产随 Python 包发布 | 构建前端并制作 wheel，在无 Node 环境安装后由 `loop web` 返回入口和带 hash 的静态资源 | 待验证 | — | spike/0033-webui-architecture |
-| Phase 图交互 | 用 `@xyflow/react` 渲染含 forward edge、back edge、分支和 100 个 occurrence 的 fixture，验证选择、缩放、fit view 和 current path 样式 | 待验证 | — | spike/0033-webui-architecture |
-| 默认绑定和路径边界 | 启动时确认默认仅监听 127.0.0.1；对路径穿越和符号链接逃逸请求返回拒绝响应 | 待验证 | — | spike/0033-webui-architecture |
+| SSE 重放与持续推送 | `uv run python -m unittest -v test_server_spike.py` | 可行：重放 2/3 后持续收到 4，last_event_id=3 重连只收到 4 | 持久化 reader 与 condition 通知可组合，连接本身不触发 Run | spike/0033-webui-architecture@ba32790 |
+| 慢客户端与连接清理 | 同时建立并关闭 8 个 SSE 客户端，再追加事件 | 可行：8 个 handler 均捕获断连并由 daemon thread 回收，Run 写入未阻塞 | 正式实现仍需连接上限、heartbeat 和故障注入测试 | spike/0033-webui-architecture@ba32790 |
+| Vite 资产随 Python 包发布 | `npm run build && ./sync_assets.sh && uv build wheel-fixture`，再从 isolated Python 读取 `importlib.resources` | 可行：wheel 含带 hash 的 JS/CSS 和 index.html，无 Node 环境可读 | 不能从 Python 项目外 force-include dist；构建前必须同步到包内目录 | spike/0033-webui-architecture@ba32790 |
+| Phase 图交互 | `npm test && npm run build`，fixture 含两条 forward edge、一条 backedge、current 和 100 occurrence | 可行：2 个组件测试和 Vite production build 通过，Controls/fitView/节点选择可渲染 | 视觉布局与像素回归留给 TEST_INFRA 的浏览器测试 | spike/0033-webui-architecture@ba32790 |
+| 默认绑定和路径边界 | Python 测试默认 socket、host+allow_remote 校验、`..` 与 symlink escape | 可行：默认 127.0.0.1；无 allow_remote 拒绝 0.0.0.0；两类路径逃逸均拒绝 | 远程绑定必须是独立双确认，不能把 host 参数本身当确认 | spike/0033-webui-architecture@ba32790 |
