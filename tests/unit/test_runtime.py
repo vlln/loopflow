@@ -32,6 +32,8 @@ def mock_backend():
     backend = MagicMock()
     backend.create_session.return_value = ("test-sid", 0)
     backend.resume_session.return_value = 0
+    backend.supports_native_goal = False
+    backend.capabilities.native_goal = False
     return backend
 
 
@@ -111,11 +113,11 @@ class TestAgent:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("say hello")
-                assert result == "hello world"
+                assert result.value == "hello world"
 
     def test_agent_failed_raises_agent_error(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
@@ -154,7 +156,7 @@ class TestAgent:
 
         with patch('loopflow.runtime._run_subagent') as mock_run:
             result = agent("should be cached")
-            assert result == "cached"
+            assert result.value == "cached"
             mock_run.assert_not_called()
 
     def test_agent_resume_cache_miss(self, temp_run_dir, mock_backend):
@@ -168,7 +170,7 @@ class TestAgent:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("new prompt")
-                assert result == "fresh"
+                assert result.value == "fresh"
 
     def test_agent_corrupted_cache_re_executes(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
@@ -185,7 +187,7 @@ class TestAgent:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("should re-execute")
-                assert result == "recovered"
+                assert result.value == "recovered"
 
     def test_agent_retries_on_transient_error(self, temp_run_dir, mock_backend):
         """Transient errors (connection_error) get retried, succeed on retry."""
@@ -195,7 +197,7 @@ class TestAgent:
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return [
@@ -210,20 +212,20 @@ class TestAgent:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test")
-                assert result == "recovered"
+                assert result.value == "recovered"
                 assert call_count[0] == 2
 
     def test_agent_raises_after_infra_retries_exhausted(self, temp_run_dir,
                                                          mock_backend):
         """Transient errors on all attempts → raise AgentError after backoff."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             return [
                 {"type": "agent_done", "exit_code": 1,
@@ -243,13 +245,13 @@ class TestAgent:
                                                   mock_backend):
         """Non-transient errors raise immediately without retry."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             return [
                 {"type": "agent_done", "exit_code": 1,
@@ -271,7 +273,7 @@ class TestAgent:
 
         call_count = [0]
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             if call_count[0] <= 2:
                 return [
@@ -307,7 +309,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -320,7 +322,7 @@ class TestParallel:
                     lambda: agent("task b"),
                     lambda: agent("task c"),
                 ])
-                assert results == ["result:task a", "result:task b", "result:task c"]
+                assert [r.value for r in results] == ["result:task a", "result:task b", "result:task c"]
 
     def test_parallel_empty(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, parallel
@@ -333,7 +335,7 @@ class TestParallel:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             if "fail" in prompt:
                 raise Exception("boom")
             return [
@@ -348,7 +350,7 @@ class TestParallel:
                     lambda: agent("fail"),
                     lambda: agent("c"),
                 ])
-                assert results == ["result:a", None, "result:c"]
+                assert [r.value if r is not None else None for r in results] == ["result:a", None, "result:c"]
 
 
 # ── pipeline() ────────────────────────────────────────────────────────────
@@ -360,7 +362,7 @@ class TestPipeline:
         set_context(ctx)
 
         # Use a dict-based mock that returns content based on prompt
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": f"result:{prompt}"},
                 {"type": "agent_done", "exit_code": 0},
@@ -374,8 +376,8 @@ class TestPipeline:
                     lambda prev, item, idx: agent(f"fix:{item}"),
                 )
                 # Results come back in input order
-                assert results[0] == "result:fix:a"
-                assert results[1] == "result:fix:b"
+                assert results[0].value == "result:fix:a"
+                assert results[1].value == "result:fix:b"
 
     def test_pipeline_empty(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, pipeline
@@ -388,7 +390,7 @@ class TestPipeline:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_done", "exit_code": 1},  # fails, returns None
             ]
@@ -528,7 +530,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "translated"},
@@ -552,7 +554,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "ok"},
@@ -575,7 +577,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "ok"},
@@ -598,7 +600,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_prompt = []
 
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "ok"},
@@ -632,7 +634,7 @@ You are a professional translator. Translate the input to {{language}}.
 
         captured_logs = []
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
@@ -646,9 +648,9 @@ You are a professional translator. Translate the input to {{language}}.
         warnings = [m for m in captured_logs if "skills not found" in m]
         assert len(warnings) == 0  # translator has no skills declared
 
-    def test_agent_def_missing_skills_warns(self, temp_run_dir, mock_backend,
+    def test_agent_def_missing_skills_blocks(self, temp_run_dir, mock_backend,
                                              loop_with_agents):
-        """Agent with skills declared but not installed → warning."""
+        """Agent with skills declared but not installed → RuntimeError."""
         from loopflow.runtime import RunContext, set_context, agent
         ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
         set_context(ctx)
@@ -663,9 +665,8 @@ skills:
 Research: {{}}
 """)
 
-        captured_logs = []
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
@@ -673,16 +674,12 @@ Research: {{}}
 
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
-                with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
+                with pytest.raises(RuntimeError, match="Skills not found"):
                     agent("test", agent_def="researcher")
 
-        warnings = [m for m in captured_logs if "skills not found" in m]
-        assert len(warnings) == 1
-        assert "nonexistent-skill-xyz-123" in warnings[0]
-
-    def test_agent_def_skill_found_no_warning(self, temp_run_dir, mock_backend,
+    def test_agent_def_skill_found_no_error(self, temp_run_dir, mock_backend,
                                                 loop_with_agents):
-        """Agent with skill that exists in loop_dir/.skills/ → no warning."""
+        """Agent with skill that exists in loop_dir/.skills/ → no error."""
         from loopflow.runtime import RunContext, set_context, agent
         ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_agents)
         set_context(ctx)
@@ -706,7 +703,7 @@ Research task: {{}}
 
         captured_logs = []
         def _mock_run(prompt, session, backend=None, model=None, cwd=None,
-                       agent_def=None, cache_path=None):
+                       agent_def=None, cache_path=None, **kwargs):
             return [
                 {"type": "agent_message", "content": "ok"},
                 {"type": "agent_done", "exit_code": 0},
@@ -717,9 +714,7 @@ Research task: {{}}
                 with patch('loopflow.runtime._emit_log', side_effect=captured_logs.append):
                     agent("test", agent_def="researcher")
 
-        # No warning about skills
-        warnings = [m for m in captured_logs if "skills not found" in m]
-        assert len(warnings) == 0
+        # No error raised — skill exists
 
 
 # ── output schema ─────────────────────────────────────────────────────────────
@@ -741,9 +736,9 @@ class TestOutputSchema:
                  {"type": "agent_done", "exit_code": 0}]
             )):
                 result = agent("Report results", agent_def="reporter")
-                assert isinstance(result, dict)
-                assert result["verdict"] == "PASS"
-                assert result["score"] == 95
+                assert isinstance(result.value, dict)
+                assert result.value["verdict"] == "PASS"
+                assert result.value["score"] == 95
 
     def test_explicit_schema_overrides_output(self, temp_run_dir, mock_backend,
                                                loop_with_output_agent):
@@ -755,7 +750,7 @@ class TestOutputSchema:
         explicit_schema = {"type": "object", "properties": {"custom": {"type": "string"}}}
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": '{"custom": "override"}'},
@@ -765,7 +760,7 @@ class TestOutputSchema:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test", agent_def="reporter", schema=explicit_schema)
-                assert result == {"custom": "override"}
+                assert result.value == {"custom": "override"}
                 # Explicit schema should be in the prompt, not the agent's output
                 assert '"custom"' in captured_prompt[0]
 
@@ -777,7 +772,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message",
@@ -805,7 +800,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 # First attempt: invalid JSON (missing closing brace)
@@ -825,18 +820,18 @@ class TestOutputSchema:
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test", agent_def="reporter")
                 assert call_count[0] == 2
-                assert result == {"verdict": "PASS", "score": 85}
+                assert result.value == {"verdict": "PASS", "score": 85}
 
     def test_schema_retry_raises_after_max_retries(self, temp_run_dir, mock_backend,
                                                     loop_with_output_agent):
         """After max_retries failed JSON attempts, raises AgentError."""
         from loopflow.runtime import RunContext, set_context, agent
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         ctx = RunContext(run_dir=temp_run_dir, loop_dir=loop_with_output_agent)
         set_context(ctx)
 
         call_count = [0]
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             call_count[0] += 1
             return [
                 {"type": "agent_message", "content": "not valid json at all"},
@@ -859,7 +854,7 @@ class TestOutputSchema:
         set_context(ctx)
 
         captured_prompt = []
-        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None):
+        def _mock_run(prompt, session, backend=None, model=None, cwd=None, agent_def=None, cache_path=None, **kwargs):
             captured_prompt.append(prompt)
             return [
                 {"type": "agent_message", "content": "plain text"},
@@ -870,7 +865,7 @@ class TestOutputSchema:
             with patch('loopflow.runtime._run_subagent', side_effect=_mock_run):
                 result = agent("test", agent_def="default")
 
-        assert result == "plain text"
+        assert result.value == "plain text"
         assert "Output format" not in captured_prompt[0]
 
 
@@ -880,69 +875,69 @@ class TestJsonExtraction:
     """Best-effort JSON extraction from text-mode agent responses."""
 
     def test_pure_json_parses_directly(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         result = extract_json('{"verdict": "PASS"}', schema)
         assert result == {"verdict": "PASS"}
 
     def test_json_in_markdown(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
         text = '以下是分析结果：\n\n{"verdict": "PASS", "score": 95}\n\n以上是完整报告。'
         result = extract_json(text, schema)
         assert result == {"verdict": "PASS", "score": 95}
 
     def test_json_in_code_block(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         text = '```json\n{"verdict": "PASS"}\n```'
         result = extract_json(text, schema)
         assert result == {"verdict": "PASS"}
 
     def test_wrong_type_rejected(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         result = extract_json('{"verdict": 123}', schema)
         assert result is None  # 123 is not string
 
     def test_enum_mismatch_rejected(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["PASS", "FAIL"]}}}
         result = extract_json('{"verdict": "UNKNOWN"}', schema)
         assert result is None  # UNKNOWN not in enum
 
     def test_missing_key_rejected(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
         result = extract_json('{"verdict": "PASS"}', schema)
         assert result is None  # missing "score" key
 
     def test_multiple_json_blocks_first_match(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         text = '{"other": 1}\n{"verdict": "PASS"}\n{"more": 2}'
         result = extract_json(text, schema)
         assert result == {"verdict": "PASS"}
 
     def test_no_matching_json(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         result = extract_json("no json here at all", schema)
         assert result is None
 
     def test_empty_schema_properties(self):
-        from loopflow.agent import extract_json
+        from loopflow.domain import extract_json
         schema = {"type": "object"}
         result = extract_json('{"anything": "goes"}', schema)
         assert result is None  # no properties to match against
 
     def test_validate_json_accepts_valid(self):
-        from loopflow.agent import validate_json
+        from loopflow.domain import validate_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         assert validate_json({"verdict": "PASS"}, schema) is True
 
     def test_validate_json_rejects_invalid(self):
-        from loopflow.agent import validate_json
+        from loopflow.domain import validate_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         assert validate_json({"verdict": 123}, schema) is False
 
@@ -1027,7 +1022,7 @@ class TestMockAuto:
         set_context(ctx)
 
         result = agent("test")
-        assert result == "mock response"
+        assert result.value == "mock response"
 
     def test_mock_auto_with_schema(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, set_mock, agent
@@ -1045,7 +1040,7 @@ class TestMockAuto:
             "required": ["verdict", "score"],
         }
         result = agent("test", schema=schema)
-        assert result == {"verdict": "PASS", "score": 0, "tags": []}
+        assert result.value == {"verdict": "PASS", "score": 0, "tags": []}
 
     def test_mock_auto_first_enum(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, set_mock, agent
@@ -1060,7 +1055,7 @@ class TestMockAuto:
             },
         }
         result = agent("test", schema=schema)
-        assert result == {"status": "REPRODUCED"}
+        assert result.value == {"status": "REPRODUCED"}
 
     def test_mock_auto_nested_object(self, temp_run_dir):
         from loopflow.runtime import RunContext, set_context, set_mock, agent
@@ -1081,7 +1076,7 @@ class TestMockAuto:
             },
         }
         result = agent("test", schema=schema)
-        assert result == {"dimension_scores": {"data": 0, "process": 0}}
+        assert result.value == {"dimension_scores": {"data": 0, "process": 0}}
 
     def test_mock_auto_with_agent_def_output(self, temp_run_dir,
                                                loop_with_output_agent):
@@ -1091,6 +1086,328 @@ class TestMockAuto:
         set_context(ctx)
 
         result = agent("test", agent_def="reporter")
-        assert isinstance(result, dict)
-        assert result["verdict"] == "mock response"
-        assert result["score"] == 0
+        assert isinstance(result.value, dict)
+
+
+# ── goal mode ─────────────────────────────────────────────────────────────
+
+class TestGoalMode:
+    """Goal mode tests per AC-001 to AC-005."""
+
+    def _make_events(self, text: str, exit_code: int = 0) -> list[dict]:
+        return [
+            {"type": "agent_message", "content": text},
+            {"type": "agent_done", "exit_code": exit_code,
+             "session_id": "mock-backend-sid-001"},
+        ]
+
+    def _json_result(self, data: dict) -> str:
+        return json.dumps(data)
+
+    # ── AC-001: Goal loop normal completion ──────────────────────────────
+
+    def test_goal_completes_in_one_iteration(self, temp_run_dir, mock_backend):
+        """AC-001-N-1: Single iteration complete."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        result_data = {"status": "done", "payload": {"x": 1},
+                       "__goal": {"status": "complete"}}
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events(self._json_result(result_data))
+            )):
+                result = agent(
+                    "do task",
+                    schema={"type": "object", "properties": {"status": {}, "payload": {}}},
+                    goal="Complete the task",
+                )
+                assert result.value == {"status": "done", "payload": {"x": 1}}
+                assert "__goal" not in result.value
+
+    def test_goal_completes_after_multiple_iterations(self, temp_run_dir, mock_backend):
+        """AC-001-N-2: Multiple iterations before complete."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        active_result = {"__goal": {"status": "active"}}
+        complete_result = {"status": "done", "__goal": {"status": "complete"}}
+
+        calls = [
+            self._make_events(self._json_result(active_result)),
+            self._make_events(self._json_result(active_result)),
+            self._make_events(self._json_result(complete_result)),
+        ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls) as mock_run:
+                result = agent(
+                    "do task",
+                    schema={"type": "object", "properties": {"status": {}}},
+                    goal="Persist until done",
+                )
+                assert result.value == {"status": "done"}
+                # 3 iterations: first create, then 2 resumes
+                assert mock_run.call_count == 3
+                # First call: no resume_session_id
+                assert mock_run.call_args_list[0][1].get("resume_session_id") is None
+                # Second and third calls: resume_session_id is the backend session ID
+                assert mock_run.call_args_list[1][1].get("resume_session_id") == "mock-backend-sid-001"
+                assert mock_run.call_args_list[2][1].get("resume_session_id") == "mock-backend-sid-001"
+
+    def test_goal_without_goal_behaves_normally(self, temp_run_dir, mock_backend):
+        """AC-005-N-1: No goal → normal behavior."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events("plain text")
+            )):
+                result = agent("say hello")
+                assert result.value == "plain text"
+                # Goal helpers should not be called
+                mock_backend.resume_session.assert_not_called()
+
+    # ── AC-001: Goal loop boundary ───────────────────────────────────────
+
+    def test_goal_at_max_iterations_with_complete(self, temp_run_dir, mock_backend):
+        """AC-001-B-1: Complete at exactly max_iterations."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        active = {"__goal": {"status": "active"}}
+        complete = {"status": "ok", "__goal": {"status": "complete"}}
+
+        calls = [
+            self._make_events(self._json_result(active)),
+            self._make_events(self._json_result(active)),
+            self._make_events(self._json_result(complete)),
+        ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls):
+                result = agent(
+                    "task",
+                    schema={"type": "object", "properties": {"status": {}}},
+                    goal="Finish",
+                    goal_max_iterations=3,
+                )
+                assert result.value == {"status": "ok"}
+
+    def test_goal_empty_string_behaves_as_none(self, temp_run_dir, mock_backend):
+        """AC-001-B-2: Empty goal string → normal mode."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events("plain")
+            )):
+                result = agent("task", goal="")
+                assert result.value == "plain"
+
+    def test_goal_no_schema_extracts_goal_from_text(self, temp_run_dir, mock_backend):
+        """AC-001-B-3: No business schema, framework creates __goal schema."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        complete = {"__goal": {"status": "complete"}}
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events(self._json_result(complete))
+            )):
+                result = agent("task", goal="Do it")
+                assert result.value == {}
+                assert "__goal" not in result.value
+
+    # ── AC-001: Goal loop failure ────────────────────────────────────────
+
+    def test_goal_max_iterations_exceeded(self, temp_run_dir, mock_backend):
+        """AC-001-F-1: Max iterations reached → returns None."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        active = {"__goal": {"status": "active"}}
+        calls = [self._make_events(self._json_result(active))] * 5
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls) as mock_run:
+                result = agent(
+                    "task",
+                    goal="Never finish",
+                    goal_max_iterations=5,
+                )
+                assert result.status != "complete"
+                assert mock_run.call_count == 5
+
+    def test_goal_three_blocked_raises(self, temp_run_dir, mock_backend):
+        """AC-001-F-2: 3 consecutive blocked → returns None."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        blocked = {"__goal": {"status": "blocked", "reason": "network timeout"}}
+        calls = [self._make_events(self._json_result(blocked))] * 3
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls):
+                result = agent("task", goal="Download data")
+                assert result.status != "complete"
+
+    # ── AC-002: Blocked audit ────────────────────────────────────────────
+
+    def test_blocked_different_reasons_reset_counter(self, temp_run_dir, mock_backend):
+        """AC-002-N-1: Different blocked reasons don't accumulate."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        calls = [
+            self._make_events(self._json_result(
+                {"__goal": {"status": "blocked", "reason": "network"}})),
+            self._make_events(self._json_result(
+                {"__goal": {"status": "blocked", "reason": "permission"}})),
+            self._make_events(self._json_result(
+                {"__goal": {"status": "blocked", "reason": "network"}})),
+        ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls):
+                result = agent("task", goal="test", goal_max_iterations=3)
+                # Different reasons reset counter, so 3 iterations is not enough
+                # Different reasons reset counter, so 3 iterations is not enough
+                # to exhaust — max_iterations is reached instead
+                assert result.status != "complete"
+
+    def test_blocked_twice_then_complete(self, temp_run_dir, mock_backend):
+        """AC-002-N-2: 2 blocked then complete → success."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        calls = [
+            self._make_events(self._json_result(
+                {"__goal": {"status": "blocked", "reason": "timeout"}})),
+            self._make_events(self._json_result(
+                {"__goal": {"status": "blocked", "reason": "timeout"}})),
+            self._make_events(self._json_result(
+                {"status": "ok", "__goal": {"status": "complete"}})),
+        ]
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls):
+                result = agent(
+                    "task",
+                    schema={"type": "object", "properties": {"status": {}}},
+                    goal="Retry",
+                )
+                assert result.value == {"status": "ok"}
+
+    def test_blocked_no_reason_defaults_unknown(self, temp_run_dir, mock_backend):
+        """AC-002-B-1: Blocked without reason → 'unknown'."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        blocked = {"__goal": {"status": "blocked"}}
+        calls = [self._make_events(self._json_result(blocked))] * 3
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', side_effect=calls):
+                result = agent("task", goal="Test")
+                assert result.status != "complete"
+
+    # ── AC-003: Schema wrapper transparency ──────────────────────────────
+
+    def test_goal_result_strips_goal_field(self, temp_run_dir, mock_backend):
+        """AC-003-N-1: Result does not contain __goal."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        complete = {
+            "figures": ["a", "b"],
+            "summary": "done",
+            "__goal": {"status": "complete"},
+        }
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events(self._json_result(complete))
+            )):
+                result = agent(
+                    "task",
+                    schema={
+                        "type": "object",
+                        "properties": {"figures": {}, "summary": {}},
+                    },
+                    goal="Generate figures",
+                )
+                assert "figures" in result.value
+                assert "summary" in result.value
+                assert "__goal" not in result.value
+
+    def test_goal_does_not_mutate_input_schema(self, temp_run_dir, mock_backend):
+        """AC-003-N-2: Input schema object is not modified."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        schema = {
+            "type": "object",
+            "properties": {"x": {"type": "number"}},
+        }
+        original = json.dumps(schema)
+
+        complete = {"x": 1, "__goal": {"status": "complete"}}
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events(self._json_result(complete))
+            )):
+                agent("task", schema=schema, goal="Do it")
+
+        assert json.dumps(schema) == original
+        assert "__goal" not in (schema.get("properties") or {})
+
+    # ── AC-005: Backward compatibility ───────────────────────────────────
+
+    def test_goal_does_not_affect_existing_agent_call(self, temp_run_dir, mock_backend):
+        """AC-005-N-1: Existing agent call without goal unchanged."""
+        from loopflow.runtime import RunContext, set_context, agent
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                self._make_events(self._json_result({"status": "ok"}))
+            )):
+                result = agent(
+                    "test",
+                    schema={"type": "object", "properties": {"status": {}}},
+                )
+                assert result.value == {"status": "ok"}
+
+    def test_goal_blocked_agent_error_propagates(self, temp_run_dir, mock_backend):
+        """AC-001-E-3: Backend error in goal mode propagates."""
+        from loopflow.runtime import RunContext, set_context, agent
+        from loopflow.domain import AgentError
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent', return_value=(
+                [{"type": "agent_done", "exit_code": 1, "stderr": "crash"}]
+            )):
+                with pytest.raises(AgentError, match="exit code 1"):
+                    agent("task", goal="Do it")

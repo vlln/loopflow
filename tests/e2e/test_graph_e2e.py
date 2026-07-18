@@ -62,9 +62,18 @@ def _find_run_id(runs: Path) -> str:
 
 
 def _create_phase_loop(loops_dir: Path, name: str, code: str) -> None:
-    """Create a loop with the given workflow code."""
+    """Create a loop with loop.md and the given workflow code."""
     loop_dir = loops_dir / name
     loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.md").write_text(f"""---
+name: {name}
+description: E2E test loop
+---
+
+# {name}
+
+An E2E test loop.
+""")
     (loop_dir / "workflow.py").write_text(code)
     agents_dir = loop_dir / "agents"
     agents_dir.mkdir(parents=True)
@@ -95,7 +104,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -131,7 +140,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "ok"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -163,7 +172,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -200,7 +209,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -229,7 +238,7 @@ meta = {"name": "branch", "description": "Branch test"}
 def run(agent, parallel, pipeline, phase, log, args, workflow):
     phase("Start")
     result = agent("echo yes")
-    if "yes" in (result or ""):
+    if "yes" in (result.value or ""):
         phase("PathA")
         agent("echo took A")
     else:
@@ -240,7 +249,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -287,7 +296,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -329,7 +338,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 
@@ -372,7 +381,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
     return "done"
 """)
 
-        from loopflow.cli import main
+        from loopflow.presentation.cli import main
         from loopflow.runtime import set_mock
         set_mock("bash")
 

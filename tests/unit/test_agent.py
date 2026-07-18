@@ -10,43 +10,43 @@ class TestRenderTemplate:
     """A4: Agent body template rendering with {{param}} placeholders."""
 
     def test_render_single_param(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         body = "Translate to {{language}}."
         result = render_template(body, language="Chinese")
         assert result == "Translate to Chinese."
 
     def test_render_multiple_params(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         body = "You are a {{role}}. Output in {{format}}."
         result = render_template(body, role="translator", format="JSON")
         assert result == "You are a translator. Output in JSON."
 
     def test_render_no_params(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         body = "You are a helpful assistant."
         result = render_template(body)
         assert result == "You are a helpful assistant."
 
     def test_render_missing_param_raises(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         body = "Translate to {{language}}."
         with pytest.raises(ValueError, match="language"):
             render_template(body)
 
     def test_render_duplicate_param(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         body = "{{name}} says: {{name}} is here."
         result = render_template(body, name="Alice")
         assert result == "Alice says: Alice is here."
 
     def test_render_extra_kwargs_ignored(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         body = "Hello {{name}}."
         result = render_template(body, name="Alice", extra="ignored")
         assert result == "Hello Alice."
 
     def test_render_empty_body(self):
-        from loopflow.agent import render_template
+        from loopflow.domain import render_template
         result = render_template("")
         assert result == ""
 
@@ -55,31 +55,31 @@ class TestResolveParams:
     """Resolve template parameters with defaults."""
 
     def test_required_provided(self):
-        from loopflow.agent import ParamSpec, resolve_params
+        from loopflow.domain import ParamSpec, resolve_params
         params = [ParamSpec("language")]
         result = resolve_params(params, language="Chinese")
         assert result == {"language": "Chinese"}
 
     def test_required_missing_raises(self):
-        from loopflow.agent import ParamSpec, resolve_params
+        from loopflow.domain import ParamSpec, resolve_params
         params = [ParamSpec("language")]
         with pytest.raises(ValueError, match="language"):
             resolve_params(params)
 
     def test_optional_with_default(self):
-        from loopflow.agent import ParamSpec, resolve_params
+        from loopflow.domain import ParamSpec, resolve_params
         params = [ParamSpec("language", required=False, default="English")]
         result = resolve_params(params)
         assert result == {"language": "English"}
 
     def test_optional_overridden(self):
-        from loopflow.agent import ParamSpec, resolve_params
+        from loopflow.domain import ParamSpec, resolve_params
         params = [ParamSpec("language", required=False, default="English")]
         result = resolve_params(params, language="Chinese")
         assert result == {"language": "Chinese"}
 
     def test_mixed_required_and_optional(self):
-        from loopflow.agent import ParamSpec, resolve_params
+        from loopflow.domain import ParamSpec, resolve_params
         params = [
             ParamSpec("language"),  # required
             ParamSpec("format", required=False, default="markdown"),
@@ -93,13 +93,13 @@ class TestResolveParams:
         }
 
     def test_extra_kwargs_passthrough(self):
-        from loopflow.agent import ParamSpec, resolve_params
+        from loopflow.domain import ParamSpec, resolve_params
         params = [ParamSpec("language")]
         result = resolve_params(params, language="Chinese", extra="ignored")
         assert result == {"language": "Chinese", "extra": "ignored"}
 
     def test_no_params(self):
-        from loopflow.agent import resolve_params
+        from loopflow.domain import resolve_params
         result = resolve_params(None, language="Chinese")
         assert result == {"language": "Chinese"}
 
@@ -110,7 +110,7 @@ class TestParseAgentInput:
     def test_input_required_params(self):
         """input with required params."""
         import tempfile
-        from loopflow.agent import parse_agent, _input_to_params
+        from loopflow.infrastructure.repository import parse_agent; from loopflow.domain.agent_def import _input_to_params
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: test
@@ -141,7 +141,7 @@ body""")
     def test_input_with_defaults(self):
         """input with optional params that have defaults."""
         import tempfile
-        from loopflow.agent import parse_agent, _input_to_params
+        from loopflow.infrastructure.repository import parse_agent; from loopflow.domain.agent_def import _input_to_params
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: test
@@ -177,7 +177,7 @@ body""")
     def test_input_with_enum(self):
         """input with enum values."""
         import tempfile
-        from loopflow.agent import parse_agent, _input_to_params
+        from loopflow.infrastructure.repository import parse_agent; from loopflow.domain.agent_def import _input_to_params
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: test
@@ -204,7 +204,7 @@ body""")
     def test_input_none(self):
         """Agents without input field have input=None."""
         import tempfile
-        from loopflow.agent import parse_agent, _input_to_params
+        from loopflow.infrastructure.repository import parse_agent; from loopflow.domain.agent_def import _input_to_params
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: simple
@@ -219,7 +219,7 @@ Just a body.""")
     def test_input_not_dict_ignored(self):
         """input that is not a dict is silently ignored."""
         import tempfile
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: broken
@@ -238,7 +238,7 @@ class TestParseAgentClaudeCodeFields:
     def test_full_claude_code_fields(self):
         """All Claude Code aligned fields parsed correctly."""
         import tempfile
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: full-agent
@@ -299,7 +299,7 @@ Full agent body.""")
     def test_minimal_fields(self):
         """Only name and description are required."""
         import tempfile
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
 name: minimal
@@ -331,7 +331,7 @@ class TestParseAgent:
     """Existing agent definition parsing tests."""
 
     def test_parse_valid_agent(self):
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
@@ -345,7 +345,7 @@ You are a test agent.""")
             assert result.description == "A test agent"
 
     def test_parse_agent_with_all_fields(self):
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
@@ -381,7 +381,7 @@ You are a test agent. Output in {{language}}.""")
             assert result.input["required"] == ["language", "format"]
 
     def test_parse_agent_missing_name(self):
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
@@ -393,7 +393,7 @@ body""")
                 parse_agent(f.name)
 
     def test_parse_agent_missing_file(self):
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         with pytest.raises(FileNotFoundError):
             parse_agent("/nonexistent/agent.md")
 
@@ -402,13 +402,13 @@ class TestAgentError:
     """AgentError is raised for infrastructure failures."""
 
     def test_agent_error_is_exception(self):
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         err = AgentError("test error")
         assert isinstance(err, Exception)
         assert str(err) == "test error"
 
     def test_agent_error_can_be_caught(self):
-        from loopflow.agent import AgentError
+        from loopflow.domain import AgentError
         with pytest.raises(AgentError, match="something went wrong"):
             raise AgentError("something went wrong")
 
@@ -417,7 +417,7 @@ class TestParseAgentOutput:
     """Parse agent definition with output schema."""
 
     def test_parse_agent_with_output(self):
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
@@ -450,7 +450,7 @@ You are a validator. Output in {{language}}.""")
 
     def test_parse_agent_without_output(self):
         """Agents without output field have output=None."""
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
@@ -464,7 +464,7 @@ Just a body.""")
 
     def test_parse_agent_output_not_dict_ignored(self):
         """output that is not a dict is silently ignored."""
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
         import tempfile
         with tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as f:
             f.write("""---
@@ -484,7 +484,7 @@ class TestAgentExtends:
         """Child body is appended after parent body."""
         import tempfile
         from pathlib import Path
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agents_dir = Path(tmpdir)
@@ -510,7 +510,7 @@ Child specific instructions.
         """Skills from parent and child are merged."""
         import tempfile
         from pathlib import Path
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agents_dir = Path(tmpdir)
@@ -538,7 +538,7 @@ Child body.
         """Child scalar fields override parent."""
         import tempfile
         from pathlib import Path
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agents_dir = Path(tmpdir)
@@ -564,7 +564,7 @@ Child body.
         """Raises ValueError if parent agent doesn't exist."""
         import tempfile
         from pathlib import Path
-        from loopflow.agent import parse_agent
+        from loopflow.infrastructure.repository import parse_agent
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agents_dir = Path(tmpdir)
@@ -582,7 +582,7 @@ Body.
         """list_agents skips agents with _ prefix."""
         import tempfile
         from pathlib import Path
-        from loopflow.agent import list_agents
+        from loopflow.infrastructure.repository import list_agents
 
         with tempfile.TemporaryDirectory() as tmpdir:
             agents_dir = Path(tmpdir)

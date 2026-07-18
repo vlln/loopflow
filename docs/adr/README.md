@@ -2,7 +2,8 @@
 
 | 编号 | 标题 | 状态 | 关联 Spec |
 |------|------|------|-------------|
-| [0001](0001-template.md) | ADR 模板（参考用） | template | — |
+| [0031](0031-loop-definition.md) | loop.md — loop 定义文件格式（frontmatter + body） | accepted | — |
+| [0032](0032-dispatch-queue.md) | 调度机制：dispatch + queue + resource lock | accepted | — |
 
 ## 状态说明
 

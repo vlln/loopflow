@@ -1,3 +1,6 @@
 """loopflow — AI Agent loop orchestration tool."""
 
-__version__ = "0.1.0"
+from loopflow.domain.agent_def import AgentError
+from loopflow.domain.goal_loop import AgentResult
+
+__version__ = "0.17.1"

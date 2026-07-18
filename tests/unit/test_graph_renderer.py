@@ -1,7 +1,7 @@
 """Unit tests for TerminalGraphRenderer — AC-009-U-4, AC-009-U-5."""
 
-from loopflow.graph import PhaseGraph
-from loopflow.display.graph_renderer import TerminalGraphRenderer
+from loopflow.presentation.graph import PhaseGraph
+from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
 
 
 class TestRenderLinear:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from loopflow.skills import build_skill_prompt, check_skills, find_skill, parse_skill, skills_dir
+from loopflow.infrastructure.skills import build_skill_prompt, check_skills, find_skill, parse_skill, skills_dir
 
 
 class TestParseSkill:

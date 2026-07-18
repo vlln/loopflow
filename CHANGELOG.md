@@ -2,6 +2,47 @@
 
 ## [Unreleased]
 
+## [0.17.1] — 2026-07-18
+
+### Fixed
+- **Goal loop schema retry**: schema retry 归 goal loop 跨迭代管理，不再在 `_execute_once` 内重复
+- **backend_sid 丢失**: `_execute_once` 失败时 `backend_sid` 附加到 `AgentError`，goal loop 正确 resume 同一 session
+- **缓存丢失**: `_execute_once` 失败时写入缓存，resume 可看到已尝试状态
+
+## [0.17.0] — 2026-07-18
+
+### Added
+- **loop.md**：loop 声明式定义文件，frontmatter 给机器读，body 给 Agent 和人类读。`discovery` 优先读 loop.md，回退到 workflow.py meta
+- **queue 模块**：`infrastructure/queue.py`，文件队列（`~/.loopflow/queue/`），支持 enqueue / dequeue / list / size
+- **resource lock**：`lock.py` 扩展 resource 粒度锁，TTL 30 分钟自动清理
+- **dispatch 模块**：`infrastructure/dispatch.py`，扫描队列、优先级排序、资源锁、执行 loop
+- **CLI 命令**：`loop enqueue`（入队）、`loop dispatch`（调度执行）
+- 外部调度器文档：macOS 推荐 launchd，Linux 用 cron/systemd timer
+
+## [0.16.0] — 2026-07-14
+
+### Changed
+- **DDD 四层架构**：domain / infrastructure / application / presentation
+- `Agent` 类 → `AgentRunner` 类 + 模块级函数 `marshal()` 等
+- `marshal()` 接受 `Capabilities` 值对象而非 `Backend` 实例
+- `BaseBackend.capabilities` property，各后端覆写
+- `parse_agent()` / `list_agents()` → `infrastructure/repository.py`
+- `discovery.py` / `lock.py` / `skills.py` → `infrastructure/`
+- `runtime.py` 582 → 197 行，纯应用协调
+- 后端文件移入 `infrastructure/backends/`，传输文件移入 `infrastructure/transports/`
+- CLI / graph / display 移入 `presentation/`
+
+### Removed
+- `Agent` 类（贫血 marshalling 工具）
+- 所有兼容层（旧 `agent.py` / `graph.py` / `cli.py` / `runner.py` / `backends/` / `transports/` / `display/`）
+- `_get_ctx()` / `_get_mock_mode()` 全局状态 workaround
+
+### Fixed
+- Backend 双重创建（marshalling 查询 + 执行调用）
+- 两条执行路径重复（统一为 `AgentRunner._execute_once()`）
+- infrastructure → presentation 依赖方向违规
+- 8 个 TYPE_CHECKING 死引用（`loopflow.agent` → `loopflow.domain`）
+
 ## [0.13.0] — 2026-07-12
 
 ### Changed
