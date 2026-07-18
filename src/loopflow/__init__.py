@@ -3,4 +3,4 @@
 from loopflow.domain.agent_def import AgentError
 from loopflow.domain.goal_loop import AgentResult
 
-__version__ = "0.17.0"
+__version__ = "0.17.1"

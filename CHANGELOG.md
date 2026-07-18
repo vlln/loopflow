@@ -2,6 +2,13 @@
 
 ## [Unreleased]
 
+## [0.17.1] — 2026-07-18
+
+### Fixed
+- **Goal loop schema retry**: schema retry 归 goal loop 跨迭代管理，不再在 `_execute_once` 内重复
+- **backend_sid 丢失**: `_execute_once` 失败时 `backend_sid` 附加到 `AgentError`，goal loop 正确 resume 同一 session
+- **缓存丢失**: `_execute_once` 失败时写入缓存，resume 可看到已尝试状态
+
 ## [0.17.0] — 2026-07-18
 
 ### Added

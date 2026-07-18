@@ -3,7 +3,7 @@
 
 def test_import():
     import loopflow
-    assert loopflow.__version__ == "0.17.0"
+    assert loopflow.__version__ == "0.17.1"
 
 
 def test_backends_exist():
