@@ -207,13 +207,14 @@ class AgentRunner:
 
             def _goal_call(p: str, s: str, rid: str | None) -> tuple[Any, str | None]:
                 return self._execute_once(
-                    p, goal_schema, model, isolation, max_retries,
+                    p, goal_schema, model, isolation, 0,  # max_retries=0: goal loop owns retry
                     resume_session_id=rid,
                 )
 
             return run_goal_loop(
                 resolved, schema, goal, goal_max_iterations,
                 _goal_call, self._log,
+                schema_max_retries=max_retries,
             )
 
         # 7. Native goal: single call, wrap in AgentResult
@@ -324,10 +325,13 @@ class AgentRunner:
                         self._persist_state()
                         return extracted, backend_sid
                     if attempt >= max_retries:
-                        raise AgentError(
+                        err = AgentError(
                             f"Agent failed to return valid JSON after "
                             f"{max_retries} retries"
                         )
+                        err.backend_sid = backend_sid
+                        self._write_cache(cache_path, session, exit_code, text)
+                        raise err
                     continue
 
             # No schema → return text

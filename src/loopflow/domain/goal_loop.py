@@ -33,10 +33,15 @@ def run_goal_loop(
     goal_max_iterations: int,
     call_fn: CallFn,
     emit_log: Callable[[str], None] | None = None,
+    schema_max_retries: int = 3,
 ) -> AgentResult:
     """Run goal loop: iterate until complete or blocked.
 
     call_fn(prompt, session, resume_session_id) -> (result, backend_sid)
+
+    Schema retry is managed at the goal loop level, not inside _execute_once.
+    Each call_fn invocation uses max_retries=0 — the goal loop owns the retry
+    budget globally across iterations.
     """
 
     goal_schema = add_goal_to_schema(schema)
@@ -45,6 +50,7 @@ def run_goal_loop(
     resume_session_id: str | None = None
     blocked_reason: str | None = None
     blocked_count = 0
+    schema_failures = 0
 
     def _log(msg: str) -> None:
         if emit_log:
@@ -72,10 +78,18 @@ def run_goal_loop(
             msg = str(e)
             if "valid JSON" not in msg:
                 raise
-            _log(f"Goal iter {iteration}: JSON parse error, retrying...")
+            schema_failures += 1
+            _log(f"Goal iter {iteration}: JSON parse error "
+                 f"({schema_failures}/{schema_max_retries}), retrying...")
+            if schema_failures > schema_max_retries:
+                raise
+            # Propagate session so next iteration resumes the same session
+            backend_sid = getattr(e, 'backend_sid', None)
+            if backend_sid:
+                resume_session_id = backend_sid
             continue
 
-        # Extract goal state
+        # Valid JSON: extract goal state
         goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
         status = goal_state.get("status", "active")
 
