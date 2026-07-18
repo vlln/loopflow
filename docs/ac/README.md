@@ -18,5 +18,5 @@
 
 | 编号 | 标题 | 状态 | 覆盖模块 |
 |------|------|------|---------|
-| [0001](0001-template.md) | AC 模板 | template | — |
+| [0004](0004-scheduling.md) | 调度 AC | active | dispatch, queue, loop.md, resource lock |
 

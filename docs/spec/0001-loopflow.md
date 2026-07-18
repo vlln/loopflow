@@ -3,7 +3,7 @@ title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、运行实例管理、崩溃恢复。CLI 工具，无 API，无 UI。
 type: spec
 status: active
-version: 10
+version: 11
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -31,6 +31,11 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-008 | 开发者 | 在工作流中流水线处理多个 item（pipeline） | 每个 item 独立流经多个 stage，无屏障 | P1 |
 | US-009 | 开发者 | 嵌套调用子 workflow（workflow） | 复用已有 loop 定义 | P2 |
 | US-010 | 开发者 | 在 agent 调用层设置 goal 反馈循环 | agent 内部自主迭代直到目标完成或阻塞，无需 workflow 层处理重试逻辑 | P1 |
+| US-011 | 开发者 | 声明 loop 的触发方式（loop.md frontmatter） | loop 可被 cron、文件监视或手动触发 | P1 |
+| US-012 | 开发者 | 通过 `loop dispatch` 自动调度待执行任务 | 扫描队列，按优先级取任务，加资源锁后执行 | P1 |
+| US-013 | 开发者 | 通过 `loop enqueue` 将任务加入队列 | 延迟执行，由 dispatch 统一调度 | P1 |
+| US-014 | 开发者 | 同一资源上的 loop 互斥执行 | 防止两个 loop 同时操作同一 repo | P1 |
+| US-015 | 开发者 | 通过 `loop.md` 了解 loop 的目的、流程、权限边界 | 人类和 Agent 无需读 workflow.py 即可理解 loop | P2 |
 
 ---
 
@@ -45,7 +50,9 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
 | Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |
-| Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义 | `src/loopflow/discovery.py` | P0 |
+| Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义，读取 `loop.md` 获取元数据 | `src/loopflow/discovery.py` | P0 |
+| Dispatch | 扫描队列、按优先级排序、资源锁检查、执行 loop run | `src/loopflow/dispatch.py` | P1 |
+| Queue | 队列读写（enqueue、dequeue、list），文件持久化在 `~/.loopflow/queue/` | `src/loopflow/queue.py` | P1 |
 
 ---
 
@@ -72,12 +79,57 @@ pwd (工作目录)                          ~/.loopflow/ (loopflow 数据目录)
 
 ```
 ~/.loopflow/loops/<name>/
+├── loop.md                  # 声明式定义（新增）：frontmatter + body
 ├── workflow.py              # meta = {...}; def run(agent, parallel, pipeline, phase, log, args, workflow, state)
 ├── agents/                  # agent 定义文件
 │   └── <name>.md            # Markdown + YAML frontmatter
 ├── pixi.toml                # 可选：环境声明（推荐）
 └── .skills/                  # 可选：项目隔离的 skill 目录
 ```
+
+### loop.md（新增）
+
+Loop 的声明式定义文件，YAML frontmatter + Markdown body。Frontmatter 是机器可读的结构化元数据，body 是人类和 Agent 可读的文档。
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| name | string | 是 | loop 唯一标识 |
+| description | string | 是 | 简短描述 |
+| triggers | object[] | 否 | 触发声明列表 |
+| triggers[].type | string | 是 | manual / cron / watch |
+| triggers[].schedule | string | 否 | cron 表达式（type=cron 时必填） |
+| triggers[].paths | string[] | 否 | 监视路径（type=watch 时必填） |
+| triggers[].pattern | string | 否 | 文件匹配模式（type=watch 时） |
+| resources | object[] | 否 | 需要的资源类型 |
+| resources[].type | string | 是 | 资源类型名（如 repo） |
+
+**`state` 不属于 loop.md。** workflow 的内部状态（重试计数、阶段标记等）是编排层的实现细节，保持在 `workflow.py` 的 `meta.state` 中。loop.md 只声明调度层关心的内容：身份、触发方式、资源需求。
+
+Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权限边界、升级条件。
+
+### 队列条目（文件系统）
+
+```
+~/.loopflow/queue/
+└── <uuid>.json              # 每个待执行任务是一个 JSON 文件
+```
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| loop | string | NOT NULL | loop 名称 |
+| args | object | — | 传入 workflow.py 的参数 |
+| resources | object | — | 资源声明，key 为资源类型，value 为资源标识 |
+| priority | integer | NOT NULL | 优先级，数字越小越优先 |
+| created | ISO 8601 | NOT NULL | 创建时间 |
+
+### 资源锁（文件系统）
+
+```
+~/.loopflow/locks/
+└── <resource-type>-<sha256(resource-value)[:16]>.lock
+```
+
+锁文件包含 PID 和时间戳。TTL 30 分钟，超时自动清理。
 
 - `.` 前缀的 loop 目录名（如 `.bio-reproducer`）表示可下载/可恢复的 loop，自带完整环境
 - 非 `.` 前缀的 loop 目录名（如 `my-workflow`）表示分发用的纯声明 loop，依赖外部环境
@@ -240,6 +292,11 @@ Agent 隔离层级体系（递进）：
 | BR-015 | Agent 输出实时可见 | `agent()` 执行期间 | `text_handler` 流式写入时同步 append `agent_message_chunk` 事件到 `<seq>.jsonl` 和 `events.jsonl`。完成后写入 `agent_done`。用户可通过 `cat <seq>.jsonl` 实时查看 agent 输出进度 |
 | BR-016 | 缓存事件 ACP 归一化 | `agent()` 执行时 | CLI 后端将原生输出转换为 ACP `SessionNotification` 兼容事件（`agent_message_chunk`/`agent_thought_chunk`/`tool_call`/`tool_call_update`/`usage_update`）。未来 ACP 后端直接透传 |
 | BR-017 | Goal 反馈循环 | `agent()` 调用时 `goal` 参数非空 | 框架进入 goal 模式：内部循环调用 agent，每次迭代复用同一 session（首次 create，后续 resume）。Agent 通过 `__goal.status` 声明状态（active/complete/blocked）。complete 时剥离 `__goal` 返回业务 result。同一 reason 连续 3 次 blocked 抛 `GoalBlocked`。达到 `goal_max_iterations`（默认 10）抛 `GoalBlocked`。`__goal` schema wrapper 由框架自动注入和剥离，对业务层透明 |
+| BR-018 | loop.md 为元数据权威源 | discovery 扫描 loop 时 | 优先读取 `loop.md` 的 frontmatter。`loop.md` 不存在时回退到 `workflow.py` 的 `meta` 字典 |
+| BR-019 | 队列任务不可并发执行同一资源 | `loop dispatch` 时检查资源锁 | 同一 resource 同时只能有一个 loop 运行。加锁失败则跳过该任务，留在队列 |
+| BR-020 | dispatch 幂等 | 每次 `loop dispatch` 调用 | 扫描全部队列文件，逐个尝试加锁执行。锁文件 TTL 30 分钟，超时自动清理 |
+| BR-021 | 手动触发不经队列 | `loop run <name>` | 直接执行，不经过队列。`loop enqueue` 写入队列，由 `loop dispatch` 统一调度 |
+| BR-022 | 队列优先级 | 队列中有多个任务时 | 按 priority 升序 → created 升序排列。不抢占正在运行的 loop |
 
 ---
 
@@ -280,7 +337,12 @@ Agent 隔离层级体系（递进）：
 
 | 术语 | 定义 |
 |------|------|
-| Loop | 一个文件夹，包含 workflow.py + agents/，定义了一个 Agent 循环工作流 |
+| Loop | 一个文件夹，包含 loop.md + workflow.py + agents/，定义了一个 Agent 循环工作流 |
+| loop.md | Loop 的声明式定义文件，frontmatter 给机器读，body 给 Agent 和人类读 |
+| Run | Loop 的一次执行实例，有唯一 uuid，状态持久化到 `runs/lf_<pwd>/<uuid>/` |
+| Dispatch | 扫描队列、按优先级取任务、加资源锁、执行 loop 的调度过程 |
+| Queue | `~/.loopflow/queue/` 下的 JSON 文件，每个文件是一个待执行任务 |
+| Resource Lock | 文件锁，防止同一资源（如 repo）被多个 loop 同时操作 |
 | Run | Loop 的一次执行实例，有唯一 uuid，状态持久化到 `runs/lf_<pwd>/<uuid>/` |
 | Agent | 一个 Markdown 文件定义的 AI Agent，有名称、能力声明、系统提示词 |
 | Agent 调用 | workflow.py 中 `agent("prompt")` 的一次执行，产生一个序号和对应的 jsonl 缓存 |
