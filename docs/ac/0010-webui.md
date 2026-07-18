@@ -105,7 +105,7 @@ created: 2026-07-18T21:00:00Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-016-E-1 | 服务端最大 event_id=10，客户端以 last_event_id=11 订阅 | 订阅 SSE | 返回 410 JSON；body.code=`cursor_out_of_range`、body.max_event_id=10 | 自动化 |
+| AC-016-E-1 | 服务端最大 event_id=10，客户端以 last_event_id=11 订阅 | 订阅 SSE | 返回 410 JSON；body.error.code=`cursor_out_of_range`、body.error.details.max_event_id=10 | 自动化 |
 | AC-016-E-2 | 客户端重复收到同一 event_id | 应用前端事件 reducer | 状态只应用一次，不重复增加 Call 消息或边计数 | 自动化 |
 
 ## 失败场景
