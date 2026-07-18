@@ -44,9 +44,18 @@ def env_dirs():
 
 
 def _create_test_loop(loops_dir: Path):
-    """Create a minimal test loop."""
+    """Create a minimal test loop with loop.md."""
     loop_dir = loops_dir / "hello"
     loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.md").write_text("""---
+name: hello
+description: Test loop for CLI integration tests
+---
+
+# hello
+
+A test loop.
+""")
     (loop_dir / "workflow.py").write_text("""
 meta = {"name": "hello", "description": "Test loop"}
 
@@ -127,6 +136,12 @@ class TestCLIRun:
         loops, runs = env_dirs
         loop_dir = loops / "args-test"
         loop_dir.mkdir(parents=True)
+        (loop_dir / "loop.md").write_text("""---
+name: args-test
+description: Test args
+---
+# args-test
+""")
         (loop_dir / "workflow.py").write_text("""
 meta = {"name": "args-test", "description": "Test args"}
 
@@ -289,6 +304,12 @@ class TestGraph:
         loops, runs = env_dirs
         loop_dir = loops / "phase-test"
         loop_dir.mkdir(parents=True)
+        (loop_dir / "loop.md").write_text("""---
+name: phase-test
+description: Test phase events
+---
+# phase-test
+""")
         (loop_dir / "workflow.py").write_text("""
 meta = {"name": "phase-test", "description": "Test phase events"}
 

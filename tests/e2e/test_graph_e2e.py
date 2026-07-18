@@ -62,9 +62,18 @@ def _find_run_id(runs: Path) -> str:
 
 
 def _create_phase_loop(loops_dir: Path, name: str, code: str) -> None:
-    """Create a loop with the given workflow code."""
+    """Create a loop with loop.md and the given workflow code."""
     loop_dir = loops_dir / name
     loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.md").write_text(f"""---
+name: {name}
+description: E2E test loop
+---
+
+# {name}
+
+An E2E test loop.
+""")
     (loop_dir / "workflow.py").write_text(code)
     agents_dir = loop_dir / "agents"
     agents_dir.mkdir(parents=True)
