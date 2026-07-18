@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+import yaml
+
 
 def _loops_dir() -> Path:
     """Get the loops directory path."""
@@ -17,9 +19,44 @@ def _loops_dir() -> Path:
     return Path(home) / ".loopflow" / "loops"
 
 
+def _load_loop_meta(loop_dir: Path) -> dict:
+    """Parse loop.md frontmatter. loop.md is mandatory.
+
+    Raises SystemExit if loop.md is missing or invalid.
+    """
+    loop_md_path = loop_dir / "loop.md"
+    if not loop_md_path.is_file():
+        print(f"Error: {loop_dir.name} missing loop.md", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        text = loop_md_path.read_text(encoding="utf-8")
+        if not text.startswith("---"):
+            print(f"Error: {loop_md_path} missing frontmatter", file=sys.stderr)
+            sys.exit(1)
+        parts = text.split("---", 2)
+        if len(parts) < 3:
+            print(f"Error: {loop_md_path} invalid frontmatter", file=sys.stderr)
+            sys.exit(1)
+        frontmatter = yaml.safe_load(parts[1])
+        if not isinstance(frontmatter, dict):
+            print(f"Error: {loop_md_path} frontmatter must be a dict", file=sys.stderr)
+            sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"Error: {loop_md_path} invalid YAML: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if "name" not in frontmatter:
+        print(f"Error: {loop_md_path} missing required field 'name'", file=sys.stderr)
+        sys.exit(1)
+
+    return frontmatter
+
+
 def list_loops() -> list[tuple[str, dict, Path]]:
     """Scan loops directory and return (name, meta, path) for each valid loop.
 
+    Only loops with a valid loop.md are discoverable.
     Returns empty list if directory doesn't exist or is empty.
     """
     loops = _loops_dir()
@@ -30,12 +67,17 @@ def list_loops() -> list[tuple[str, dict, Path]]:
     for entry in sorted(loops.iterdir()):
         if not entry.is_dir():
             continue
+        loop_md = entry / "loop.md"
+        if not loop_md.is_file():
+            continue
         wf_path = entry / "workflow.py"
         if not wf_path.is_file():
             continue
         try:
-            meta = _load_meta(wf_path)
+            meta = _load_loop_meta(entry)
             results.append((entry.name, meta, entry))
+        except SystemExit:
+            continue
         except Exception:
             continue
 
@@ -53,12 +95,17 @@ def load_loop(name: str):
         print(f"Error: loop '{name}' not found", file=sys.stderr)
         sys.exit(1)
 
+    loop_md = loop_dir / "loop.md"
+    if not loop_md.is_file():
+        print(f"Error: loop '{name}' missing loop.md", file=sys.stderr)
+        sys.exit(1)
+
     wf_path = loop_dir / "workflow.py"
     if not wf_path.is_file():
         print(f"Error: loop '{name}' missing workflow.py", file=sys.stderr)
         sys.exit(1)
 
-    meta = _load_meta(wf_path)
+    meta = _load_loop_meta(loop_dir)
     mod = _load_module(wf_path)
 
     if not hasattr(mod, "run"):
@@ -91,46 +138,6 @@ def list_agents(loop_name: str) -> list[dict]:
             continue
 
     return agents
-
-
-def _load_meta(wf_path: Path) -> dict:
-    """Load meta dict from a workflow.py file.
-
-    Executes the file in a restricted namespace and extracts the meta variable.
-    Validates the meta dict structure and optional phases field.
-    """
-    mod = _load_module(wf_path)
-    if not hasattr(mod, "meta"):
-        return {"name": wf_path.parent.name, "description": ""}
-    meta = mod.meta
-    if not isinstance(meta, dict):
-        print(f"Error: meta must be a dict, got {type(meta).__name__}", file=sys.stderr)
-        sys.exit(1)
-
-    # Validate optional phases field
-    if "phases" in meta:
-        phases = meta["phases"]
-        if not isinstance(phases, list):
-            print(
-                f"Error: meta.phases must be a list, got {type(phases).__name__}",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        for i, p in enumerate(phases):
-            if not isinstance(p, dict):
-                print(
-                    f"Error: meta.phases[{i}] must be a dict, got {type(p).__name__}",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-            if "title" not in p:
-                print(
-                    f"Error: meta.phases[{i}] missing required field 'title'",
-                    file=sys.stderr,
-                )
-                sys.exit(1)
-
-    return meta
 
 
 def _load_module(wf_path: Path):

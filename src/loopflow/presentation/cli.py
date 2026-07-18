@@ -458,3 +458,38 @@ def stop(run_id):
 
     meta["status"] = "stopped"
     run_json.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+@main.command()
+@click.argument("name")
+@click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
+@click.option("--priority", default=5, help="Task priority (lower = higher priority)")
+def enqueue(name, wf_args, priority):
+    """Add a task to the dispatch queue."""
+    from loopflow.infrastructure.discovery import load_loop
+    from loopflow.infrastructure.queue import enqueue as queue_enqueue
+
+    # Validate loop exists
+    load_loop(name)
+
+    args_dict = {}
+    if wf_args:
+        try:
+            args_dict = json.loads(wf_args)
+        except json.JSONDecodeError as e:
+            print(f"Error: invalid --args JSON: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    path = queue_enqueue(name, args=args_dict, priority=priority)
+    print(f"[loopflow] Enqueued: {name} → {path}", file=sys.stderr)
+
+
+@main.command()
+def dispatch():
+    """Process pending tasks from the queue."""
+    from loopflow.infrastructure.dispatch import dispatch as run_dispatch
+
+    summary = run_dispatch()
+    print(f"[loopflow] Dispatch: {summary['processed']} processed, "
+          f"{summary['skipped']} skipped, {summary['errors']} errors",
+          file=sys.stderr)
