@@ -6,6 +6,7 @@
 | [0032](0032-dispatch-queue.md) | 调度机制：dispatch + queue + resource lock | accepted | — |
 | [0033](0033-webui-architecture.md) | 本地 WebUI 技术栈与分层 | accepted | Spec v12 |
 | [0034](0034-web-event-run-lifecycle.md) | Web 事件与 Run 生命周期契约 | accepted | Spec v12 |
+| [0035](0035-webui-test-infrastructure.md) | WebUI 测试与交付基础设施 | proposed | Spec v12 / AC-0010 / Interface 0001 |
 
 ## 状态说明
 
