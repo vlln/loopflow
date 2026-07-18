@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | v0.17.1: fix goal loop — schema retry 归 goal loop 管理，backend_sid 正确 propagate，214/214 pass |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | WebUI 增量迭代：本地开发者控制台，Runs 主从工作台、Loops 文件预览、Backend 环境诊断 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
@@ -20,4 +20,3 @@
 | [adr/](adr/) | 架构决策记录 |
 | [plans/](plans/) | 任务执行计划 |
 | [ac/](ac/) | 验收标准 |
-
