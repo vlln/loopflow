@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [0.17.0] — 2026-07-18
+
+### Added
+- **loop.md**：loop 声明式定义文件，frontmatter 给机器读，body 给 Agent 和人类读。`discovery` 优先读 loop.md，回退到 workflow.py meta
+- **queue 模块**：`infrastructure/queue.py`，文件队列（`~/.loopflow/queue/`），支持 enqueue / dequeue / list / size
+- **resource lock**：`lock.py` 扩展 resource 粒度锁，TTL 30 分钟自动清理
+- **dispatch 模块**：`infrastructure/dispatch.py`，扫描队列、优先级排序、资源锁、执行 loop
+- **CLI 命令**：`loop enqueue`（入队）、`loop dispatch`（调度执行）
+- 外部调度器文档：macOS 推荐 launchd，Linux 用 cron/systemd timer
+
 ## [0.16.0] — 2026-07-14
 
 ### Changed
