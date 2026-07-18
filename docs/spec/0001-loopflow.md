@@ -336,7 +336,7 @@ Agent 隔离层级体系（递进）：
 | BR-028 | Loop 文件预览限制在 Loop 根目录 | WebUI 请求 Loop 文件 | 解析后的真实路径必须位于所选 Loop 根目录内；拒绝路径穿越、符号链接逃逸和任意绝对路径 |
 | BR-029 | Run 事件流可断线恢复 | WebUI 订阅 Run | 客户端按 event_id 请求断点后的事件；服务端可重放已持久化事件并继续推送新增事件，重复连接不得重复执行 Run |
 | BR-030 | Backend 诊断基于真实能力 | WebUI 查询后端 | 仅展示 BackendManager 或诊断命令可观测的安装、版本、能力、transport 和日志；不得伪造 VRAM、延迟或健康分数 |
-| BR-031 | Run 元数据原子更新 | 创建 Run、状态变化、Phase 变化或进程退出 | `run.json` 和 `state.json` 写入同目录临时文件，flush 后原子替换；updated_at 随每次成功替换更新 |
+| BR-031 | Run 与 state 文件原子更新 | 创建 Run、状态变化、Phase 变化、state 持久化或进程退出 | `run.json` 和 `state.json` 各自在同目录写临时文件，flush 后独立原子替换，不承诺跨文件事务；仅替换 run.json 时在同一份新 JSON 中更新其 updated_at，state.json 不增加保留字段 |
 | BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；进程不存在或启动标识不匹配时，读模型返回 stale 且不修改文件。显式 reconcile 再次校验后原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at，随后允许 resume |
 
 ---
