@@ -4,9 +4,11 @@ set -eu
 repo_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 artifact_dir=${LOOPFLOW_GATE_ARTIFACTS:-"$repo_dir/.artifacts/mr-gate"}
 mkdir -p "$artifact_dir"
+export NO_PROXY="127.0.0.1,localhost${NO_PROXY:+,$NO_PROXY}"
+export no_proxy="127.0.0.1,localhost${no_proxy:+,$no_proxy}"
 
 cd "$repo_dir"
-uv run pytest tests/ -v \
+uv run pytest tests/ -q \
   --cov=src/loopflow \
   --cov-report=term \
   --cov-report="json:$artifact_dir/python-coverage.json" \
