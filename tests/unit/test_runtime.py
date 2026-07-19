@@ -144,7 +144,7 @@ class TestAgent:
                 events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
                 assert any(e["type"] == "agent_done" and e["exit_code"] == 0 for e in events)
 
-    def test_agent_resume_cache_hit(self, temp_run_dir):
+    def test_agent_resume_cache_hit(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
         # Pre-write cache
         cache_path = temp_run_dir / "0001.jsonl"
@@ -154,10 +154,11 @@ class TestAgent:
         ctx = RunContext(run_dir=temp_run_dir, resume=True)
         set_context(ctx)
 
-        with patch('loopflow.runtime._run_subagent') as mock_run:
-            result = agent("should be cached")
-            assert result.value == "cached"
-            mock_run.assert_not_called()
+        with patch('loopflow.runtime._make_backend', return_value=mock_backend):
+            with patch('loopflow.runtime._run_subagent') as mock_run:
+                result = agent("should be cached")
+                assert result.value == "cached"
+                mock_run.assert_not_called()
 
     def test_agent_resume_cache_miss(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
