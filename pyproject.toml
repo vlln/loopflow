@@ -36,9 +36,9 @@ dev = [
 [tool.coverage.run]
 source = ["src/loopflow"]
 omit = [
-    "src/loopflow/backends/*",
-    "src/loopflow/transports/*",
-    "src/loopflow/lock.py",
+    "src/loopflow/infrastructure/backends/*",
+    "src/loopflow/infrastructure/transports/*",
+    "src/loopflow/infrastructure/lock.py",
 ]
 
 [tool.coverage.report]
