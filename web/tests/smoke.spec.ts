@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-test('launches Chromium and renders a non-empty page', async ({ page }) => {
+test('launches Chromium and renders a non-empty page', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
   await page.goto('/');
 
@@ -17,4 +17,5 @@ test('launches Chromium and renders a non-empty page', async ({ page }) => {
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
     await page.evaluate(() => document.documentElement.clientWidth),
   );
+  await page.screenshot({ path: testInfo.outputPath('smoke.png'), fullPage: true });
 });

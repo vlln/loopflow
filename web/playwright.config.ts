@@ -18,7 +18,7 @@ export default defineConfig({
     locale: 'en-US',
     timezoneId: 'UTC',
     colorScheme: 'dark',
-    trace: 'retain-on-failure',
+    trace: 'on',
     screenshot: 'only-on-failure',
   },
   expect: {
