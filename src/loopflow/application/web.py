@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
+from loopflow.infrastructure.web_events import project_events, replay_v2
 from loopflow.infrastructure.web_storage import RunRepository, now_iso, read_json
 
 
@@ -157,6 +158,46 @@ class WebApplication:
         if isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 100:
             raise ApplicationError("validation_failed", "priority must be 0..100")
         return self.queue.enqueue(loop, args, resources, priority)
+
+    def list_backends(self) -> dict[str, Any]:
+        return {"items": self.backends.list()}
+
+    def diagnose_backend(self, name: str, timeout_ms: int) -> dict[str, Any]:
+        if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 100 <= timeout_ms <= 30000:
+            raise ApplicationError("validation_failed", "timeout_ms must be 100..30000")
+        try:
+            return self.backends.diagnose(name, timeout_ms)
+        except KeyError as error:
+            raise ApplicationError("backend_not_found", f"Backend '{name}' was not found") from error
+
+    def replay_events(self, run_id: str, last_event_id: int) -> tuple[list[dict[str, Any]], int, bool]:
+        run_dir = self._run_dir(run_id)
+        path = run_dir / "events.jsonl"
+        projection = project_events(path)
+        if projection.legacy:
+            raise ApplicationError(
+                "legacy_events_not_streamable",
+                "Legacy events do not support SSE cursors",
+                {"legacy_endpoint": f"/api/v1/runs/{run_id}/legacy-events"},
+            )
+        try:
+            events, maximum = replay_v2(path, last_event_id)
+        except IndexError as error:
+            raise ApplicationError(
+                "cursor_out_of_range",
+                "Event cursor is beyond persisted history",
+                {"max_event_id": error.args[0]},
+            ) from error
+        terminal = self.runs.read_summary(run_dir)["status"] not in {"running", "stale"}
+        return events, maximum, terminal
+
+    def legacy_events(self, run_id: str) -> dict[str, Any]:
+        detail = self.get_run(run_id)
+        return {
+            "items": detail["events"],
+            "unattributed_count": detail["unattributed_count"],
+            "malformed_count": detail["malformed_count"],
+        }
 
     def _run_dir(self, run_id: str) -> Path:
         path = self.runs.find(run_id)
