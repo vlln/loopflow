@@ -2,7 +2,7 @@
 title: Web Application 服务 Plan
 description: 实现 CLI/Web 共享的 Run、Phase、Loop、Queue、Backend 查询与命令服务，以及 v2/legacy 事件和生命周期持久化。
 type: plan
-status: pending
+status: done
 created: 2026-07-19T00:00:00Z
 ---
 
@@ -34,13 +34,13 @@ created: 2026-07-19T00:00:00Z
 
 | 检查点 | 通过条件 | 证据 |
 |--------|----------|------|
-| Run model | unreadable、stale、graph、occurrence、call、unattributed/malformed DTO 正确 | 待回填 |
-| Lifecycle | start/stop/resume/rerun/reconcile 状态约束与原子写正确 | 待回填 |
-| Events | v2 严格递增、legacy 保真、半行容忍、SSE reader cursor primitive | 待回填 |
-| Loops/Queue | 分页模型、invalid Loop、受限 preview、queue DTO 正确 | 待回填 |
-| Backends | 真实 capabilities/diagnostic DTO、timeout/encoding/secret redaction 正确 | 待回填 |
-| Reuse | runtime/CLI 写路径复用 writer/lifecycle primitive | 待回填 |
-| Quality | 新增 Python 代码 >=80% coverage，MR required checks 全绿 | 待回填 |
+| Run model | unreadable、stale、graph、occurrence、call、unattributed/malformed DTO 正确 | `e1f7ebe`；Web 单元测试 27 passed |
+| Lifecycle | start/stop/resume/rerun/reconcile 状态约束与原子写正确 | `e1f7ebe`；后台 executor 与 lifecycle tests |
+| Events | v2 严格递增、legacy 保真、半行容忍、SSE reader cursor primitive | `e1f7ebe`；event projection/replay tests |
+| Loops/Queue | 分页模型、invalid Loop、受限 preview、queue DTO 正确 | `e1f7ebe`；resource/application tests |
+| Backends | 真实 capabilities/diagnostic DTO、timeout/encoding/secret redaction 正确 | `e1f7ebe`；Backend repository tests |
+| Reuse | runtime/CLI 写路径复用 writer/lifecycle primitive | `e1f7ebe`；全量 CLI/runtime 回归 |
+| Quality | 新增 Python 代码 >=80% coverage，MR required checks 全绿 | 本地 MR gate：262 passed、82.50%、Chromium 3/3、wheel pass |
 
 # Steps
 

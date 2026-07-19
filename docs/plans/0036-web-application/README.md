@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Web Application 服务](01-plan-web-application.md) | [实现报告](01-report-web-application.md) | pending |
+| 01 | [Web Application 服务](01-plan-web-application.md) | [实现报告](01-report-web-application.md) | done |
 
 ## 依赖
 
