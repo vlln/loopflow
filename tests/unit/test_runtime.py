@@ -296,10 +296,11 @@ class TestAgent:
                   events_path.read_text().strip().split("\n") if l]
         retry_events = [e for e in events if e["type"] == "agent_retry"]
         assert len(retry_events) == 2
-        assert retry_events[0]["reason"] == "connection_error"
-        assert retry_events[0]["delay"] == 3
-        assert retry_events[1]["reason"] == "connection_error"
-        assert retry_events[1]["delay"] == 9
+        assert retry_events[0]["version"] == 2
+        assert retry_events[0]["payload"]["reason"] == "connection_error"
+        assert retry_events[0]["payload"]["delay"] == 3
+        assert retry_events[1]["payload"]["reason"] == "connection_error"
+        assert retry_events[1]["payload"]["delay"] == 9
 
 
 # ── parallel() ────────────────────────────────────────────────────────────

@@ -55,8 +55,13 @@ class RunContext:
         self._counter = counter
         self._prev_phase: str | None = None
         self._current_phase: str | None = None
+        self._current_phase_id: str | None = None
+        self._current_call_id: str | None = None
+        self._phase_counter: int = 0
         self.from_phase: str | None = None  # --from-phase: skip phases before this
         self.only_phase: str | None = None  # --only-phase: stop after this phase
+        self.default_backend: str | None = None
+        self.default_model: str | None = None
         self._reached_from_phase: bool = False
         self._past_only_phase: bool = False
         self.graph = graph
@@ -66,7 +71,9 @@ class RunContext:
 
     def next_session(self) -> str:
         self._counter += 1
-        return f"wf_{self.run_id}_{self._counter}"
+        session = f"wf_{self.run_id}_{self._counter}"
+        self._current_call_id = session
+        return session
 
     def session_output_path(self, session: str) -> Path:
         return self.run_dir / f"{self._counter:04d}.jsonl"
@@ -148,12 +155,29 @@ def _emit_log(message: str) -> None:
 # ── cache / persist ──────────────────────────────────────────────────────
 
 def _write_event(event: dict) -> None:
-    """Append a structured event to events.jsonl in the run directory."""
+    """Normalize runtime events into persisted v2 envelopes."""
     try:
-        events_path = _ctx.run_dir / "events.jsonl"
-        events_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(events_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(event, ensure_ascii=False, separators=(",", ":")) + "\n")
+        from loopflow.infrastructure.web_events import EventWriter
+
+        event_type = str(event.get("type", "event"))
+        phase = event.get("phase") or _ctx._current_phase
+        phase_id = event.get("phase_id") or _ctx._current_phase_id
+        call_id = event.get("call_id") or event.get("session") or (
+            _ctx._current_call_id if event_type.startswith("agent_") else None
+        )
+        payload = {
+            key: value for key, value in event.items()
+            if key not in {"type", "ts", "phase", "phase_id", "call_id"}
+        }
+        EventWriter().append(
+            _ctx.run_dir,
+            event_type,
+            run_id=_ctx.run_id,
+            phase=phase,
+            phase_id=phase_id,
+            call_id=call_id,
+            payload=payload,
+        )
     except OSError:
         pass
 
@@ -186,10 +210,8 @@ def _persist_state() -> None:
     if _ctx.state is None:
         return
     try:
-        state_path = _ctx.run_dir / "state.json"
-        state_path.write_text(
-            json.dumps(_ctx.state.to_dict(), indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        from loopflow.infrastructure.web_storage import atomic_write_json
+
+        atomic_write_json(_ctx.run_dir / "state.json", _ctx.state.to_dict())
     except OSError:
         pass
