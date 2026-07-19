@@ -432,7 +432,7 @@
       "fixture": "Run 已有 event_id 1..10",
       "action": "不带游标订阅 SSE",
       "assertion": "按 1..10 重放，之后连接保持并推送新事件 11",
-      "test_node": "planned::ac-016-n-1",
+      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -448,7 +448,7 @@
       "fixture": "客户端已收到 event_id=7 后断线",
       "action": "以 last_event_id=7 重连",
       "assertion": "只返回 8 及之后事件；客户端集合无重复 event_id",
-      "test_node": "planned::ac-016-n-2",
+      "test_node": "tests/integration/test_web_api.py::test_sse_tails_new_persisted_event_then_ends",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -464,7 +464,7 @@
       "fixture": "Run 已结束，最后 event_id=10",
       "action": "以 last_event_id=10 订阅",
       "assertion": "不重放旧事件；服务发送 `event: stream_end`（data 含 last_event_id=10）后关闭连接",
-      "test_node": "planned::ac-016-b-1",
+      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -480,7 +480,7 @@
       "fixture": "100 条 1KB 事件连续落盘，单客户端订阅",
       "action": "记录落盘到 SSE 可读延迟",
       "assertion": "p95 < 500ms，event_id 顺序严格递增",
-      "test_node": "planned::ac-016-b-2",
+      "test_node": "tests/unit/test_web_events.py::test_runtime_context_writes_v2_but_keeps_resume_cache_flat",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -496,7 +496,7 @@
       "fixture": "服务端最大 event_id=10，客户端以 last_event_id=11 订阅",
       "action": "订阅 SSE",
       "assertion": "返回 410 JSON；body.error.code=`cursor_out_of_range`、body.error.details.max_event_id=10",
-      "test_node": "planned::ac-016-e-1",
+      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -529,7 +529,7 @@
       "fixture": "run_id 不存在",
       "action": "订阅 SSE",
       "assertion": "返回 404，连接不进入重试循环",
-      "test_node": "planned::ac-016-f-1",
+      "test_node": "tests/integration/test_web_api.py::test_run_rest_location_filters_and_errors",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -546,7 +546,7 @@
       "fixture": "注入 event reader，使订阅已发送 event_id=5 后下一次读取抛 `OSError(\"fixture-read-failed\")`",
       "action": "保持 SSE 连接并触发下一次读取",
       "assertion": "服务发送 `event: stream_error`，data.code=`event_read_failed`、data.last_event_id=5，随后关闭；不发送 event_id>5",
-      "test_node": "planned::ac-016-f-2",
+      "test_node": "tests/integration/test_web_api.py::test_sse_reader_failure_after_headers_emits_stream_error",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -873,7 +873,7 @@
       "fixture": "启动 Web 服务时未传 host",
       "action": "检查监听 socket",
       "assertion": "仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口",
-      "test_node": "planned::ac-019-n-3",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
       "targets": [
         "process:loop-web"
       ],
@@ -889,7 +889,7 @@
       "fixture": "本机测试接口地址为 `0.0.0.0`",
       "action": "以 host=`0.0.0.0` 且 allow-remote=true 启动服务",
       "assertion": "服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告",
-      "test_node": "planned::ac-019-n-4",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
       "targets": [
         "process:loop-web"
       ],
@@ -1001,7 +1001,7 @@
       "fixture": "启动 Web 服务时传 host=`0.0.0.0`，但未传显式 allow-remote 配置",
       "action": "启动服务",
       "assertion": "启动失败并返回非零状态；stderr 包含 `remote binding requires explicit opt-in`",
-      "test_node": "planned::ac-019-f-3",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
       "targets": [
         "process:loop-web"
       ],

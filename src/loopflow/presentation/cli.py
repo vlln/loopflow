@@ -119,6 +119,29 @@ def main():
 
 
 @main.command()
+@click.option("--host", default="127.0.0.1", show_default=True)
+@click.option("--port", type=click.IntRange(0, 65535), default=8765, show_default=True)
+@click.option("--allow-remote", is_flag=True, default=False)
+def web(host: str, port: int, allow_remote: bool) -> None:
+    """Serve the local WebUI and API."""
+    from loopflow.presentation.web.server import create_server, is_loopback
+
+    if not is_loopback(host) and not allow_remote:
+        raise click.ClickException("remote host requires --allow-remote")
+    if not is_loopback(host):
+        click.echo(f"Warning: WebUI is exposed on remote host {host}", err=True)
+    server = create_server(host, port, allow_remote=allow_remote)
+    bound_host, bound_port = server.server_address[:2]
+    click.echo(f"loopflow WebUI: http://{bound_host}:{bound_port}", err=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+
+
+@main.command()
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
