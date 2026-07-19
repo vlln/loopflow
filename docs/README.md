@@ -4,9 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | WebUI DEVELOP 门禁通过：0036 Application、0038 REST/SSE API、0039 Frontend 已合并；60 场景 strict manifest、三容器提测门禁与五项 required checks 全绿 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；基线 273 Python tests + 8 Vitest + 10 Chromium checks |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | WebUI SYSTEM_TEST 全绿：集成 22/22、CLI E2E 13/13、全量 273 pass、strict manifest 60/60、Vitest 8/8、Chromium 10 pass；性能与安全专项通过 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；develop 为待发布状态，无阻塞级缺陷 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
