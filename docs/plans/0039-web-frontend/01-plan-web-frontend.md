@@ -2,7 +2,7 @@
 title: Web Frontend Plan
 description: 按 Carbon Mint Console 规范实现 Runs、Loops、Backends 三个响应式主从工作台。
 type: plan
-status: pending
+status: done
 created: 2026-07-19T06:20:00Z
 ---
 
@@ -33,12 +33,12 @@ created: 2026-07-19T06:20:00Z
 
 | 检查点 | 通过条件 | 证据 |
 |--------|----------|------|
-| Runs | list/filter/actions/graph/occurrence/calls/events/SSE 正确 | 待回填 |
-| Loops | list/detail/markdown/workflow/agents/file errors/related Runs 正确 | 待回填 |
-| Backends | real DTO/diagnostic/redaction/unknown/empty 正确 | 待回填 |
-| Responsive | 1440/1024/390 无横滚、重叠，主流程可达 | 待回填 |
-| Visual | Carbon Mint tokens、React Flow 非空像素、截图通过 | 待回填 |
-| Quality | TypeScript 四维 coverage >=80%，MR gate 全绿 | 待回填 |
+| Runs | list/filter/actions/graph/occurrence/calls/events/SSE 正确 | Vitest + Playwright + Python lifecycle tests PASS |
+| Loops | list/detail/markdown/workflow/agents/file errors/related Runs 正确 | Vitest + Playwright + resource tests PASS |
+| Backends | real DTO/diagnostic/redaction/unknown/empty 正确 | Vitest + Playwright + resource tests PASS |
+| Responsive | 1440/1024/390 无横滚、重叠，主流程可达 | Chromium 10 PASS / 2 viewport-independent skips |
+| Visual | Carbon Mint tokens、React Flow 非空像素、截图通过 | 三视口 screenshots + node bounds/pixels PASS |
+| Quality | TypeScript 四维 coverage >=80%，MR gate 全绿 | 100/85.71/87.01/100；MR gate PASS |
 
 # Steps
 

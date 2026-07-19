@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Web Frontend](01-plan-web-frontend.md) | [实现报告](01-report-web-frontend.md) | pending |
+| 01 | [Web Frontend](01-plan-web-frontend.md) | [实现报告](01-report-web-frontend.md) | done |
 
 ## 依赖
 
