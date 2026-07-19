@@ -22,6 +22,12 @@ loop = "loopflow.presentation.cli:main"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+artifacts = ["src/loopflow/presentation/web/static"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/loopflow"]
+
 [dependency-groups]
 dev = [
     "pytest-cov>=7.1.0",
@@ -30,9 +36,9 @@ dev = [
 [tool.coverage.run]
 source = ["src/loopflow"]
 omit = [
-    "src/loopflow/backends/*",
-    "src/loopflow/transports/*",
-    "src/loopflow/lock.py",
+    "src/loopflow/infrastructure/backends/*",
+    "src/loopflow/infrastructure/transports/*",
+    "src/loopflow/infrastructure/lock.py",
 ]
 
 [tool.coverage.report]
