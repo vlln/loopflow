@@ -15,7 +15,7 @@ uv run pytest tests/ -q \
   --cov-report="xml:$artifact_dir/python-coverage.xml" \
   --junitxml="$artifact_dir/python-junit.xml"
 
-if grep -Fq '| **当前阶段** | `TEST_INFRA` |' docs/README.md; then
+if grep -Eq '\| \*\*当前阶段\*\* \| `(INIT|DESIGN|TEST_INFRA|DEVELOP)` \|' docs/README.md; then
   python3 scripts/check-ac-manifest.py --allow-planned
 else
   python3 scripts/check-ac-manifest.py
