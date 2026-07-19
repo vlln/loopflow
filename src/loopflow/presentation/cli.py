@@ -20,6 +20,20 @@ from pathlib import Path
 
 import click
 
+from loopflow.infrastructure.web_storage import atomic_write_json
+
+
+def _write_run(path: Path, metadata: dict) -> None:
+    metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
+    atomic_write_json(path, metadata)
+
+
+def _finish_run(metadata: dict, status: str) -> None:
+    metadata["status"] = status
+    metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
+    metadata.pop("pid", None)
+    metadata.pop("process_started_at", None)
+
 
 def _runs_dir() -> Path:
     home = os.environ.get("HOME", os.path.expanduser("~"))
@@ -145,7 +159,7 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         "args": args_dict,
         "counter": 0,
     }
-    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_run(run_dir / "run.json", run_meta)
 
     # Set up graph for live/watch mode
     pg = PhaseGraph() if watch else None
@@ -187,16 +201,16 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         result = mod.run(**run_kwargs)
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
-        run_meta["status"] = "stopped"
+        _finish_run(run_meta, "stopped")
         run_meta["counter"] = ctx._counter
-        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_run(run_dir / "run.json", run_meta)
         if live:
             live.stop()
         sys.exit(0)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
-        run_meta["status"] = "failed"
-        (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        _finish_run(run_meta, "failed")
+        _write_run(run_dir / "run.json", run_meta)
         if live:
             live.stop()
         sys.exit(1)
@@ -204,9 +218,9 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     if live:
         live.stop()
 
-    run_meta["status"] = "done"
+    _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
-    (run_dir / "run.json").write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_run(run_dir / "run.json", run_meta)
 
     if result is not None:
         if isinstance(result, str):
@@ -257,7 +271,8 @@ def resume(run_id, mock, watch):
     args_dict = run_meta.get("args", {})
 
     run_meta["status"] = "running"
-    run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    run_meta.pop("finished_at", None)
+    _write_run(run_json, run_meta)
 
     # Set up graph for live/watch mode
     pg = PhaseGraph() if watch else None
@@ -301,16 +316,16 @@ def resume(run_id, mock, watch):
         result = mod.run(**run_kwargs)
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
-        run_meta["status"] = "stopped"
+        _finish_run(run_meta, "stopped")
         run_meta["counter"] = ctx._counter
-        run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        _write_run(run_json, run_meta)
         if live:
             live.stop()
         sys.exit(0)
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
-        run_meta["status"] = "failed"
-        run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+        _finish_run(run_meta, "failed")
+        _write_run(run_json, run_meta)
         if live:
             live.stop()
         sys.exit(1)
@@ -318,9 +333,9 @@ def resume(run_id, mock, watch):
     if live:
         live.stop()
 
-    run_meta["status"] = "done"
+    _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
-    run_json.write_text(json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    _write_run(run_json, run_meta)
 
     if result is not None:
         if isinstance(result, str):
@@ -456,8 +471,8 @@ def stop(run_id):
     else:
         print(f"No pid file for run '{run_id}'", file=sys.stderr)
 
-    meta["status"] = "stopped"
-    run_json.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8")
+    _finish_run(meta, "stopped")
+    _write_run(run_json, meta)
 
 
 @main.command()

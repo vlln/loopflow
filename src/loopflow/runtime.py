@@ -58,6 +58,8 @@ def agent(
     from loopflow.application.runner import AgentRunner
 
     ctx = _ctx_module._ctx
+    backend = backend or getattr(ctx, "default_backend", None)
+    model = model or getattr(ctx, "default_model", None)
 
     # --from-phase: skip agent calls before the target phase
     if ctx.from_phase and not ctx._reached_from_phase:

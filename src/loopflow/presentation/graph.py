@@ -167,7 +167,7 @@ class PhaseGraph:
         prev: str | None = None
         for evt in events:
             if evt.get("type") == "phase":
-                title = evt.get("title", "")
+                title = evt.get("phase") or evt.get("title", "")
                 if title:
                     graph.record(prev, title)
                     prev = title
