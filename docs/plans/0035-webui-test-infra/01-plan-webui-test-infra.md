@@ -2,7 +2,7 @@
 title: WebUI 测试与交付底座 Plan
 description: 搭建 WebUI 的 Python、HTTP、前端、浏览器、视觉、契约、覆盖率、CI 与提测门禁并完成反向自证。
 type: plan
-status: pending
+status: done
 created: 2026-07-19T00:00:00Z
 ---
 
@@ -33,14 +33,14 @@ created: 2026-07-19T00:00:00Z
 
 | 检查点 | 通过条件 | 证据 |
 |--------|----------|------|
-| Toolchain | lockfile 安装、typecheck、Vitest、Vite build、Playwright Chromium 冒烟通过 | 待回填 |
-| Contract | Interface-shaped fixtures 全部通过，错误 shape 被拒绝 | 待回填 |
-| AC manifest | AC-014..019 全场景对齐，缺失/错误 endpoint/status/event 被拒绝 | 待回填 |
-| MR gate | 故意失败时非零，恢复后全绿；远端 required check 证据可核验 | 待回填 |
-| Submission gate | invalid Report、AC 和 coverage fixtures 全部被拒绝 | 待回填 |
-| Coverage | 已知分支 fixture 的工具结果与人工统计一致 | 待回填 |
-| Wheel | 隔离安装后通过 importlib.resources 读取 index 与 hashed asset | 待回填 |
-| Scope | 无 Web API、Run 生命周期或工作区产品实现 | 待回填 |
+| Toolchain | lockfile 安装、typecheck、Vitest、Vite build、Playwright Chromium 冒烟通过 | run `29672196161` frontend/browser |
+| Contract | Interface-shaped fixtures 全部通过，错误 shape 被拒绝 | commit `23dd4ab`；Python 3.10/3.14 checks |
+| AC manifest | AC-014..019 全场景对齐，缺失/错误 endpoint/status/event 被拒绝 | 60 scenarios；`test_ac_manifest.py` |
+| MR gate | 故意失败时非零，恢复后全绿；远端 required check 证据可核验 | PR #1；`eee2fd1` BLOCKED；run `29672196161` 全绿 |
+| Submission gate | invalid Report、AC 和 coverage fixtures 全部被拒绝 | `test_submission_gate.py` 四类反例 |
+| Coverage | 已知分支 fixture 的工具结果与人工统计一致 | 2/2 branches，100% |
+| Wheel | 隔离安装后通过 importlib.resources 读取 index 与 hashed asset | run `29672196161` wheel |
+| Scope | 无 Web API、Run 生命周期或工作区产品实现 | `git diff 34aa8ee..29e8859` 内容审查 |
 
 # Exit
 

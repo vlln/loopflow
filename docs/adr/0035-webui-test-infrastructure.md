@@ -2,7 +2,7 @@
 title: ADR 0035 - WebUI 测试与交付基础设施
 description: 定义 WebUI 的 Python、前端、浏览器、契约、视觉、覆盖率、测试数据、CI 门禁和 wheel 部署冒烟策略
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-19T00:00:00Z
 ---
 
@@ -150,14 +150,14 @@ src/loopflow/presentation/web/static/  # wheel 内生成资产
 
 ## Verification
 
-ADR 在一次性基建完成前保持 proposed。接受前必须记录以下证据：
+ADR 已在一次性基建完成后依据以下证据接受：
 
 | 验证项 | 通过条件 | 证据位置 |
 |--------|----------|----------|
-| MR 拦截 | 故意失败测试使本地门禁非零且远端 required check 报红/阻断 merge，删除后全绿 | 待回填 |
-| 提测拦截 | invalid Report、缺 AC、低 coverage 均被拒绝 | 待回填 |
-| Mock 契约 | Run/Loop/Queue/Backend/SSE fixture schema 全部通过 | 待回填 |
-| 覆盖率准确 | 已知分支 fixture 的工具结果等于人工统计 | 待回填 |
-| 浏览器冒烟 | Chromium 启动、页面非空、截图/trace 可生成 | 待回填 |
-| AC 静态覆盖 | manifest 覆盖 AC-014..019 全场景，接口/入参/status/event/断言元数据与 Interface 一致，任一偏差即失败 | 待回填 |
-| Wheel 冒烟 | 隔离安装后无 Node 可通过 `importlib.resources` 读取入口与 hashed asset | 待回填 |
+| MR 拦截 | 故意失败测试使本地门禁非零且远端 required check 报红/阻断 merge，删除后全绿 | PR #1；失败 run `29669931354` / commit `eee2fd1` 为 `BLOCKED`；恢复 run `29672196161` 五项全绿 |
+| 提测拦截 | invalid Report、缺 AC、低 coverage 均被拒绝 | `tests/infrastructure/test_submission_gate.py` 四类反例通过；commit `23dd4ab` |
+| Mock 契约 | Run/Loop/Queue/Backend/SSE fixture schema 全部通过 | `tests/infrastructure/test_web_test_support.py`；远端 Python 3.10/3.14 checks 通过 |
+| 覆盖率准确 | 已知分支 fixture 的工具结果等于人工统计 | `./scripts/verify-coverage.sh`：2/2 branches，100% |
+| 浏览器冒烟 | Chromium 启动、页面非空、截图/trace 可生成 | run `29672196161` browser check；1440x900、1024x768、390x844 均产出 smoke.png 与 trace.zip |
+| AC 静态覆盖 | manifest 覆盖 AC-014..019 全场景，接口/入参/status/event/断言元数据与 Interface 一致，任一偏差即失败 | `python3 scripts/check-ac-manifest.py --allow-planned`：60 scenarios；缺失/漂移反例测试通过 |
+| Wheel 冒烟 | 隔离安装后无 Node 可通过 `importlib.resources` 读取入口与 hashed asset | run `29672196161` wheel check；Python 3.10 读取 index + 2 hashed assets |

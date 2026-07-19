@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [WebUI 测试与交付底座](01-plan-webui-test-infra.md) | [基建报告](01-report-webui-test-infra.md) | pending |
+| 01 | [WebUI 测试与交付底座](01-plan-webui-test-infra.md) | [基建报告](01-report-webui-test-infra.md) | done |
 
 ## 范围
 
