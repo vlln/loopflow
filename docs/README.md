@@ -4,9 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `TEST_INFRA` |
-| **设计评估** | WebUI DESIGN 门禁通过：Spec v12、AC-0010、ADR 0033/0034、Web API v1 已冻结；标准库 SSE + React/Vite/React Flow spike 可行 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | WebUI TEST_INFRA 门禁通过：ADR 0035 accepted；60 场景 manifest、MR/提测门禁、Python/前端/Chromium/wheel 测试底座与 required checks 已验证 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现；基建基线 230 Python tests + 3 Chromium viewport smokes |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
