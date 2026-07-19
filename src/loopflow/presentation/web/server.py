@@ -68,7 +68,12 @@ def build_application() -> WebApplication:
     )
 
 
-def handler_for(application: WebApplication, *, poll_interval: float = 0.1) -> type[BaseHTTPRequestHandler]:
+def handler_for(
+    application: WebApplication,
+    *,
+    poll_interval: float = 0.1,
+    static_root: Any | None = None,
+) -> type[BaseHTTPRequestHandler]:
     class WebHandler(BaseHTTPRequestHandler):
         app = application
         server_version = "loopflow-web/1"
@@ -262,7 +267,7 @@ def handler_for(application: WebApplication, *, poll_interval: float = 0.1) -> t
             if pure.is_absolute() or ".." in pure.parts or not (relative == "index.html" or relative.startswith("assets/")):
                 self._error(404, "file_not_found", "Static resource was not found")
                 return
-            root = importlib.resources.files("loopflow.presentation.web").joinpath("static")
+            root = static_root or importlib.resources.files("loopflow.presentation.web").joinpath("static")
             resource = root.joinpath(*pure.parts)
             if not resource.is_file():
                 if "." not in pure.name:
@@ -280,10 +285,20 @@ def handler_for(application: WebApplication, *, poll_interval: float = 0.1) -> t
     return WebHandler
 
 
-def create_server(host: str = "127.0.0.1", port: int = 8765, *, allow_remote: bool = False, application: WebApplication | None = None) -> ThreadingHTTPServer:
+def create_server(
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    *,
+    allow_remote: bool = False,
+    application: WebApplication | None = None,
+    static_root: Any | None = None,
+) -> ThreadingHTTPServer:
     if not is_loopback(host) and not allow_remote:
         raise ValueError("remote_bind_requires_allow_remote")
-    return ThreadingHTTPServer((host, port), handler_for(application or build_application()))
+    return ThreadingHTTPServer(
+        (host, port),
+        handler_for(application or build_application(), static_root=static_root),
+    )
 
 
 def is_loopback(host: str) -> bool:

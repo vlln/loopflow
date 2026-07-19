@@ -55,7 +55,11 @@ def api(tmp_path):
     factory.create_loop("hello")
     runs = RunRepository(factory.runs, Probe())
     app = WebApplication(runs, LoopRepository(factory.loops, runs), QueueRepository(tmp_path / "queue"), DiagnosticBackend(), Executor(factory), {"kimi"})
-    server = create_server("127.0.0.1", 0, application=app)
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<!doctype html><title>loopflow</title>")
+    (static / "assets" / "app.js").write_text("window.loopflow = true")
+    server = create_server("127.0.0.1", 0, application=app, static_root=static)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
