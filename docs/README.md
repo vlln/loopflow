@@ -5,8 +5,8 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | WebUI SYSTEM_TEST 全绿：集成 22/22、CLI E2E 13/13、全量 273 pass、strict manifest 60/60、Vitest 8/8、Chromium 10 pass；性能与安全专项通过 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；develop 为待发布状态，无阻塞级缺陷 |
+| **设计评估** | WebUI 收尾门禁全绿：Python 275 pass / 1 skip、coverage 83%、strict manifest 60/60、Vitest 8/8、Chromium 10 pass / 2 条按视口条件 skip、wheel 冒烟通过 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；Run 工作目录索引与 WebUI 交互收尾完成，develop 为待发布状态，无阻塞级缺陷 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
