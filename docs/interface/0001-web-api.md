@@ -49,6 +49,7 @@ created: 2026-07-18T22:00:00Z
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | run_id | string | 是 | 完整 Run ID |
+| working_directory | string | 是 | `runs_index.jsonl` 中记录的真实绝对工作目录；旧 Run 缺少有效映射时回退为 `lf_<pwd-path>` 分组名 |
 | loop | string/null | 是 | Loop 名；unreadable 时无法证明则为 null |
 | status | string | 是 | `running/done/failed/stopped/stale/unreadable` |
 | current_phase | string/null | 是 | 最近聚合 Phase title |
@@ -70,7 +71,6 @@ created: 2026-07-18T22:00:00Z
 |------|------|------|------|
 | args | object/null | 是 | 启动参数；unreadable 且无法解析时为 null |
 | state | object/null | 是 | 当前 Run 级 state；缺失为 null |
-| working_directory | string | 是 | Run 工作目录，可由目录位置证明 |
 | graph | PhaseGraph | 是 | 聚合 Phase 图 |
 | occurrences | PhaseOccurrence[] | 是 | Phase 实际进入序列 |
 | calls | AgentCallSummary[] | 是 | 可明确关联的 Calls |
