@@ -5,7 +5,9 @@
 | [0001](0001-template/) | 模板（参考用） | template | — |
 | [0033](0033-webui-design/) | WebUI 契约与架构设计 | done | 2026-07-18 |
 | [0035](0035-webui-test-infra/) | WebUI 测试与交付底座 | done | 2026-07-19 |
-| [0036](0036-web-application/) | Web Application 服务 | pending | 2026-07-19 |
+| [0036](0036-web-application/) | Web Application 服务 | done | 2026-07-19 |
+| [0037](0037-develop-manifest-gate/) | DEVELOP manifest 门禁修复 | done | 2026-07-19 |
+| [0038](0038-web-api/) | Web API 服务 | pending | 2026-07-19 |
 
 ## 状态说明
 
