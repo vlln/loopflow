@@ -4,9 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
-| **设计评估** | WebUI TEST_INFRA 门禁通过：ADR 0035 accepted；60 场景 manifest、MR/提测门禁、Python/前端/Chromium/wheel 测试底座与 required checks 已验证 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现；基建基线 230 Python tests + 3 Chromium viewport smokes |
+| **当前阶段** | `SYSTEM_TEST` |
+| **设计评估** | WebUI DEVELOP 门禁通过：0036 Application、0038 REST/SSE API、0039 Frontend 已合并；60 场景 strict manifest、三容器提测门禁与五项 required checks 全绿 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；基线 273 Python tests + 8 Vitest + 10 Chromium checks |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
