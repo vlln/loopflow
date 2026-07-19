@@ -2,7 +2,7 @@
 title: Web API Plan
 description: 实现标准库 REST、SSE、静态资源服务和 loop web 安全绑定命令。
 type: plan
-status: pending
+status: done
 created: 2026-07-19T06:05:00Z
 ---
 
@@ -32,11 +32,11 @@ created: 2026-07-19T06:05:00Z
 
 | 检查点 | 通过条件 | 证据 |
 |--------|----------|------|
-| REST | Interface 0001 endpoint/status/error/header 全部契约测试通过 | 待回填 |
-| SSE | replay、live、end、cursor、legacy、reader failure 正确 | 待回填 |
-| Static | `/` 与 hashed assets 从 wheel package resource 返回 | 待回填 |
-| Bind | loopback 默认、remote opt-in、拒绝时不创建 socket | 待回填 |
-| Quality | 新增 Python >=80%，MR gate 全绿 | 待回填 |
+| REST | Interface 0001 endpoint/status/error/header 全部契约测试通过 | `9d48b49`；HTTP integration tests |
+| SSE | replay、live、end、cursor、legacy、reader failure 正确 | `9d48b49`；event_id=5 failure injection |
+| Static | `/` 与 hashed assets 从 wheel package resource 返回 | `9d48b49`；HTTP static + wheel smoke |
+| Bind | loopback 默认、remote opt-in、拒绝时不创建 socket | `9d48b49`；CLI/bind tests |
+| Quality | 新增 Python >=80%，MR gate 全绿 | 聚焦 85.18%；MR gate 全绿 |
 
 # Steps
 

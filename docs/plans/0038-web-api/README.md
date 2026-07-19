@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Web API](01-plan-web-api.md) | [实现报告](01-report-web-api.md) | pending |
+| 01 | [Web API](01-plan-web-api.md) | [实现报告](01-report-web-api.md) | done |
 
 ## 依赖
 
