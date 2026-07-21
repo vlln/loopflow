@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json
+from loopflow.infrastructure.web_storage import RunRepository, append_run_index, atomic_write_json, read_run_index
 from tests.web_support.factories import WebFixtureFactory
 
 
@@ -31,6 +31,8 @@ def test_unreadable_run_does_not_hide_valid_siblings(tmp_path):
     assert summaries["valid"]["status"] == "done"
     assert summaries["broken"]["status"] == "unreadable"
     assert summaries["broken"]["parse_error"].startswith("line 1, column")
+    assert summaries["valid"]["working_directory"] == factory.runs.name
+    assert summaries["broken"]["working_directory"] == factory.runs.name
 
 
 def test_stale_is_derived_without_modifying_run_json(tmp_path):
@@ -103,6 +105,46 @@ def test_run_detail_missing_events_and_state_and_find_nested(tmp_path):
 
     detail = repository.read_detail(repository.find("nested"))
 
+    assert detail["working_directory"] == "lf-project"
     assert detail["state"] is None
     assert detail["events"] == [] and detail["graph"]["nodes"] == []
     assert detail["allowed_actions"] == ["rerun"]
+
+
+def test_run_index_preserves_real_working_directory(tmp_path):
+    runs = tmp_path / "runs"
+    run = runs / "lf_Users-vlln-agent-space" / "indexed"
+    run.mkdir(parents=True)
+    (run / "run.json").write_text('{"run_id":"indexed","status":"done"}')
+    repository = RunRepository(runs, Probe())
+    assert repository.read_summary(run)["working_directory"] == "lf_Users-vlln-agent-space"
+
+    append_run_index(runs, Path("/Users/vlln/agent-space"), run.parent, "indexed")
+
+    record = read_run_index(runs)["indexed"]
+    assert record == {
+        "working_directory": "/Users/vlln/agent-space",
+        "runs_directory": str(run.parent.resolve()),
+        "run_id": "indexed",
+    }
+    assert repository.find("indexed") == run
+    assert repository.read_summary(run)["working_directory"] == "/Users/vlln/agent-space"
+
+
+def test_run_index_ignores_malformed_and_outside_records(tmp_path):
+    runs = tmp_path / "runs"
+    run = runs / "lf-project" / "safe"
+    run.mkdir(parents=True)
+    (run / "run.json").write_text('{"run_id":"safe","status":"done"}')
+    outside = tmp_path / "outside"
+    (outside / "safe").mkdir(parents=True)
+    (outside / "safe" / "run.json").write_text('{"run_id":"safe"}')
+    (runs / "runs_index.jsonl").write_text(
+        '{broken\n'
+        + json.dumps({"working_directory": "/outside", "runs_directory": str(outside), "run_id": "safe"})
+        + "\n"
+    )
+
+    repository = RunRepository(runs, Probe())
+    assert repository.find("safe") == run
+    assert repository.read_summary(run)["working_directory"] == "lf-project"

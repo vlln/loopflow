@@ -20,7 +20,7 @@ from pathlib import Path
 
 import click
 
-from loopflow.infrastructure.web_storage import atomic_write_json
+from loopflow.infrastructure.web_storage import append_run_index, atomic_write_json
 
 
 def _write_run(path: Path, metadata: dict) -> None:
@@ -172,6 +172,7 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     run_id = uuid.uuid4().hex
     run_dir = _run_dir_for_pwd() / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
+    append_run_index(_runs_dir(), Path.cwd(), run_dir.parent, run_id)
 
     # Write run.json
     run_meta = {

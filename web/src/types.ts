@@ -2,6 +2,7 @@ export type RunStatus = 'running' | 'done' | 'failed' | 'stopped' | 'stale' | 'u
 
 export interface RunSummary {
   run_id: string;
+  working_directory: string;
   loop: string | null;
   status: RunStatus;
   current_phase: string | null;
@@ -25,7 +26,6 @@ export interface RunEvent { version?: number; event_id?: number; type: string; t
 export interface RunDetail extends RunSummary {
   args: Record<string, unknown> | null;
   state: Record<string, unknown> | null;
-  working_directory: string;
   graph: { nodes: PhaseNode[]; edges: PhaseEdge[]; current_phase_id: string | null };
   occurrences: Occurrence[];
   calls: AgentCall[];

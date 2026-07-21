@@ -36,6 +36,43 @@ def atomic_write_json(path: Path, value: Any) -> None:
         raise
 
 
+def append_run_index(runs_root: Path, working_directory: Path, runs_directory: Path, run_id: str) -> None:
+    """Append one self-contained Run location record."""
+    runs_root.mkdir(parents=True, exist_ok=True)
+    record = {
+        "working_directory": str(working_directory.resolve()),
+        "runs_directory": str(runs_directory.resolve()),
+        "run_id": run_id,
+    }
+    payload = (json.dumps(record, ensure_ascii=False, separators=(",", ":")) + "\n").encode("utf-8")
+    descriptor = os.open(runs_root / "runs_index.jsonl", os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    try:
+        written = os.write(descriptor, payload)
+        if written != len(payload):
+            raise OSError(f"short write while appending Run index: {written}/{len(payload)} bytes")
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def read_run_index(runs_root: Path) -> dict[str, dict[str, str]]:
+    """Return the latest valid index record for each Run ID."""
+    records: dict[str, dict[str, str]] = {}
+    try:
+        lines = (runs_root / "runs_index.jsonl").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return records
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(record, dict) or not all(isinstance(record.get(key), str) for key in ("working_directory", "runs_directory", "run_id")):
+            continue
+        records[record["run_id"]] = record
+    return records
+
+
 class ProcessProbe(Protocol):
     def identity(self, pid: int) -> str | None: ...
 
@@ -108,10 +145,22 @@ class RunRepository:
     def __init__(self, runs_root: Path, process_probe: ProcessProbe | None = None) -> None:
         self.runs_root = runs_root
         self.process_probe = process_probe or SystemProcessProbe()
+        self._index_signature: tuple[int, int] | None = None
+        self._index: dict[str, dict[str, str]] = {}
 
     def find(self, run_id: str) -> Path | None:
         if not self.runs_root.is_dir():
             return None
+        record = self._index_records().get(run_id)
+        if record:
+            indexed = Path(record["runs_directory"]) / run_id
+            try:
+                indexed.resolve().relative_to(self.runs_root.resolve())
+            except ValueError:
+                pass
+            else:
+                if (indexed / "run.json").is_file():
+                    return indexed
         direct = self.runs_root / run_id
         if (direct / "run.json").is_file():
             return direct
@@ -136,6 +185,7 @@ class RunRepository:
         except json.JSONDecodeError as error:
             return {
                 "run_id": run_dir.name,
+                "working_directory": self._working_directory(run_dir),
                 "loop": None,
                 "status": "unreadable",
                 "current_phase": None,
@@ -155,6 +205,7 @@ class RunRepository:
         projection = project_events(run_dir / "events.jsonl")
         return {
             "run_id": str(metadata.get("run_id") or run_dir.name),
+            "working_directory": self._working_directory(run_dir),
             "loop": metadata.get("loop"),
             "status": status,
             "current_phase": metadata.get("current_phase") or (
@@ -187,7 +238,7 @@ class RunRepository:
             **summary,
             "args": metadata.get("args") if isinstance(metadata, dict) else None,
             "state": state,
-            "working_directory": str(run_dir),
+            "working_directory": self._working_directory(run_dir),
             "graph": projection.graph,
             "occurrences": projection.occurrences,
             "calls": calls,
@@ -227,3 +278,21 @@ class RunRepository:
         pid = metadata.get("pid")
         expected = metadata.get("process_started_at")
         return isinstance(pid, int) and bool(expected) and self.process_probe.identity(pid) == expected
+
+    def _working_directory(self, run_dir: Path) -> str:
+        record = self._index_records().get(run_dir.name)
+        if record and Path(record["runs_directory"]).resolve() == run_dir.parent.resolve():
+            return record["working_directory"]
+        return run_dir.parent.name
+
+    def _index_records(self) -> dict[str, dict[str, str]]:
+        try:
+            stat = (self.runs_root / "runs_index.jsonl").stat()
+        except OSError:
+            signature = None
+        else:
+            signature = (stat.st_mtime_ns, stat.st_size)
+        if signature != self._index_signature:
+            self._index = read_run_index(self.runs_root)
+            self._index_signature = signature
+        return self._index

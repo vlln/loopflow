@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 from loopflow.application.execution import BackgroundRunExecutor, execute_workflow
 
@@ -52,8 +53,10 @@ def test_background_executor_uses_shared_target(tmp_path, monkeypatch):
     executor = BackgroundRunExecutor(tmp_path / "runs")
 
     run_id = executor.start("hello", {}, {})
-    run_json = tmp_path / "runs" / "lf_web" / run_id / "run.json"
+    run_json = next((tmp_path / "runs").glob(f"lf_*/{run_id}/run.json"))
     deadline = time.monotonic() + 2
     while json.loads(run_json.read_text())["status"] == "running" and time.monotonic() < deadline:
         time.sleep(0.01)
     assert json.loads(run_json.read_text())["status"] == "done"
+    index = [json.loads(line) for line in (tmp_path / "runs" / "runs_index.jsonl").read_text().splitlines()]
+    assert index == [{"working_directory": str(Path.cwd()), "runs_directory": str(run_json.parent.parent), "run_id": run_id}]

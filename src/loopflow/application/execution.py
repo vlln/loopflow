@@ -12,7 +12,7 @@ from typing import Any
 
 from loopflow.infrastructure.context import RunContext, State, set_context
 from loopflow.infrastructure.discovery import load_loop
-from loopflow.infrastructure.web_storage import SystemProcessProbe, atomic_write_json, now_iso, read_json
+from loopflow.infrastructure.web_storage import SystemProcessProbe, append_run_index, atomic_write_json, now_iso, read_json
 
 
 def execute_workflow(
@@ -89,8 +89,12 @@ class BackgroundRunExecutor:
     def start(self, loop: str, args: dict[str, Any], options: dict[str, Any], run_id: str | None = None) -> str:
         run_id = run_id or uuid.uuid4().hex
         run_dir = self._existing(run_id) if options.get("resume") else None
-        run_dir = run_dir or self.runs_root / "lf_web" / run_id
+        working_directory = Path.cwd()
+        encoded = str(working_directory.resolve()).lstrip("/").replace("/", "-")
+        run_dir = run_dir or self.runs_root / f"lf_{encoded}" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
+        if not options.get("resume"):
+            append_run_index(self.runs_root, working_directory, run_dir.parent, run_id)
         process = self.context.Process(target=execute_workflow, args=(loop, args, options, run_id, run_dir), daemon=False)
         process.start()
         deadline = time.monotonic() + 2

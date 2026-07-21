@@ -1,9 +1,9 @@
 import type { Backend, LoopDetail, LoopSummary, RunDetail, RunSummary } from '../types';
 
 export const runs: RunSummary[] = [
-  { run_id: 'run-live', loop: 'review-loop', status: 'running', current_phase: 'Review', created: '2026-07-18T22:00:00Z', started_at: '2026-07-18T22:00:00Z', finished_at: null, updated_at: '2026-07-18T22:00:03Z', duration_ms: 3200, iteration_count: 1, error_summary: null, parse_error: null, allowed_actions: ['stop'] },
-  { run_id: 'run-failed', loop: 'review-loop', status: 'failed', current_phase: 'Fix', created: '2026-07-18T21:00:00Z', started_at: '2026-07-18T21:00:00Z', finished_at: '2026-07-18T21:02:00Z', updated_at: '2026-07-18T21:02:00Z', duration_ms: 120000, iteration_count: 0, error_summary: 'Agent failed', parse_error: null, allowed_actions: ['resume', 'rerun'] },
-  { run_id: 'run-broken', loop: null, status: 'unreadable', current_phase: null, created: null, started_at: null, finished_at: null, updated_at: null, duration_ms: null, iteration_count: 0, error_summary: null, parse_error: 'line 1, column 2: broken', allowed_actions: [] },
+  { run_id: 'run-live', working_directory: 'lf_tmp-review-workspace', loop: 'review-loop', status: 'running', current_phase: 'Review', created: '2026-07-18T22:00:00Z', started_at: '2026-07-18T22:00:00Z', finished_at: null, updated_at: '2026-07-18T22:00:03Z', duration_ms: 3200, iteration_count: 1, error_summary: null, parse_error: null, allowed_actions: ['stop'] },
+  { run_id: 'run-failed', working_directory: 'lf_tmp-review-workspace', loop: 'review-loop', status: 'failed', current_phase: 'Fix', created: '2026-07-18T21:00:00Z', started_at: '2026-07-18T21:00:00Z', finished_at: '2026-07-18T21:02:00Z', updated_at: '2026-07-18T21:02:00Z', duration_ms: 120000, iteration_count: 0, error_summary: 'Agent failed', parse_error: null, allowed_actions: ['resume', 'rerun'] },
+  { run_id: 'run-broken', working_directory: 'lf_tmp-review-workspace', loop: null, status: 'unreadable', current_phase: null, created: null, started_at: null, finished_at: null, updated_at: null, duration_ms: null, iteration_count: 0, error_summary: null, parse_error: 'line 1, column 2: broken', allowed_actions: [] },
 ];
 
 export const detail: RunDetail = {
@@ -12,7 +12,7 @@ export const detail: RunDetail = {
   occurrences: [{ phase_id: 'plan-1', phase: 'Plan', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-plan'] }, { phase_id: 'review-2', phase: 'Review', occurrence: 2, started_at: '2026-07-18T22:00:02Z', ended_at: null, call_ids: ['call-a', 'call-b'] }],
   calls: [{ call_id: 'call-plan', phase_id: 'plan-1', session: 'wf-plan', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }, { call_id: 'call-a', phase_id: 'review-2', session: 'wf-review-a', status: 'running', started_at: null, finished_at: null, exit_code: null, backend: 'codex', model: 'gpt-5' }, { call_id: 'call-b', phase_id: 'review-2', session: 'wf-review-b', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }],
   unattributed_count: 1, malformed_count: 1,
-  events: [{ version: 2, event_id: 1, type: 'phase', ts: '2026-07-18T22:00:00Z', phase: 'Plan', phase_id: 'plan-1', payload: {} }, { version: 2, event_id: 2, type: 'agent_start', ts: '2026-07-18T22:00:02Z', phase: 'Review', phase_id: 'review-2', call_id: 'call-a', payload: { backend: 'codex' } }],
+  events: [{ version: 2, event_id: 1, type: 'phase', ts: '2026-07-18T22:00:00Z', phase: 'Plan', phase_id: 'plan-1', payload: {} }, { version: 2, event_id: 2, type: 'agent_start', ts: '2026-07-18T22:00:02Z', phase: 'Review', phase_id: 'review-2', call_id: 'call-a', payload: { backend: 'codex' } }, { version: 2, event_id: 3, type: 'agent_message', ts: '2026-07-18T22:00:03Z', phase: 'Review', phase_id: 'review-2', call_id: 'call-a', payload: { session: 'wf-review-a', content: 'Reviewing **workflow output** now.' } }],
   unattributed: [{ type: 'message', content: 'legacy' }], malformed: [{ version: 2, event_id: 3, type: 'agent_start' }],
 };
 

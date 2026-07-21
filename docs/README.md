@@ -4,9 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | WebUI SYSTEM_TEST 全绿：集成 22/22、CLI E2E 13/13、全量 273 pass、strict manifest 60/60、Vitest 8/8、Chromium 10 pass；性能与安全专项通过 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；develop 为待发布状态，无阻塞级缺陷 |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | v0.17.2 已发布：WebUI 收尾（Run 目录索引持久化、Operations Workspace 优化、类型化 Markdown 渲染）。新一轮迭代待启动。 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 

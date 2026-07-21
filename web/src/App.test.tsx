@@ -19,6 +19,7 @@ function response(body: unknown, status = 200) {
 
 function installFetch() {
   const calls: string[] = [];
+  const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
     const path = String(input);
     calls.push(`${options?.method ?? 'GET'} ${path}`);
@@ -27,9 +28,11 @@ function installFetch() {
     if (path === '/api/v1/runs/run-live') return response(detail);
     if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[1], allowed_actions: ['resume', 'rerun', 'reconcile'] });
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'stopped', allowed_actions: ['resume'] });
-    if (path === '/api/v1/loops') return response({ items: [loopSummary], next_cursor: null });
+    if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);
+    if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
     if (path.includes('/api/v1/loops/review-loop/file')) return response({ content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
+    if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
     if (path === '/api/v1/backends') return response({ items: backends });
     if (path.includes('/diagnostics')) return response({ name: 'codex', status: 'available', reason: null, exit_code: 0, stdout: 'codex 1.0.0', stderr: '', diagnosed_at: '2026-07-18T22:00:00Z' });
     return response({ error: { code: 'not_found', message: 'missing', details: {} } }, 404);
@@ -56,9 +59,16 @@ it('operates the Runs master-detail workspace and stream', async () => {
   expect(await screen.findByText('Phase graph')).toBeVisible();
   expect(screen.getAllByText('wf-review-a').length).toBe(2);
   expect(screen.getByText('1 malformed')).toBeVisible();
+  fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
+  expect(screen.getByText(/legacy/)).toBeVisible();
+  fireEvent.click(screen.getByRole('tab', { name: 'Malformed 1' }));
+  expect(screen.getByRole('heading', { name: 'Malformed events' })).toBeVisible();
+  fireEvent.click(screen.getByRole('tab', { name: /^Events/ }));
+  expect(screen.getAllByText('workflow output').length).toBeGreaterThan(0);
+  expect(screen.queryByText(/"content":/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByText('wf-review-b'));
   expect(screen.getByText('wf-review-b', { selector: 'h2' })).toBeVisible();
-  expect(EventSourceMock.instances[0].url).toContain('last_event_id=2');
+  expect(EventSourceMock.instances[0].url).toContain('last_event_id=3');
   act(() => {
     EventSourceMock.instances[0].emit('run_event', JSON.stringify({ version: 2, event_id: 3, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: 'next' } }));
   });
@@ -82,15 +92,15 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   const calls = installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
-  fireEvent.change(screen.getByLabelText('Search runs'), { target: { value: 'failed' } });
-  await waitFor(() => expect(calls.some((call) => call.includes('q=failed'))).toBe(true));
-  fireEvent.click(screen.getByText('run-failed'));
+  fireEvent.change(screen.getByLabelText('Filter status'), { target: { value: 'failed' } });
+  await waitFor(() => expect(calls.some((call) => call.includes('status=failed'))).toBe(true));
+  fireEvent.click(screen.getByRole('listitem'));
   expect(await screen.findByRole('button', { name: 'Resume run' })).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
   await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/resume'));
   fireEvent.click(screen.getByRole('button', { name: 'Rerun run' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reconcile run' }));
-  fireEvent.click(screen.getByRole('tab', { name: /Plan/ }));
+  fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
   fireEvent.click(screen.getByRole('button', { name: /wf-plan/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Open process inspector' }));
   fireEvent.click(screen.getByRole('button', { name: 'Close process inspector' }));
@@ -105,15 +115,18 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
 });
 
 it('navigates Loop declarations and renders files', async () => {
-  installFetch();
+  const calls = installFetch();
   render(<App />);
   fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
   expect(await screen.findByText('Review and fix changes')).toBeVisible();
   expect(await screen.findByRole('heading', { name: 'Review Loop' })).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: /workflow.py/ }));
+  fireEvent.click(screen.getByRole('button', { name: 'Workflow' }));
   expect(await screen.findByText(/def run/)).toBeVisible();
-  expect(screen.getByText('reviewer')).toBeVisible();
-  expect(screen.getByRole('button', { name: /binary.bin/ })).toBeDisabled();
+  fireEvent.click(screen.getByRole('button', { name: /Agents/ }));
+  expect(await screen.findByRole('button', { name: /reviewer/ })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /empty-loop/ }));
+  expect(await screen.findByRole('heading', { name: 'empty-loop' })).toBeVisible();
+  expect(calls.some((call) => call.includes('/empty-loop/file') && call.includes('agents/'))).toBe(false);
 });
 
 it('scans Backends and runs diagnostics', async () => {
