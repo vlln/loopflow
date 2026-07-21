@@ -4,9 +4,9 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | WebUI 收尾门禁全绿：Python 275 pass / 1 skip、coverage 83%、strict manifest 60/60、Vitest 8/8、Chromium 10 pass / 2 条按视口条件 skip、wheel 冒烟通过 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；Run 工作目录索引与 WebUI 交互收尾完成，develop 为待发布状态，无阻塞级缺陷 |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | v0.17.2 已发布：WebUI 收尾（Run 目录索引持久化、Operations Workspace 优化、类型化 Markdown 渲染）。新一轮迭代待启动。 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
