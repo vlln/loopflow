@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.17.2] — 2026-07-21
 
 ### Added
 - Run 创建时向 `runs/runs_index.jsonl` 追加真实工作目录、Run 分组目录和 Run ID 的无损映射。
