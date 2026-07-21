@@ -5,8 +5,8 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | v0.17.1: fix goal loop — schema retry 归 goal loop 管理，backend_sid 正确 propagate，214/214 pass |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills 已实现（180 tests pass） |
+| **设计评估** | WebUI 收尾门禁全绿：Python 275 pass / 1 skip、coverage 83%、strict manifest 60/60、Vitest 8/8、Chromium 10 pass / 2 条按视口条件 skip、wheel 冒烟通过 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；Run 工作目录索引与 WebUI 交互收尾完成，develop 为待发布状态，无阻塞级缺陷 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 
@@ -20,4 +20,3 @@
 | [adr/](adr/) | 架构决策记录 |
 | [plans/](plans/) | 任务执行计划 |
 | [ac/](ac/) | 验收标准 |
-

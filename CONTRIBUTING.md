@@ -4,11 +4,11 @@
 
 ## 一、开发环境
 
-Python 3.10+，零外部依赖（仅标准库）。
+Python 3.10+。WebUI 开发和构建使用 Node.js 22；用户运行已构建 wheel 时不需要 Node.js。
 
 ```bash
-# 无需安装依赖，直接可运行
-python3 -m pytest tests/ -v
+uv sync --all-extras
+cd web && npm ci
 ```
 
 **构建/配置入口：**
@@ -17,6 +17,9 @@ python3 -m pytest tests/ -v
 |------|------|
 | `src/loopflow/` | 主程序入口 |
 | `tests/` | 测试目录 |
+| `web/` | React/TypeScript 源码、组件测试和 Playwright 测试 |
+| `scripts/mr-gate.sh` | 本地 MR 组合门禁 |
+| `scripts/submission-gate.py` | Plan/Report/AC/coverage 提测门禁 |
 
 ---
 
@@ -97,7 +100,15 @@ Merge 策略：squash merge（保持 develop 历史线性）。
 |------|------|
 | `uv run pytest tests/unit/ -v` | 单元测试 |
 | `uv run pytest tests/integration/ -v` | 集成测试 |
-| `uv run pytest tests/ -v --cov=src/loopflow --cov-fail-under=80` | 全部测试 + 覆盖率 |
+| `uv run pytest tests/infrastructure/ -v` | 测试基础设施自证 |
+| `uv run pytest tests/ -v --cov=src/loopflow` | Python 全量测试 + 项目覆盖率门禁 |
+| `cd web && npm run test:coverage` | 前端组件测试 + 80% 四维覆盖率 |
+| `cd web && npm run test:browser` | Chromium 三视口系统/视觉测试 |
+| `python3 scripts/check-ac-manifest.py --allow-planned` | TEST_INFRA 检查 60 个计划场景 |
+| `python3 scripts/check-ac-manifest.py` | DEVELOP/SYSTEM_TEST 严格检查真实测试节点 |
+| `./scripts/verify-coverage.sh` | 已知 2 分支覆盖率准确性自证 |
+| `./scripts/wheel-smoke.sh` | 构建、隔离安装并读取 wheel 静态资产 |
+| `./scripts/mr-gate.sh` | 本地执行 MR 全门禁 |
 
 ### 测试目录
 
@@ -105,12 +116,20 @@ Merge 策略：squash merge（保持 develop 历史线性）。
 |------|---------|------|
 | 单元测试 | `tests/unit/` | 纯函数/类测试，无外部依赖 |
 | 集成测试 | `tests/integration/` | 模块间协作，需 mock backend |
+| 契约/基建 | `tests/infrastructure/`、`tests/web_support/` | Interface fixture、HTTP/SSE helper、门禁自证 |
+| 系统测试 | `tests/system/`、`web/tests/` | API 全链路、真实 Chromium、截图与 trace |
+
+覆盖率机器产物写入 `.artifacts/` 或 CI artifact，不以 Report 中手写数字替代。视觉基线只在明确审查后更新，CI 不自动覆盖。
 
 ---
 
 ## 六、PR 流程
 
-<!-- PR 描述模板、Review 要求、合并策略 -->
+1. 从 `develop` 创建与执行容器一致的分支。
+2. 先运行 `./scripts/mr-gate.sh`；任一 Python、前端、浏览器、audit 或 wheel 检查失败均不得合并。
+3. GitHub 的 `python`、`frontend`、`browser`、`wheel` checks 必须配置为 `develop` 的 required checks。
+4. DEVELOP Plan 在 `# Acceptance` 显式列出负责的完整 AC 场景 ID；Report 逐项记录 `[PASS]` 与 commit。
+5. 使用 `scripts/submission-gate.py` 验证 Plan/Report、AC、JUnit 和机器 coverage 证据后才可进入 SYSTEM_TEST。
 
 ---
 

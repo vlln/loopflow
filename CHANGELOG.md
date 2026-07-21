@@ -1,6 +1,17 @@
 # Changelog
 
-## [Unreleased]
+## [0.17.2] — 2026-07-21
+
+### Added
+- Run 创建时向 `runs/runs_index.jsonl` 追加真实工作目录、Run 分组目录和 Run ID 的无损映射。
+
+### Changed
+- WebUI Runs、Loops 与 Backends 工作区按原型设计语言重新整理，Run 事件正文改为类型化 Markdown 渲染。
+- Phase graph 成为阶段选择的唯一入口，移除重复的 Phase occurrence 导航。
+
+### Fixed
+- 切换 Loop 时不再以新 Loop 名请求上一个 Loop 的 Agent 文件。
+- Runs 侧栏优先显示索引记录的真实工作目录，旧 Run 保留 `lf_<pwd-path>` 回退显示。
 
 ## [0.17.1] — 2026-07-18
 

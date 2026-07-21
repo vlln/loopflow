@@ -342,6 +342,6 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
                     ]
                     phase_events = [e for e in events if e["type"] == "phase"]
                     assert len(phase_events) >= 2
-                    titles = [e["title"] for e in phase_events]
+                    titles = [e.get("phase") or e.get("title") for e in phase_events]
                     assert "Start" in titles
                     assert "End" in titles

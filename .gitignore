@@ -6,3 +6,11 @@ __pycache__/
 dist/__pycache__/
 .coverage
 .agents/
+web/node_modules/
+web/dist/
+web/coverage/
+web/playwright-report/
+web/test-results/
+web/*.tsbuildinfo
+src/loopflow/presentation/web/static/
+.artifacts/
