@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 恢复与介入契约已通过审查并冻结：确定性 Call 重放、retry/continue、永久停止和持久化人工回答。待独立状态 commit 后进入 TEST_INFRA。 |
+| **当前阶段** | `TEST_INFRA` |
+| **设计评估** | 恢复与介入契约已通过审查并冻结：确定性 Call 重放、retry/continue、永久停止和持久化人工回答。当前建立 AC-020 至 AC-022 的测试基建。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
