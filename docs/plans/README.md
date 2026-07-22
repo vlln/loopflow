@@ -10,6 +10,7 @@
 | [0038](0038-web-api/) | Web API 服务 | done | 2026-07-19 |
 | [0039](0039-web-frontend/) | Web Frontend 工作台 | done | 2026-07-19 |
 | [0040](0040-webui-system-test/) | WebUI 系统测试 | done | 2026-07-19 |
+| [0042](0042-recovery-controls-infra/) | 恢复控制测试基础设施 | done | 2026-07-22 |
 
 ## 状态说明
 

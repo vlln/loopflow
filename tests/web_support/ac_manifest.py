@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
-AC_PATTERN = re.compile(r"^\|\s*(AC-0(?:14|15|16|17|18|19)-[NBEF]-\d+)\s*\|")
+AC_PATTERN = re.compile(r"^\|\s*(AC-\d{3}-[NBEF]-\d+)\s*\|")
 VALID_KINDS = {"http_status", "sse_event", "dom", "process"}
 HTTP_STATUS_BY_CODE = {
     "path_forbidden": 403,

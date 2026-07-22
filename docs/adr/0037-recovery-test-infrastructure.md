@@ -2,7 +2,7 @@
 title: Recovery Control Test Infrastructure
 description: 定义恢复、永久停止和人工介入的缓存工厂、Backend 替身、故障注入、进程组与 AC manifest 测试底座
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-22T08:00:00Z
 ---
 
@@ -144,12 +144,14 @@ scripts/check-ac-manifest.py        # 支持显式 AC/manifest profile
 
 ## Verification
 
+ADR 已在 0042 基建完成后依据以下本地证据接受：
+
 | 验证项 | 通过条件 | 证据位置 |
 |--------|----------|----------|
-| Cache factory | 六类 fixture 可生成，跨段错误提取被反例拦截 | 待 0042 Report 回填 |
-| Backend fake | durable/non-durable、ID 时机和 create/resume 路由可断言 | 待 0042 Report 回填 |
-| Fault injection | write/lock/epoch/process/time 五类 double 正反例通过 | 待 0042 Report 回填 |
-| Process smoke | macOS/Linux 安全启动并清理自有进程组 | 待 0042 Report 回填 |
-| AC manifest | AC-020..022 全覆盖，七类漂移反例被拒绝 | 待 0042 Report 回填 |
-| Contract mock | v13 schema 正例通过、字段/枚举错误被拒绝 | 待 0042 Report 回填 |
-| MR gate | 恢复专项基础设施测试纳入现有 Python job 且全绿 | 待 0042 Report 回填 |
+| Cache factory | 六类 fixture、层级 Call ID 和单段 reader 通过；digest 漂移与跨段提取被拒绝 | `tests/infrastructure/test_recovery_support.py`；恢复专项 15 passed |
+| Backend fake | durable/non-durable、ID 时机、create/resume、异常和可控阻塞均可断言 | `tests/infrastructure/test_recovery_support.py`；恢复专项 15 passed |
+| Fault injection | write/lock/epoch/process/time 五类 double 正反例通过 | `tests/infrastructure/test_recovery_support.py`；旧 epoch 写与缺失 KILL 反例通过 |
+| Process smoke | POSIX 下安全启动并清理测试自有进程组 | `test_process_group_smoke_only_terminates_owned_group` 通过 |
+| AC manifest | AC-020..022 共 32 场景完整；缺失、重复、旧 `/resume`、错误状态码和 planned strict 反例被拒绝 | `python3 scripts/check-ac-manifest.py --profile recovery --allow-planned`；32 scenarios |
+| Contract mock | v13 schema 正例通过，旧 action 和缺失 durable capability 被拒绝 | `test_v13_contract_examples_and_negative_shapes` 通过 |
+| MR gate | 恢复专项 pytest 与 recovery manifest profile 纳入现有 Python gate | `scripts/mr-gate.sh`；Python 全量 290 passed, 1 skipped |

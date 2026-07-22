@@ -1,0 +1,527 @@
+{
+  "version": 1,
+  "profile": "recovery",
+  "source": "docs/ac/0011-recovery-intervention.md",
+  "cases": [
+    {
+      "ac_id": "AC-020-N-1",
+      "fixture": "failed Run A 有 Call 0001 的 succeeded 缓存和 Call 0002 的 failed 缓存；两者 input_digest 与当前调用一致",
+      "action": "对 A 执行 recover mode=retry",
+      "assertion": "沿用 A.run_id；0001 返回缓存且不调用 backend；0002 创建新 session 执行；Run 最终 done",
+      "test_node": "planned::ac-020-n-1",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-N-2",
+      "fixture": "failed Run A 的目标 Call 已持久化 session_id，backend capabilities 含 resume_session=true、durable_session_id=true",
+      "action": "对 A 执行 recover mode=continue",
+      "assertion": "前序成功 Call 返回缓存；目标 Call 使用原 session_id 调用 resume_session；不创建新 session",
+      "test_node": "planned::ac-020-n-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-N-3",
+      "fixture": "顺序 Call 成功完成",
+      "action": "检查 `<call-id>.jsonl`",
+      "assertion": "agent_start 含 call_id/input_digest；agent_done 含 call_id/status=succeeded/session_id/exit_code=0；输出仍由 message 事件提取",
+      "test_node": "planned::ac-020-n-3",
+      "targets": [
+        "unit:call-cache"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-N-4",
+      "fixture": "failed Run A 的 backend 支持 durable session，failed Run B 不支持",
+      "action": "在 WebUI 分别选择 A、B",
+      "assertion": "A 显示 Retry 和 Continue；B 显示 Retry 且 Continue 禁用并说明原因；均不显示 Resume",
+      "test_node": "planned::ac-020-n-4",
+      "targets": [
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-B-1",
+      "fixture": "parallel 含三个 Call，执行完成顺序为分支 2、0、1",
+      "action": "首次运行失败后 recover",
+      "assertion": "三个分支的 call_id 由输入位置稳定分配；恢复不因完成顺序变化而串用缓存",
+      "test_node": "planned::ac-020-b-1",
+      "targets": [
+        "unit:parallel-call-id"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-B-2",
+      "fixture": "旧 Run 缓存没有 input_digest/status，但含 exit_code=0",
+      "action": "执行 legacy retry",
+      "assertion": "允许按旧规则恢复并标记 unverified；continue 不可用；原缓存不迁移",
+      "test_node": "planned::ac-020-b-2",
+      "targets": [
+        "unit:legacy-cache"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-B-3",
+      "fixture": "failed Run 使用旧 CLI `resume` 命令",
+      "action": "执行 resume",
+      "assertion": "作为 deprecated recover --mode retry 执行并输出弃用提示；stopped Run 使用相同命令失败",
+      "test_node": "planned::ac-020-b-3",
+      "targets": [
+        "process:cli-recover"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-E-1",
+      "fixture": "Call 0001 有 succeeded 缓存，但当前规范化输入 digest 不同",
+      "action": "执行任一 recover mode",
+      "assertion": "返回 409 replay_diverged；不返回缓存、不调用 backend、不覆盖旧文件",
+      "test_node": "planned::ac-020-e-1",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "replay_diverged"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-E-2",
+      "fixture": "failed Call 有 session_id，但 backend 不声明 durable_session_id",
+      "action": "执行 recover mode=continue",
+      "assertion": "返回 409 continue_not_supported；不创建新 session；retry 仍可单独执行",
+      "test_node": "planned::ac-020-e-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "continue_not_supported"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-E-3",
+      "fixture": "recover 重放时 `random`、时间或外部读取令同一 call_id 产生不同规范化输入",
+      "action": "到达该 Call",
+      "assertion": "返回 replay_diverged；不返回旧缓存或执行新调用",
+      "test_node": "planned::ac-020-e-3",
+      "targets": [
+        "unit:replay-digest"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-F-1",
+      "fixture": "`<call-id>.jsonl` 最后一行损坏或没有 succeeded agent_done",
+      "action": "执行 recover mode=retry",
+      "assertion": "该 Call 视为未提交并创建新 session；前序合法缓存仍命中",
+      "test_node": "planned::ac-020-f-1",
+      "targets": [
+        "unit:call-cache"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-F-2",
+      "fixture": "同一 failed Run 已有恢复 worker 持有 Run 锁",
+      "action": "再次提交 recover",
+      "assertion": "返回 409 invalid_run_transition；只存在一个有效 execution_epoch",
+      "test_node": "planned::ac-020-f-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-F-3",
+      "fixture": "recover 的目标是失败 Call 0003，但 workflow 重放在 0003 前提前返回",
+      "action": "执行 recover",
+      "assertion": "Run 变为 failed，错误为 replay_diverged；不得标记 done",
+      "test_node": "planned::ac-020-f-3",
+      "targets": [
+        "unit:replay-target"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-N-1",
+      "fixture": "running Run A 的 workflow 和 backend 子进程均存活",
+      "action": "对 A 执行 stop",
+      "assertion": "先持久化 cancelling；进程组收到 SIGTERM；最终 status=cancelled、finished_at 非空、pid 被清除",
+      "test_node": "planned::ac-021-n-1",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop",
+        "process:group"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-N-2",
+      "fixture": "Run A 为 waiting_input 且没有存活 worker",
+      "action": "对 A 执行 stop",
+      "assertion": "不要求 PID；A 原子变为 cancelled；未回答 request 关闭",
+      "test_node": "planned::ac-021-n-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-1",
+      "fixture": "backend 忽略 SIGTERM",
+      "action": "对 Run 执行 stop 并等待 grace period",
+      "assertion": "grace period 后向进程组发送 SIGKILL；Run 最终 cancelled",
+      "test_node": "planned::ac-021-b-1",
+      "targets": [
+        "process:group"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-2",
+      "fixture": "legacy Run status=stopped",
+      "action": "查询 Run 和 allowed_actions",
+      "assertion": "Run 可读；不提供 recover；可提供 rerun",
+      "test_node": "planned::ac-021-b-2",
+      "targets": [
+        "GET /api/v1/runs/{run_id}"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-E-1",
+      "fixture": "stop 已将 A 写为 cancelling，旧 worker 随后尝试写 done",
+      "action": "完成竞态",
+      "assertion": "worker 因 execution_epoch/terminal guard 被拒绝；A 最终 cancelled",
+      "test_node": "planned::ac-021-e-1",
+      "targets": [
+        "unit:execution-epoch"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-E-2",
+      "fixture": "A 已 cancelled",
+      "action": "再次 stop 或 recover",
+      "assertion": "返回 409 invalid_run_transition；run.json 字节不变",
+      "test_node": "planned::ac-021-e-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-F-1",
+      "fixture": "持久化 cancelling 失败",
+      "action": "执行 stop",
+      "assertion": "返回 500 atomic_write_failed；不向进程发送信号，避免产生未记录的终止",
+      "test_node": "planned::ac-021-f-1",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 500,
+          "code": "atomic_write_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-F-2",
+      "fixture": "持久化取消成功后进程身份已变化",
+      "action": "继续 stop",
+      "assertion": "不向复用 PID 的无关进程发信号；Run 最终 cancelled，并记录 process_gone 摘要",
+      "test_node": "planned::ac-021-f-2",
+      "targets": [
+        "process:identity"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-1",
+      "fixture": "workflow 调用 `intervene(key=\"approve\", prompt=\"Approve?\", schema={\"type\":\"boolean\"})`，尚无 response",
+      "action": "运行 workflow",
+      "assertion": "request 原子持久化；追加 intervention_requested；Run 变为 waiting_input；worker 退出且释放执行锁",
+      "test_node": "planned::ac-022-n-1",
+      "targets": [
+        "unit:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-2",
+      "fixture": "A 为 waiting_input，request R 未回答",
+      "action": "对 R 提交 boolean `true`",
+      "assertion": "response 持久化；追加 intervention_responded；A 自动恢复；重放到相同 key 时返回 true；A.run_id 不变",
+      "test_node": "planned::ac-022-n-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-3",
+      "fixture": "Agent 结构化请求人工输入且缓存含 durable session_id",
+      "action": "回答 request",
+      "assertion": "前序 Call 返回缓存；目标 Call 使用回答恢复原 backend session；自然语言文本不用于推断请求",
+      "test_node": "planned::ac-022-n-3",
+      "targets": [
+        "unit:session-intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-4",
+      "fixture": "Run A 为 waiting_input，request schema 为 boolean",
+      "action": "在 WebUI 选择 A",
+      "assertion": "展示 request prompt 和布尔输入控件；不展示自由文本 Resume；提交后按钮禁用直到响应完成",
+      "test_node": "planned::ac-022-n-4",
+      "targets": [
+        "ui:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-B-1",
+      "fixture": "Web 服务在 Run waiting_input 期间重启",
+      "action": "重启后查询 request 并回答",
+      "assertion": "request 仍可读取；回答后同一 Run 恢复，不依赖旧进程内存",
+      "test_node": "planned::ac-022-b-1",
+      "targets": [
+        "unit:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-B-2",
+      "fixture": "request schema 为 null",
+      "action": "提交任意 JSON 值",
+      "assertion": "值作为 immutable response 接受并在重放时原样返回",
+      "test_node": "planned::ac-022-b-2",
+      "targets": [
+        "unit:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-1",
+      "fixture": "request schema 要求 boolean",
+      "action": "提交字符串 `\"yes\"`",
+      "assertion": "返回 422 validation_failed；request 保持未回答；不启动恢复 worker",
+      "test_node": "planned::ac-022-e-1",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "validation_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-2",
+      "fixture": "response 已提交",
+      "action": "再次提交相同或不同值",
+      "assertion": "返回 409 intervention_already_answered；原 response 不变；不重复启动恢复",
+      "test_node": "planned::ac-022-e-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "intervention_already_answered"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-3",
+      "fixture": "Agent 返回结构化 intervention，但没有 durable session_id",
+      "action": "处理 Agent 结果",
+      "assertion": "Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request",
+      "test_node": "planned::ac-022-e-3",
+      "targets": [
+        "unit:session-intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-F-1",
+      "fixture": "workflow 重放时相同位置产生不同 intervention key 或 prompt digest",
+      "action": "回答后自动恢复",
+      "assertion": "Run 变为 failed，错误为 replay_diverged；不把旧 response 注入新请求",
+      "test_node": "planned::ac-022-f-1",
+      "targets": [
+        "unit:intervention-replay"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-F-2",
+      "fixture": "Agent 仅在自然语言输出中提出问题，没有结构化请求",
+      "action": "Agent 正常返回",
+      "assertion": "loopflow 不创建 intervention；结果按普通 Agent 输出处理",
+      "test_node": "planned::ac-022-f-2",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    }
+  ]
+}
