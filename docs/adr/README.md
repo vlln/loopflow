@@ -9,6 +9,7 @@
 | [0035](0035-webui-test-infrastructure.md) | WebUI 测试与交付基础设施 | accepted | Spec v12 / AC-0010 / Interface 0001 |
 | [0036](0036-recovery-intervention.md) | 可校验恢复、永久停止与人工介入 | accepted | Spec v13 / AC-0011 / Interface 0001 |
 | [0037](0037-recovery-test-infrastructure.md) | 恢复控制测试基础设施 | proposed | ADR 0036 / AC-0011 / Interface 0001 |
+| [0038](0038-grok-backend-transport.md) | Grok 后端传输策略 | accepted | AC-0001 AC-008 / ADR 0018 / ADR 0023 |
 
 ## 状态说明
 

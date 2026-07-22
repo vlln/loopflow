@@ -302,6 +302,7 @@ loopflow 自动检测可用的 AI Agent 后端：
 | claude | `claude` |
 | codex | `codex` |
 | gemini | `gemini` |
+| grok | `grok` |
 | qwen | `qwen` |
 | ... | ... |
 
