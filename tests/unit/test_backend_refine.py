@@ -31,6 +31,43 @@ class TestBaseBackend:
         assert 'list_sessions' not in abstract_methods, \
             f"list_sessions should be removed: {abstract_methods}"
 
+    @pytest.mark.parametrize(
+        "backend_type",
+        [
+            pytest.param("claude", id="claude"),
+            pytest.param("codex", id="codex"),
+            pytest.param("gemini", id="gemini"),
+            pytest.param("kimi", id="kimi"),
+            pytest.param("kiro", id="kiro"),
+            pytest.param("opencode", id="opencode"),
+            pytest.param("pi", id="pi"),
+            pytest.param("qwen", id="qwen"),
+        ],
+    )
+    def test_cli_backends_declare_durable_resume(self, backend_type):
+        from loopflow.infrastructure.backends.manager import _make_backend
+
+        backend = _make_backend(backend_type)
+        try:
+            assert backend.capabilities.resume_session is True
+            assert backend.capabilities.durable_session_id is True
+        finally:
+            backend.close()
+
+    def test_cli_backend_reports_session_as_soon_as_parser_sees_it(self):
+        from loopflow.infrastructure.backends.codex import CodexBackend
+
+        sessions = []
+        backend = CodexBackend(session_handler=sessions.append)
+
+        def run(_cmd, *, on_stdout, on_stderr):
+            on_stdout('{"type":"thread.started","thread_id":"thread-1"}')
+            assert sessions == ["thread-1"]
+            return 1
+
+        backend._transport.run = run
+        assert backend.create_session("prompt") == ("thread-1", 1)
+
 
 class TestAgentModule:
     """Verify agent module is clean."""

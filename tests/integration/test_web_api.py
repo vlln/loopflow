@@ -95,8 +95,13 @@ def test_run_lifecycle_commands_preserve_contract(api):
     assert stopped.status == 200 and stopped.json()["status"] == "stopped"
     metadata = json.loads((running / "run.json").read_text())
     assert metadata["finished_at"] and "pid" not in metadata
-    resumed = client.request("POST", "/api/v1/runs/failed/resume", {})
-    assert resumed.status == 200 and resumed.json()["run_id"] == "failed"
+    recovered = client.request("POST", "/api/v1/runs/failed/recover", {"mode": "retry"})
+    assert recovered.status == 200 and recovered.json()["run_id"] == "failed"
+    assert client.request("POST", "/api/v1/runs/failed/resume", {}).status == 404
+    unsupported = factory.create_run("no-session", status="failed")
+    unavailable = client.request("POST", f"/api/v1/runs/{unsupported.name}/recover", {"mode": "continue"})
+    assert unavailable.status == 409
+    assert unavailable.json()["error"]["code"] == "continue_not_supported"
     rerun = client.request("POST", "/api/v1/runs/done-source/rerun")
     assert rerun.status == 201 and rerun.json()["run_id"] != "done-source"
     reconciled = client.request("POST", "/api/v1/runs/stale/reconcile")

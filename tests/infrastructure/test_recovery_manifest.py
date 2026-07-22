@@ -46,4 +46,5 @@ def test_recovery_manifest_rejects_wrong_error_status_and_planned_nodes():
     errors = check_manifest(manifest, AC_PATH)
 
     assert "AC-020-E-2: continue_not_supported must use HTTP 409" in errors
-    assert sum("planned test node is not allowed" in error for error in errors) == len(manifest["cases"])
+    planned = sum(case["test_node"].startswith("planned::") for case in manifest["cases"])
+    assert sum("planned test node is not allowed" in error for error in errors) == planned

@@ -25,8 +25,8 @@ async function installApi(page: Page) {
       return json({ items, next_cursor: null });
     }
     if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } }] });
-    if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[1], allowed_actions: ['resume'] });
-    if (/\/api\/v1\/runs\/[^/]+\/(stop|resume|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'stopped', allowed_actions: ['resume'] });
+    if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[1], allowed_actions: ['recover_retry', 'recover_continue'] });
+    if (/\/api\/v1\/runs\/[^/]+\/(stop|recover|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'running', allowed_actions: ['stop'] });
     if (path === '/api/v1/loops') return json({ items: [loopSummary], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return json(loopDetail);
     if (path === '/api/v1/loops/review-loop/file') return json({ content: url.searchParams.get('path') === 'workflow.py' ? 'def run():\n    return "review"' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
@@ -92,7 +92,8 @@ test('operates Runs without overflow and renders a nonblank phase graph', async 
     await expect(failedRun).toBeVisible();
     await failedRun.click();
     await expect(page).toHaveURL(/run=run-failed/);
-    await expect(page.getByRole('button', { name: 'Resume run' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry failed call' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue failed session' })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0);
   }
   await page.screenshot({ path: testInfo.outputPath('runs.png'), fullPage: true });
@@ -132,7 +133,7 @@ test('keeps a thousand Runs reachable without resizing the workspace', async ({ 
   const bulkRuns = Array.from({ length: 1000 }, (_, index) => { const id = `bulk-${String(index + 1).padStart(4, '0')}`; return { ...runs[1], run_id: id, working_directory: `lf_tmp-bulk-${String(index + 1).padStart(4, '0')}` }; });
   await page.unroute('**/api/v1/**');
   await page.route('**/api/v1/runs?*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: bulkRuns, next_cursor: null }) }));
-  await page.route('**/api/v1/runs/*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...detail, ...bulkRuns.at(-1), allowed_actions: ['resume'] }) }));
+  await page.route('**/api/v1/runs/*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...detail, ...bulkRuns.at(-1), allowed_actions: ['recover_retry'] }) }));
   await page.getByLabel('Search runs').fill('bulk');
   const list = page.locator('.run-list');
   const width = await list.evaluate((element) => element.getBoundingClientRect().width);

@@ -131,12 +131,16 @@ def _duration_ms(metadata: dict[str, Any], now: str | None = None) -> int | None
     return max(0, int((finish_dt - start_dt).total_seconds() * 1000))
 
 
-def allowed_actions(status: str) -> list[str]:
+def allowed_actions(status: str, *, can_recover_continue: bool = False) -> list[str]:
+    if status == "failed":
+        actions = ["recover_retry", "rerun"]
+        if can_recover_continue:
+            actions.insert(1, "recover_continue")
+        return actions
     return {
         "running": ["stop"],
         "stale": ["reconcile"],
-        "failed": ["resume", "rerun"],
-        "stopped": ["resume", "rerun"],
+        "stopped": ["rerun"],
         "done": ["rerun"],
     }.get(status, [])
 
@@ -197,6 +201,7 @@ class RunRepository:
                 "iteration_count": 0,
                 "error_summary": None,
                 "parse_error": parse_error_summary(error),
+                "execution_epoch": None,
                 "allowed_actions": [],
             }
         status = str(metadata.get("status", "unreadable"))
@@ -219,7 +224,11 @@ class RunRepository:
             "iteration_count": sum(edge["count"] for edge in projection.graph["edges"] if edge["is_backedge"]),
             "error_summary": metadata.get("error_summary"),
             "parse_error": None,
-            "allowed_actions": allowed_actions(status),
+            "execution_epoch": metadata.get("execution_epoch"),
+            "allowed_actions": allowed_actions(
+                status,
+                can_recover_continue=bool(metadata.get("can_recover_continue")),
+            ),
         }
 
     def read_detail(self, run_dir: Path) -> dict[str, Any]:

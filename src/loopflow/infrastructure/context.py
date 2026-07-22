@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import uuid
 from pathlib import Path
 from typing import Any
@@ -47,12 +48,24 @@ class RunContext:
                  resume: bool = False, graph=None, live=None,
                  loop_dir: Path | None = None,
                  state: State | None = None,
-                 counter: int = 0) -> None:
+                 counter: int = 0,
+                 recovery_mode: str | None = None,
+                 recovery_target_call_id: str | None = None,
+                 execution_options: dict[str, Any] | None = None) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.resume = resume
+        self.recovery_mode = recovery_mode
+        self.recovery_target_call_id = recovery_target_call_id
+        self.recovery_target_reached = False
+        self.legacy_recovery = False
+        self.failed_session_id: str | None = None
+        self.failed_can_continue = False
+        self.execution_options = dict(execution_options or {})
         self._counter = counter
+        self._counter_lock = threading.Lock()
+        self._call_namespace = threading.local()
         self._prev_phase: str | None = None
         self._current_phase: str | None = None
         self._current_phase_id: str | None = None
@@ -70,10 +83,50 @@ class RunContext:
         self.state = state
 
     def next_session(self) -> str:
-        self._counter += 1
-        session = f"wf_{self.run_id}_{self._counter}"
-        self._current_call_id = session
+        call_id = self.next_call_id()
+        session_suffix = str(int(call_id)) if "." not in call_id else call_id
+        session = f"wf_{self.run_id}_{session_suffix}"
+        self._current_call_id = call_id
+        self._call_namespace.current_call_id = call_id
         return session
+
+    def next_call_id(self) -> str:
+        prefix = getattr(self._call_namespace, "prefix", None)
+        if prefix is not None:
+            local = getattr(self._call_namespace, "counter", 0) + 1
+            self._call_namespace.counter = local
+            return f"{prefix}.{local:04d}"
+        with self._counter_lock:
+            self._counter += 1
+            return f"{self._counter:04d}"
+
+    def reserve_parallel(self, count: int) -> list[str]:
+        with self._counter_lock:
+            self._counter += 1
+            parent = f"{self._counter:04d}"
+        return [f"{parent}.{branch:04d}" for branch in range(count)]
+
+    def enter_call_namespace(self, prefix: str) -> None:
+        self._call_namespace.prefix = prefix
+        self._call_namespace.counter = 0
+
+    def leave_call_namespace(self) -> None:
+        self._call_namespace.prefix = None
+        self._call_namespace.counter = 0
+
+    @property
+    def current_call_id(self) -> str:
+        call_id = getattr(self._call_namespace, "current_call_id", self._current_call_id)
+        if call_id is None:
+            raise RuntimeError("No current Call")
+        return call_id
+
+    def call_cache_path(self, call_id: str | None = None) -> Path:
+        return self.run_dir / f"{call_id or self.current_call_id}.jsonl"
+
+    def mark_recovery_ready(self) -> None:
+        marker = self.run_dir / ".recovery.ready"
+        marker.write_text(str(self.execution_options), encoding="utf-8")
 
     def session_output_path(self, session: str) -> Path:
         return self.run_dir / f"{self._counter:04d}.jsonl"
@@ -194,10 +247,32 @@ def _append_cache(cache_path: Path | None, event: dict) -> None:
         pass
 
 
-def _write_cache(cache_path: Path, session: str, exit_code: int, text: str) -> None:
+def _write_cache(
+    cache_path: Path,
+    session: str,
+    exit_code: int,
+    text: str,
+    *,
+    call_id: str | None = None,
+    input_digest: str | None = None,
+    status: str | None = None,
+    session_id: str | None = None,
+) -> None:
     """Write agent_done to cache file and events.jsonl."""
     try:
-        done_event = {"type": "agent_done", "exit_code": exit_code}
+        from loopflow.infrastructure.recovery import read_call_segments
+
+        segments = read_call_segments(cache_path)
+        if text and (not segments or segments[-1].text != text):
+            _append_cache(cache_path, {"type": "agent_message", "content": text})
+        done_event = {
+            "type": "agent_done",
+            "call_id": call_id,
+            "input_digest": input_digest,
+            "status": status or ("succeeded" if exit_code == 0 else "failed"),
+            "session_id": session_id,
+            "exit_code": exit_code,
+        }
         _append_cache(cache_path, done_event)
         _write_event({"type": "agent_message", "content": text})
         _write_event(done_event)

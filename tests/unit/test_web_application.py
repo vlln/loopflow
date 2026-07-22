@@ -57,14 +57,46 @@ def test_pagination_filters_and_bad_cursor(tmp_path):
         service.list_runs(cursor="bad!")
 
 
-def test_create_stop_resume_rerun_and_invalid_transition(tmp_path):
+def test_create_stop_recover_rerun_and_invalid_transition(tmp_path):
     service, factory, probe = app(tmp_path)
     created = service.create_run({"loop": "hello", "args": {}, "backend": "kimi"})
     assert created["status"] == "running"
     stopped = service.stop_run(created["run_id"])
     assert stopped["status"] == "stopped" and probe.terminated == [7]
-    resumed = service.resume_run(created["run_id"])
-    assert resumed["run_id"] == created["run_id"] and resumed["status"] == "running"
+    with pytest.raises(ApplicationError) as stopped_recovery:
+        service.recover_run(created["run_id"], {"mode": "retry"})
+    assert stopped_recovery.value.code == "invalid_run_transition"
+    failed = factory.create_run("failed", status="failed")
+    recovered = service.recover_run(failed.name, {"mode": "retry"})
+    assert recovered["run_id"] == failed.name and recovered["status"] == "running"
+    assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "retry"}
+
+
+def test_continue_requires_durable_session_and_concurrent_recovery_is_rejected(tmp_path):
+    service, factory, _ = app(tmp_path)
+    unsupported = factory.create_run("unsupported", status="failed")
+    with pytest.raises(ApplicationError) as capability_error:
+        service.recover_run(unsupported.name, {"mode": "continue"})
+    assert capability_error.value.code == "continue_not_supported"
+    assert service.executor.calls == []
+
+    durable = factory.create_run("durable", status="failed")
+    metadata = json.loads((durable / "run.json").read_text())
+    metadata["can_recover_continue"] = True
+    factory.write_json(durable / "run.json", metadata)
+    service.executor.start = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("invalid_run_transition")
+    )
+    with pytest.raises(ApplicationError) as transition_error:
+        service.recover_run(durable.name, {"mode": "continue"})
+    assert transition_error.value.code == "invalid_run_transition"
+
+    service.executor.start = lambda *args, **kwargs: (_ for _ in ()).throw(
+        RuntimeError("replay_diverged")
+    )
+    with pytest.raises(ApplicationError) as replay_error:
+        service.recover_run(durable.name, {"mode": "retry"})
+    assert replay_error.value.code == "replay_diverged"
     with pytest.raises(ApplicationError) as error:
         service.stop_run(factory.create_run("done").name)
     assert error.value.code == "invalid_run_transition"

@@ -184,6 +184,12 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         "created": datetime.now(timezone.utc).isoformat(),
         "args": args_dict,
         "counter": 0,
+        "execution_epoch": 1,
+        "execution_options": {
+            "mock": mock,
+            "from_phase": from_phase,
+            "only_phase": only_phase,
+        },
     }
     _write_run(run_dir / "run.json", run_meta)
 
@@ -197,8 +203,14 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
                      transient=True)
         live.start()
 
-    ctx = RunContext(run_id=run_id, run_dir=run_dir, graph=pg, live=live,
-                     loop_dir=loop_dir)
+    ctx = RunContext(
+        run_id=run_id,
+        run_dir=run_dir,
+        graph=pg,
+        live=live,
+        loop_dir=loop_dir,
+        execution_options=run_meta["execution_options"],
+    )
     set_context(ctx)
     if from_phase:
         ctx.from_phase = from_phase
@@ -236,6 +248,10 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     except Exception as e:
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         _finish_run(run_meta, "failed")
+        run_meta["failed_call_id"] = ctx._current_call_id
+        run_meta["failed_session_id"] = ctx.failed_session_id
+        run_meta["can_recover_continue"] = ctx.failed_can_continue
+        run_meta["counter"] = ctx._counter
         _write_run(run_dir / "run.json", run_meta)
         if live:
             live.stop()
@@ -262,12 +278,7 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     _print_graph(run_dir)
 
 
-@main.command()
-@click.argument("run_id")
-@click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
-              help="Mock mode: bash (shell execution) or auto (schema-based generation)")
-@click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
-def resume(run_id, mock, watch):
+def legacy_resume_internal(run_id, mock, watch):
     """Resume a crashed loop run."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
@@ -375,6 +386,58 @@ def resume(run_id, mock, watch):
 
     # Auto-render graph at end
     _print_graph(run_dir)
+
+
+@main.command()
+@click.argument("run_id")
+@click.option("--mode", type=click.Choice(["retry", "continue"]), default="retry", show_default=True)
+def recover(run_id: str, mode: str) -> None:
+    """Recover a failed Run using retry or durable session continue."""
+    from loopflow.application.execution import BackgroundRunExecutor
+    from loopflow.application.web import ApplicationError, WebApplication
+    from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
+    from loopflow.infrastructure.web_storage import RunRepository
+
+    runs_root = _runs_dir()
+    run_dir = _find_run_by_id(run_id)
+    if run_dir is not None and mode == "retry":
+        from loopflow.infrastructure.recovery import read_call_segments
+
+        legacy = any(
+            segments and segments[-1].legacy
+            for path in run_dir.glob("*.jsonl")
+            if (segments := read_call_segments(path))
+        )
+        if legacy:
+            click.echo(
+                "Warning: legacy cache recovery is unverified; cache files remain unchanged.",
+                err=True,
+            )
+    loops_root = Path(os.environ.get("LOOPFLOW_LOOPS_DIR", Path.home() / ".loopflow" / "loops"))
+    runs = RunRepository(runs_root)
+    service = WebApplication(
+        runs=runs,
+        loops=LoopRepository(loops_root, runs),
+        queue=QueueRepository(Path(os.environ.get("LOOPFLOW_QUEUE_DIR", Path.home() / ".loopflow" / "queue"))),
+        backends=BackendRepository(),
+        executor=BackgroundRunExecutor(runs_root),
+    )
+    try:
+        result = service.recover_run(run_id, {"mode": mode})
+    except ApplicationError as error:
+        raise click.ClickException(f"{error.code}: {error.message}") from error
+    click.echo(f"[loopflow] Recovering ({mode}): {result['run_id']}", err=True)
+
+
+@main.command()
+@click.argument("run_id")
+@click.option("--mock", type=click.Choice(["bash", "auto"]), default=None, hidden=True)
+@click.option("--watch/--no-watch", default=False, hidden=True)
+@click.pass_context
+def resume(ctx: click.Context, run_id: str, mock: str | None, watch: bool) -> None:
+    """Deprecated alias for recover --mode retry."""
+    click.echo("Warning: 'resume' is deprecated; use 'recover --mode retry'.", err=True)
+    ctx.invoke(recover, run_id=run_id, mode="retry")
 
 
 @main.command()

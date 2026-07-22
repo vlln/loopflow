@@ -65,6 +65,22 @@ def _targets() -> dict[str, list[str]]:
 
 TARGETS = _targets()
 
+TEST_NODES = {
+    "AC-020-N-1": "tests/unit/test_runtime.py::TestAgent::test_recovery_replays_success_then_retries_failed_call",
+    "AC-020-N-2": "tests/unit/test_runtime.py::TestAgent::test_recovery_continue_uses_failed_durable_session",
+    "AC-020-N-3": "tests/unit/test_runtime.py::TestAgent::test_agent_writes_cache",
+    "AC-020-N-4": "web/src/App.test.tsx::disables Continue when the failed backend has no durable session",
+    "AC-020-B-1": "tests/unit/test_runtime.py::TestRunContext::test_parallel_namespaces_are_stable_by_input_position",
+    "AC-020-B-2": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
+    "AC-020-B-3": "tests/integration/test_cli.py::TestResume::test_resume_is_deprecated_retry_alias_for_failed_run",
+    "AC-020-E-1": "tests/unit/test_web_execution.py::test_background_executor_surfaces_replay_divergence_before_return",
+    "AC-020-E-2": "tests/unit/test_web_application.py::test_continue_requires_durable_session_and_concurrent_recovery_is_rejected",
+    "AC-020-E-3": "tests/unit/test_recovery.py::test_call_digest_is_stable_and_tracks_workflow_and_prompt",
+    "AC-020-F-1": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
+    "AC-020-F-2": "tests/unit/test_web_execution.py::test_background_executor_rejects_second_worker_for_same_run",
+    "AC-020-F-3": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
+}
+
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-020-N-1": [{"kind": "http_status", "value": 200}],
     "AC-020-N-2": [{"kind": "http_status", "value": 200}],
@@ -117,7 +133,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
         cases.append(
             {
                 **row,
-                "test_node": f"planned::{ac_id.lower()}",
+                "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
                 "expectations": expectations,
             }
@@ -159,6 +175,8 @@ def check_manifest(
             errors.append(f"{ac_id}: test_node is required")
         elif node.startswith("planned::") and not allow_planned:
             errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        elif ac_id in TEST_NODES and node != TEST_NODES[ac_id]:
+            errors.append(f"{ac_id}: test_node does not match implemented mapping")
         expectations = case.get("expectations")
         if not isinstance(expectations, list) or not expectations:
             errors.append(f"{ac_id}: at least one expectation is required")

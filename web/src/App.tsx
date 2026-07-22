@@ -10,7 +10,7 @@ import type { AgentCall, Backend, Diagnostic, LoopDetail, LoopSummary, Occurrenc
 
 type View = 'runs' | 'loops' | 'backends';
 
-const statusIcon = { running: Zap, done: Check, failed: X, stopped: CircleStop, stale: RefreshCw, unreadable: Braces } as const;
+const statusIcon = { running: Zap, waiting_input: Activity, cancelling: CircleStop, cancelled: CircleStop, done: Check, failed: X, stopped: CircleStop, stale: RefreshCw, unreadable: Braces } as const;
 
 function Status({ value }: { value: string }) {
   const Icon = statusIcon[value as RunStatus] ?? Activity;
@@ -111,7 +111,9 @@ function RunsWorkspace() {
   const selectRun = (id: string) => { setSelectedId(id); setMobilePane('detail'); };
   const act = async (action: string) => {
     if (!selectedId) return;
-    try { await api.runAction(selectedId, action, action === 'resume' ? {} : undefined); await loadRuns(); setDetail(await api.run(selectedId)); }
+    const recoveryMode = action === 'recover_retry' ? 'retry' : action === 'recover_continue' ? 'continue' : null;
+    const endpoint = recoveryMode ? 'recover' : action;
+    try { await api.runAction(selectedId, endpoint, recoveryMode ? { mode: recoveryMode } : undefined); await loadRuns(); setDetail(await api.run(selectedId)); }
     catch (cause) { setError(messageOf(cause)); }
   };
 
@@ -123,7 +125,7 @@ function RunsWorkspace() {
     </aside>
     <section className="panel run-detail-panel">
       {!detail ? <Empty title="Select a Run" detail="Phase execution and events appear here." /> : <>
-        <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="run-heading"><span className="eyebrow">{detail.loop}</span><h2>{detail.run_id}</h2></div><div className="toolbar-actions"><Status value={detail.status} />{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('resume') && <button aria-label="Resume run" className="primary-button" onClick={() => void act('resume')}><Play size={14} />Resume</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{selectedCall && <IconButton label="Open process inspector" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
+        <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="run-heading"><span className="eyebrow">{detail.loop}</span><h2>{detail.run_id}</h2></div><div className="toolbar-actions"><Status value={detail.status} />{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('recover_retry') && <button aria-label="Retry failed call" className="primary-button" onClick={() => void act('recover_retry')}><RotateCcw size={14} />Retry</button>}{detail.status === 'failed' && <button aria-label={detail.allowed_actions.includes('recover_continue') ? 'Continue failed session' : 'Continue failed session unavailable'} title={detail.allowed_actions.includes('recover_continue') ? 'Continue failed session' : 'Backend did not persist a durable session'} className="secondary-button" disabled={!detail.allowed_actions.includes('recover_continue')} onClick={() => void act('recover_continue')}><Play size={14} />Continue</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{selectedCall && <IconButton label="Open process inspector" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
         <div className="run-metrics"><Metric label="Duration" value={formatDuration(detail.duration_ms)} /><Metric label="Iterations" value={String(detail.iteration_count)} /><Metric label="Calls" value={String(detail.calls.length)} /><Metric label="Stream" value={detail.status === 'running' ? streamState : 'closed'} /></div>
         <PhaseGraph key={`${selectedId}-${mobilePane === 'list' ? 'hidden' : 'visible'}`} detail={detail} selectedPhaseId={selectedPhaseId} onSelect={(phaseId) => { setSelectedPhaseId(phaseId); setSelectedCallId(detail.calls.find((call) => call.phase_id === phaseId)?.call_id ?? null); setEventView('phase'); }} />
         <section className="phase-detail"><div className="phase-detail-bar"><div className="phase-detail-title"><h3>{selectedOccurrence?.phase ?? 'Events'}</h3>{selectedOccurrence && <span>Occurrence {selectedOccurrence.occurrence}</span>}</div>

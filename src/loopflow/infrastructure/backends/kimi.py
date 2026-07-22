@@ -24,9 +24,14 @@ class KimiBackend(BaseBackend):
     @property
     def capabilities(self):
         from loopflow.domain.capabilities import Capabilities
-        return Capabilities(native_goal=True)
+        transport_caps = self._cli.capabilities if getattr(self, "_cli", None) else Capabilities()
+        return Capabilities(
+            native_goal=True,
+            resume_session=transport_caps.resume_session,
+            durable_session_id=transport_caps.durable_session_id,
+        )
 
-    def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, backend_name: str = "kimi", **kwargs):
+    def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, session_handler=None, backend_name: str = "kimi", **kwargs):
         use_acp = transport == "acp"
         self._th = text_handler
         self._thought_handler = thought_handler
@@ -35,7 +40,7 @@ class KimiBackend(BaseBackend):
             self._cli = None
         else:
             self._acp = None
-            self._cli = _KimiCli(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
+            self._cli = _KimiCli(text_handler=text_handler, thought_handler=thought_handler, session_handler=session_handler, backend_name=backend_name)
 
     def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None, skills_dir: str | None = None) -> tuple[str, int]:
         if self._acp:
@@ -77,8 +82,8 @@ class _KimiCli(CliBackend):
     _skill_flag = "--skills-dir"
     supports_native_goal = True
 
-    def __init__(self, text_handler=None, thought_handler=None, backend_name: str = "kimi"):
-        super().__init__(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
+    def __init__(self, text_handler=None, thought_handler=None, session_handler=None, backend_name: str = "kimi"):
+        super().__init__(text_handler=text_handler, thought_handler=thought_handler, session_handler=session_handler, backend_name=backend_name)
         self._stdout_buf: list[str] = []
         self._stderr_buf: list[str] = []
 

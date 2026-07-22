@@ -112,6 +112,7 @@ class AgentRunner:
         mock_mode: str | None = None,
         mock_fn: Callable[[str], tuple[str, int]] | None = None,
         mock_auto_fn: Callable[[dict | None], tuple[str, int]] | None = None,
+        backend_name: str | None = None,
     ):
         self.ad = ad
         self.backend = backend
@@ -125,6 +126,7 @@ class AgentRunner:
         self._mock_mode = mock_mode
         self._mock_fn = mock_fn
         self._mock_auto_fn = mock_auto_fn
+        self.backend_name = backend_name
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -251,13 +253,33 @@ class AgentRunner:
         Returns (result, backend_session_id).
         """
         session = self.ctx.next_session()
-        seq = self.ctx._counter
-        cache_path = self.ctx.run_dir / f"{seq:04d}.jsonl"
+        call_id = self.ctx.current_call_id
+        cache_path = self.ctx.call_cache_path(call_id)
+        from loopflow.infrastructure.recovery import (
+            ReplayDiverged,
+            append_cache_event,
+            call_input_digest,
+            select_for_replay,
+        )
+
+        input_digest = call_input_digest(
+            loop_dir=self.ctx.loop_dir,
+            prompt=prompt,
+            schema=schema,
+            backend=self.backend_name,
+            model=model,
+            agent_definition=getattr(self.ad, "body", None),
+            execution_options=self.ctx.execution_options,
+        )
 
         # Resume: skip if already completed
         if self.ctx.resume and not resume_session_id:
-            cached = self.ctx.try_resume()
-            if cached is not None:
+            selection = select_for_replay(
+                cache_path, call_id=call_id, input_digest=input_digest
+            )
+            if selection.outcome in {"hit", "legacy_hit"}:
+                self.ctx.legacy_recovery = selection.outcome == "legacy_hit"
+                cached = selection.segment.text
                 if schema:
                     try:
                         return json.loads(cached), None
@@ -265,6 +287,39 @@ class AgentRunner:
                         pass
                 else:
                     return cached, None
+            target = self.ctx.recovery_target_call_id
+            is_target = not self.ctx.recovery_target_reached
+            if is_target and target is not None and target != call_id:
+                raise ReplayDiverged(
+                    f"Recovery expected target {target}, reached uncommitted {call_id}"
+                )
+            if is_target:
+                self.ctx.recovery_target_reached = True
+            if is_target and self.ctx.recovery_mode == "continue":
+                segment = selection.segment
+                caps = self.backend.capabilities if self.backend else Capabilities()
+                if (
+                    segment is None
+                    or not segment.session_id
+                    or not getattr(caps, "resume_session", False)
+                    or not getattr(caps, "durable_session_id", False)
+                    or segment.legacy
+                ):
+                    raise RuntimeError("continue_not_supported")
+                resume_session_id = segment.session_id
+            if is_target:
+                self.ctx.mark_recovery_ready()
+
+        start_type = "agent_resume" if resume_session_id else "agent_start"
+        append_cache_event(
+            cache_path,
+            {
+                "type": start_type,
+                "call_id": call_id,
+                "input_digest": input_digest,
+                "session": session,
+            },
+        )
 
         retry_hint = ""
 
@@ -303,25 +358,25 @@ class AgentRunner:
                 # Real backend call with infra retry
                 text, exit_code, backend_sid = self._call_backend(
                     prompt, retry_hint, session, model, cwd, cache_path,
-                    resume_session_id, attempt,
+                    resume_session_id, attempt, call_id, input_digest,
                 )
 
                 # Native goal: return goal summary text directly
                 if exit_code in _GOAL_EXIT_CODES:
-                    self._write_cache(cache_path, session, exit_code, text)
+                    self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
                     return text, backend_sid
 
             # Schema compliance check
             if schema:
                 try:
                     result = json.loads(text)
-                    self._write_cache(cache_path, session, exit_code, text)
+                    self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
                     self._persist_state()
                     return result, backend_sid
                 except json.JSONDecodeError:
                     extracted = extract_json(text, schema)
                     if extracted is not None:
-                        self._write_cache(cache_path, session, exit_code, text)
+                        self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
                         self._persist_state()
                         return extracted, backend_sid
                     if attempt >= max_retries:
@@ -330,12 +385,12 @@ class AgentRunner:
                             f"{max_retries} retries"
                         )
                         err.backend_sid = backend_sid
-                        self._write_cache(cache_path, session, exit_code, text)
+                        self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, status="failed", session_id=backend_sid)
                         raise err
                     continue
 
             # No schema → return text
-            self._write_cache(cache_path, session, exit_code, text)
+            self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
             self._persist_state()
             return text, backend_sid
 
@@ -351,6 +406,8 @@ class AgentRunner:
         cache_path: Any,
         resume_session_id: str | None,
         attempt: int,
+        call_id: str,
+        input_digest: str,
     ) -> tuple[str, int, str | None]:
         """Real backend call with infra retry loop.
 
@@ -359,7 +416,19 @@ class AgentRunner:
         """
         for infra_attempt in range(len(INFRA_BACKOFF) + 1):
             if attempt > 0 or infra_attempt > 0:
-                session = self.ctx.next_session()
+                session = f"wf_{self.ctx.run_id}_{call_id}_retry_{attempt}_{infra_attempt}"
+
+            if attempt > 0 or infra_attempt > 0:
+                from loopflow.infrastructure.recovery import append_cache_event
+                append_cache_event(
+                    cache_path,
+                    {
+                        "type": "agent_resume" if resume_session_id else "agent_start",
+                        "call_id": call_id,
+                        "input_digest": input_digest,
+                        "session": session,
+                    },
+                )
 
             self._write_event({
                 "type": "agent_start",
@@ -375,6 +444,7 @@ class AgentRunner:
                 agent_def=self.ad,
                 cache_path=cache_path,
                 resume_session_id=resume_session_id,
+                call_id=call_id,
             )
             exit_code = _extract_exit_code(events)
             text = _extract_text(events) if exit_code == 0 else ""
@@ -415,7 +485,26 @@ class AgentRunner:
                     f"Agent call failed after {len(INFRA_BACKOFF)} "
                     f"infra retries: {msg}"
                 )
-            raise AgentError(msg)
+            self._write_cache(
+                cache_path,
+                session,
+                exit_code,
+                "",
+                call_id=call_id,
+                input_digest=input_digest,
+                status="failed",
+                session_id=backend_sid,
+            )
+            self.ctx.failed_session_id = backend_sid
+            caps = self.backend.capabilities if self.backend else Capabilities()
+            self.ctx.failed_can_continue = bool(
+                backend_sid
+                and getattr(caps, "resume_session", False)
+                and getattr(caps, "durable_session_id", False)
+            )
+            error = AgentError(msg)
+            error.backend_sid = backend_sid
+            raise error
 
         raise AgentError(
             f"Agent call failed after {len(INFRA_BACKOFF)} infra retries"

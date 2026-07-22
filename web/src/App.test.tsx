@@ -17,7 +17,7 @@ function response(body: unknown, status = 200) {
   return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) } as Response);
 }
 
-function installFetch() {
+function installFetch(durable = true) {
   const calls: string[] = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
@@ -26,8 +26,8 @@ function installFetch() {
     if (path.startsWith('/api/v1/runs?')) return response({ items: runs.filter((run) => path.includes('status=failed') ? run.status === 'failed' : true), next_cursor: null });
     if (path === '/api/v1/runs') return options?.method === 'POST' ? response(runs[0], 201) : response({ items: runs, next_cursor: null });
     if (path === '/api/v1/runs/run-live') return response(detail);
-    if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[1], allowed_actions: ['resume', 'rerun', 'reconcile'] });
-    if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'stopped', allowed_actions: ['resume'] });
+    if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[1], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
+    if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'stopped', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
@@ -95,9 +95,10 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   fireEvent.change(screen.getByLabelText('Filter status'), { target: { value: 'failed' } });
   await waitFor(() => expect(calls.some((call) => call.includes('status=failed'))).toBe(true));
   fireEvent.click(screen.getByRole('listitem'));
-  expect(await screen.findByRole('button', { name: 'Resume run' })).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
-  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/resume'));
+  expect(await screen.findByRole('button', { name: 'Retry failed call' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Continue failed session' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry failed call' }));
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/recover'));
   fireEvent.click(screen.getByRole('button', { name: 'Rerun run' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reconcile run' }));
   fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
@@ -112,6 +113,20 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
   expect(await screen.findByText(/Unexpected token|JSON/)).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+});
+
+it('disables Continue when the failed backend has no durable session', async () => {
+  installFetch(false);
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.change(screen.getByLabelText('Filter status'), { target: { value: 'failed' } });
+  fireEvent.click(await screen.findByRole('listitem'));
+
+  expect(await screen.findByRole('button', { name: 'Retry failed call' })).toBeEnabled();
+  const unavailable = screen.getByRole('button', { name: 'Continue failed session unavailable' });
+  expect(unavailable).toBeDisabled();
+  expect(unavailable).toHaveAttribute('title', 'Backend did not persist a durable session');
+  expect(screen.queryByRole('button', { name: 'Resume run' })).not.toBeInTheDocument();
 });
 
 it('navigates Loop declarations and renders files', async () => {

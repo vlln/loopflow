@@ -15,7 +15,13 @@ if TYPE_CHECKING:
 class QwenBackend(BaseBackend):
     """Backend for qwen-code. CLI mode (default), ACP when explicitly requested."""
 
-    def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, backend_name: str = "qwen"):
+    @property
+    def capabilities(self):
+        from loopflow.domain.capabilities import Capabilities
+        selected = self._cli if getattr(self, "_cli", None) is not None else self._acp
+        return selected.capabilities if selected is not None else Capabilities()
+
+    def __init__(self, transport: str | None = None, text_handler=None, thought_handler=None, session_handler=None, backend_name: str = "qwen"):
         use_acp = transport == "acp"
         self._th = text_handler
         self._thought_handler = thought_handler
@@ -24,7 +30,7 @@ class QwenBackend(BaseBackend):
             self._cli = None
         else:
             self._acp = None
-            self._cli = _QwenCli(text_handler=text_handler, thought_handler=thought_handler, backend_name=backend_name)
+            self._cli = _QwenCli(text_handler=text_handler, thought_handler=thought_handler, session_handler=session_handler, backend_name=backend_name)
 
     def create_session(self, user: str, system: str | None = None, model: str | None = None, system_mode: str = "append", agent_def: AgentDef | None = None) -> tuple[str, int]:
         if self._acp:

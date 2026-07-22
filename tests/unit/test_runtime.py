@@ -98,10 +98,133 @@ class TestRunContext:
         ctx = RunContext(resume=True)
         assert ctx.resume is True
 
+    def test_parallel_namespaces_are_stable_by_input_position(self):
+        import time
+        from loopflow.runtime import RunContext, parallel, set_context
+
+        ctx = RunContext(run_id="parallel")
+        set_context(ctx)
+
+        def identify(delay):
+            def thunk():
+                time.sleep(delay)
+                ctx.next_session()
+                return ctx.current_call_id
+            return thunk
+
+        assert parallel([identify(0.02), identify(0.01), identify(0)]) == [
+            "0001.0000.0001",
+            "0001.0001.0001",
+            "0001.0002.0001",
+        ]
+
+    def test_parallel_propagates_replay_errors_during_recovery(self):
+        from loopflow.infrastructure.recovery import ReplayDiverged
+        from loopflow.runtime import RunContext, parallel, set_context
+
+        set_context(RunContext(resume=True, recovery_mode="retry"))
+
+        def diverge():
+            raise ReplayDiverged("changed branch")
+
+        with pytest.raises(ReplayDiverged, match="changed branch"):
+            parallel([lambda: "ok", diverge])
+
 
 # ── agent() ───────────────────────────────────────────────────────────────
 
 class TestAgent:
+    def test_recovery_replays_success_then_retries_failed_call(self, temp_run_dir, mock_backend):
+        from loopflow.infrastructure.recovery import append_cache_event, call_input_digest
+        from loopflow.runtime import RunContext, agent, set_context
+
+        digest_one = call_input_digest(
+            loop_dir=None, prompt="one", schema=None, backend=None, model=None,
+            agent_definition=None, execution_options={},
+        )
+        for event in (
+            {"type": "agent_start", "call_id": "0001", "input_digest": digest_one},
+            {"type": "agent_message", "content": "cached-one"},
+            {"type": "agent_done", "call_id": "0001", "input_digest": digest_one, "status": "succeeded", "session_id": "sid-one", "exit_code": 0},
+        ):
+            append_cache_event(temp_run_dir / "0001.jsonl", event)
+        digest_two = call_input_digest(
+            loop_dir=None, prompt="two", schema=None, backend=None, model=None,
+            agent_definition=None, execution_options={},
+        )
+        for event in (
+            {"type": "agent_start", "call_id": "0002", "input_digest": digest_two},
+            {"type": "agent_done", "call_id": "0002", "input_digest": digest_two, "status": "failed", "session_id": "sid-old", "exit_code": 1},
+        ):
+            append_cache_event(temp_run_dir / "0002.jsonl", event)
+
+        ctx = RunContext(
+            run_dir=temp_run_dir,
+            resume=True,
+            recovery_mode="retry",
+            recovery_target_call_id="0002",
+        )
+        set_context(ctx)
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch(
+                "loopflow.runtime._run_subagent",
+                side_effect=[
+                    [
+                        {"type": "agent_message", "content": "fresh-two"},
+                        {"type": "agent_done", "exit_code": 0, "session_id": "sid-new"},
+                    ],
+                    [
+                        {"type": "agent_message", "content": "fresh-three"},
+                        {"type": "agent_done", "exit_code": 0, "session_id": "sid-three"},
+                    ],
+                ],
+            ) as invoke:
+                assert agent("one").value == "cached-one"
+                assert agent("two").value == "fresh-two"
+                assert agent("three").value == "fresh-three"
+
+        assert invoke.call_count == 2
+        assert all(call.kwargs["resume_session_id"] is None for call in invoke.call_args_list)
+        assert ctx.recovery_target_reached is True
+
+    def test_recovery_continue_uses_failed_durable_session(self, temp_run_dir, mock_backend):
+        from loopflow.domain import Capabilities
+        from loopflow.infrastructure.recovery import append_cache_event, call_input_digest
+        from loopflow.runtime import RunContext, agent, set_context
+
+        mock_backend.capabilities = Capabilities(
+            resume_session=True, durable_session_id=True
+        )
+        digest = call_input_digest(
+            loop_dir=None, prompt="answer", schema=None, backend=None, model=None,
+            agent_definition=None, execution_options={},
+        )
+        for event in (
+            {"type": "agent_start", "call_id": "0001", "input_digest": digest},
+            {"type": "agent_session", "call_id": "0001", "session_id": "sid-old"},
+            {"type": "agent_done", "call_id": "0001", "input_digest": digest, "status": "failed", "session_id": "sid-old", "exit_code": 1},
+        ):
+            append_cache_event(temp_run_dir / "0001.jsonl", event)
+        ctx = RunContext(
+            run_dir=temp_run_dir,
+            resume=True,
+            recovery_mode="continue",
+            recovery_target_call_id="0001",
+        )
+        set_context(ctx)
+
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch(
+                "loopflow.runtime._run_subagent",
+                return_value=[
+                    {"type": "agent_message", "content": "continued"},
+                    {"type": "agent_done", "exit_code": 0, "session_id": "sid-old"},
+                ],
+            ) as invoke:
+                assert agent("answer").value == "continued"
+
+        assert invoke.call_args.kwargs["resume_session_id"] == "sid-old"
+
     def test_agent_returns_text(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
         ctx = RunContext(run_dir=temp_run_dir)
@@ -136,13 +259,17 @@ class TestAgent:
         with patch('loopflow.runtime._make_backend', return_value=mock_backend):
             with patch('loopflow.runtime._run_subagent', return_value=(
                 [{"type": "agent_message", "content": "cached"},
-                 {"type": "agent_done", "exit_code": 0}]
+                 {"type": "agent_done", "exit_code": 0, "session_id": "test-sid"}]
             )):
                 agent("cache me")
                 cache_path = temp_run_dir / "0001.jsonl"
                 assert cache_path.exists()
                 events = [json.loads(l) for l in cache_path.read_text().strip().split("\n") if l]
-                assert any(e["type"] == "agent_done" and e["exit_code"] == 0 for e in events)
+                start = next(e for e in events if e["type"] == "agent_start")
+                done = next(e for e in reversed(events) if e["type"] == "agent_done")
+                assert start["call_id"] == "0001" and start["input_digest"].startswith("sha256:")
+                assert done["call_id"] == "0001" and done["status"] == "succeeded"
+                assert done["exit_code"] == 0 and done["session_id"] == "test-sid"
 
     def test_agent_resume_cache_hit(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent

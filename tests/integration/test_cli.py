@@ -161,8 +161,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 
 
 class TestResume:
-    def test_resume_completed_run(self, env_dirs):
-        """Resume a completed run should succeed (all cached)."""
+    def test_resume_is_deprecated_retry_alias_for_failed_run(self, env_dirs):
         loops, runs = env_dirs
         _create_test_loop(loops)
 
@@ -182,7 +181,7 @@ class TestResume:
         run_meta = {
             "loop": "hello",
             "run_id": run_id,
-            "status": "done",
+            "status": "failed",
             "created": "2026-07-07T12:00:00Z",
             "args": {},
             "counter": 0,
@@ -197,7 +196,24 @@ class TestResume:
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["resume", run_id])
             assert result.exit_code == 0
-            assert "cached hello" in result.output
+            assert "deprecated" in result.output
+            assert "legacy cache recovery is unverified" in result.output
+            assert "Recovering (retry)" in result.output
+
+    def test_resume_rejects_stopped_run(self, env_dirs):
+        _, runs = env_dirs
+        run_id = "stopped123"
+        run_dir = runs / "lf_test" / run_id
+        run_dir.mkdir(parents=True)
+        (run_dir / "run.json").write_text(json.dumps({
+            "loop": "hello", "run_id": run_id, "status": "stopped",
+            "created": "2026-07-07T12:00:00Z", "args": {},
+        }))
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(main, ["resume", run_id])
+        assert result.exit_code == 1
+        assert "invalid_run_transition" in result.output
 
 
 class TestGraph:

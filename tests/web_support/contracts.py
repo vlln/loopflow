@@ -13,6 +13,7 @@ RUN_SUMMARY_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "run_id",
+        "working_directory",
         "loop",
         "status",
         "current_phase",
@@ -24,12 +25,14 @@ RUN_SUMMARY_SCHEMA = {
         "iteration_count",
         "error_summary",
         "parse_error",
+        "execution_epoch",
         "allowed_actions",
     ],
     "properties": {
         "run_id": {"type": "string"},
+        "working_directory": {"type": "string"},
         "loop": NULLABLE_STRING,
-        "status": {"enum": ["running", "done", "failed", "stopped", "stale", "unreadable"]},
+        "status": {"enum": ["running", "waiting_input", "cancelling", "cancelled", "done", "failed", "stopped", "stale", "unreadable"]},
         "current_phase": NULLABLE_STRING,
         "created": NULLABLE_STRING,
         "started_at": NULLABLE_STRING,
@@ -39,10 +42,11 @@ RUN_SUMMARY_SCHEMA = {
         "iteration_count": {"type": "integer", "minimum": 0},
         "error_summary": NULLABLE_STRING,
         "parse_error": NULLABLE_STRING,
+        "execution_epoch": NULLABLE_INTEGER,
         "allowed_actions": {
             "type": "array",
             "uniqueItems": True,
-            "items": {"enum": ["stop", "resume", "rerun", "reconcile"]},
+            "items": {"enum": ["stop", "recover_retry", "recover_continue", "respond", "rerun", "reconcile"]},
         },
     },
 }
@@ -125,11 +129,13 @@ BACKEND_SCHEMA = {
         "capabilities": {
             "type": "object",
             "additionalProperties": False,
-            "required": ["native_goal", "structured_output", "native_skills"],
+            "required": ["native_goal", "structured_output", "native_skills", "resume_session", "durable_session_id"],
             "properties": {
                 "native_goal": {"type": "boolean"},
                 "structured_output": {"type": "boolean"},
                 "native_skills": {"type": "boolean"},
+                "resume_session": {"type": "boolean"},
+                "durable_session_id": {"type": "boolean"},
             },
         },
         "diagnosed_at": NULLABLE_STRING,
@@ -187,6 +193,7 @@ def contract_examples() -> dict[str, dict[str, Any]]:
     return {
         "run_summary": {
             "run_id": "run-1",
+            "working_directory": "/fixture/project",
             "loop": "hello",
             "status": "running",
             "current_phase": "Review",
@@ -198,6 +205,7 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "iteration_count": 0,
             "error_summary": None,
             "parse_error": None,
+            "execution_epoch": 1,
             "allowed_actions": ["stop"],
         },
         "error": {"error": {"code": "run_not_found", "message": "not found", "details": {}}},
@@ -229,6 +237,8 @@ def contract_examples() -> dict[str, dict[str, Any]]:
                 "native_goal": True,
                 "structured_output": False,
                 "native_skills": True,
+                "resume_session": True,
+                "durable_session_id": True,
             },
             "diagnosed_at": None,
         },

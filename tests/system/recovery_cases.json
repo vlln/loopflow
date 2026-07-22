@@ -8,7 +8,7 @@
       "fixture": "failed Run A 有 Call 0001 的 succeeded 缓存和 Call 0002 的 failed 缓存；两者 input_digest 与当前调用一致",
       "action": "对 A 执行 recover mode=retry",
       "assertion": "沿用 A.run_id；0001 返回缓存且不调用 backend；0002 创建新 session 执行；Run 最终 done",
-      "test_node": "planned::ac-020-n-1",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_recovery_replays_success_then_retries_failed_call",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -24,7 +24,7 @@
       "fixture": "failed Run A 的目标 Call 已持久化 session_id，backend capabilities 含 resume_session=true、durable_session_id=true",
       "action": "对 A 执行 recover mode=continue",
       "assertion": "前序成功 Call 返回缓存；目标 Call 使用原 session_id 调用 resume_session；不创建新 session",
-      "test_node": "planned::ac-020-n-2",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_recovery_continue_uses_failed_durable_session",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -40,7 +40,7 @@
       "fixture": "顺序 Call 成功完成",
       "action": "检查 `<call-id>.jsonl`",
       "assertion": "agent_start 含 call_id/input_digest；agent_done 含 call_id/status=succeeded/session_id/exit_code=0；输出仍由 message 事件提取",
-      "test_node": "planned::ac-020-n-3",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_writes_cache",
       "targets": [
         "unit:call-cache"
       ],
@@ -56,7 +56,7 @@
       "fixture": "failed Run A 的 backend 支持 durable session，failed Run B 不支持",
       "action": "在 WebUI 分别选择 A、B",
       "assertion": "A 显示 Retry 和 Continue；B 显示 Retry 且 Continue 禁用并说明原因；均不显示 Resume",
-      "test_node": "planned::ac-020-n-4",
+      "test_node": "web/src/App.test.tsx::disables Continue when the failed backend has no durable session",
       "targets": [
         "ui:runs"
       ],
@@ -72,7 +72,7 @@
       "fixture": "parallel 含三个 Call，执行完成顺序为分支 2、0、1",
       "action": "首次运行失败后 recover",
       "assertion": "三个分支的 call_id 由输入位置稳定分配；恢复不因完成顺序变化而串用缓存",
-      "test_node": "planned::ac-020-b-1",
+      "test_node": "tests/unit/test_runtime.py::TestRunContext::test_parallel_namespaces_are_stable_by_input_position",
       "targets": [
         "unit:parallel-call-id"
       ],
@@ -88,7 +88,7 @@
       "fixture": "旧 Run 缓存没有 input_digest/status，但含 exit_code=0",
       "action": "执行 legacy retry",
       "assertion": "允许按旧规则恢复并标记 unverified；continue 不可用；原缓存不迁移",
-      "test_node": "planned::ac-020-b-2",
+      "test_node": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
       "targets": [
         "unit:legacy-cache"
       ],
@@ -104,7 +104,7 @@
       "fixture": "failed Run 使用旧 CLI `resume` 命令",
       "action": "执行 resume",
       "assertion": "作为 deprecated recover --mode retry 执行并输出弃用提示；stopped Run 使用相同命令失败",
-      "test_node": "planned::ac-020-b-3",
+      "test_node": "tests/integration/test_cli.py::TestResume::test_resume_is_deprecated_retry_alias_for_failed_run",
       "targets": [
         "process:cli-recover"
       ],
@@ -120,7 +120,7 @@
       "fixture": "Call 0001 有 succeeded 缓存，但当前规范化输入 digest 不同",
       "action": "执行任一 recover mode",
       "assertion": "返回 409 replay_diverged；不返回缓存、不调用 backend、不覆盖旧文件",
-      "test_node": "planned::ac-020-e-1",
+      "test_node": "tests/unit/test_web_execution.py::test_background_executor_surfaces_replay_divergence_before_return",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -137,7 +137,7 @@
       "fixture": "failed Call 有 session_id，但 backend 不声明 durable_session_id",
       "action": "执行 recover mode=continue",
       "assertion": "返回 409 continue_not_supported；不创建新 session；retry 仍可单独执行",
-      "test_node": "planned::ac-020-e-2",
+      "test_node": "tests/unit/test_web_application.py::test_continue_requires_durable_session_and_concurrent_recovery_is_rejected",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -154,7 +154,7 @@
       "fixture": "recover 重放时 `random`、时间或外部读取令同一 call_id 产生不同规范化输入",
       "action": "到达该 Call",
       "assertion": "返回 replay_diverged；不返回旧缓存或执行新调用",
-      "test_node": "planned::ac-020-e-3",
+      "test_node": "tests/unit/test_recovery.py::test_call_digest_is_stable_and_tracks_workflow_and_prompt",
       "targets": [
         "unit:replay-digest"
       ],
@@ -170,7 +170,7 @@
       "fixture": "`<call-id>.jsonl` 最后一行损坏或没有 succeeded agent_done",
       "action": "执行 recover mode=retry",
       "assertion": "该 Call 视为未提交并创建新 session；前序合法缓存仍命中",
-      "test_node": "planned::ac-020-f-1",
+      "test_node": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
       "targets": [
         "unit:call-cache"
       ],
@@ -186,7 +186,7 @@
       "fixture": "同一 failed Run 已有恢复 worker 持有 Run 锁",
       "action": "再次提交 recover",
       "assertion": "返回 409 invalid_run_transition；只存在一个有效 execution_epoch",
-      "test_node": "planned::ac-020-f-2",
+      "test_node": "tests/unit/test_web_execution.py::test_background_executor_rejects_second_worker_for_same_run",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -203,7 +203,7 @@
       "fixture": "recover 的目标是失败 Call 0003，但 workflow 重放在 0003 前提前返回",
       "action": "执行 recover",
       "assertion": "Run 变为 failed，错误为 replay_diverged；不得标记 done",
-      "test_node": "planned::ac-020-f-3",
+      "test_node": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
       "targets": [
         "unit:replay-target"
       ],

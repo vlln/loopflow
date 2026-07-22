@@ -87,6 +87,7 @@ def agent(
                 agent_def=kw.get("agent_def"),
                 cache_path=kw.get("cache_path"),
                 resume_session_id=kw.get("resume_session_id"),
+                call_id=kw.get("call_id"),
             )
 
         runner = AgentRunner(
@@ -100,6 +101,7 @@ def agent(
             mock_mode=_backend_manager._mock_mode,
             mock_fn=_run_mock,
             mock_auto_fn=_run_mock_auto,
+            backend_name=backend,
         )
         result = runner.run(
                 prompt,
@@ -121,12 +123,19 @@ def agent(
 
 def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
     results: list[Any] = [None] * len(thunks)
+    errors: list[BaseException | None] = [None] * len(thunks)
+    ctx = _ctx_module._ctx
+    namespaces = ctx.reserve_parallel(len(thunks))
 
     def _run(idx: int, fn: Callable[[], Any]) -> None:
+        ctx.enter_call_namespace(namespaces[idx])
         try:
             results[idx] = fn()
-        except Exception:
+        except Exception as error:
+            errors[idx] = error
             results[idx] = None
+        finally:
+            ctx.leave_call_namespace()
 
     threads: list[threading.Thread] = []
     for i, fn in enumerate(thunks):
@@ -135,25 +144,35 @@ def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
         threads.append(t)
     for t in threads:
         t.join()
+    if ctx.resume:
+        first = next((error for error in errors if error is not None), None)
+        if first is not None:
+            raise first
     return results
 
 
 def pipeline(items: list[Any], *stages: Callable) -> list[Any]:
     results: list[Any] = [None] * len(items)
+    errors: list[BaseException | None] = [None] * len(items)
+    ctx = _ctx_module._ctx
+    namespaces = ctx.reserve_parallel(len(items))
 
     def _process(idx: int, item: Any) -> None:
+        ctx.enter_call_namespace(namespaces[idx])
         result: Any = item
-        for stage in stages:
-            try:
+        try:
+            for stage in stages:
                 if stage is stages[0]:
                     result = stage(item, idx)
                 else:
                     result = stage(result, item, idx)
-            except Exception:
-                result = None
-                break
-            if result is None:
-                break
+                if result is None:
+                    break
+        except Exception as error:
+            errors[idx] = error
+            result = None
+        finally:
+            ctx.leave_call_namespace()
         results[idx] = result
 
     threads: list[threading.Thread] = []
@@ -163,6 +182,10 @@ def pipeline(items: list[Any], *stages: Callable) -> list[Any]:
         threads.append(t)
     for t in threads:
         t.join()
+    if ctx.resume:
+        first = next((error for error in errors if error is not None), None)
+        if first is not None:
+            raise first
     return results
 
 

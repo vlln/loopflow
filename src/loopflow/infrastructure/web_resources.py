@@ -245,6 +245,8 @@ class BackendRepository:
                 "native_goal": caps.native_goal,
                 "structured_output": caps.structured_output,
                 "native_skills": caps.native_skills,
+                "resume_session": caps.resume_session,
+                "durable_session_id": caps.durable_session_id,
             },
             "diagnosed_at": None,
         }

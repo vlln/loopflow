@@ -38,6 +38,8 @@ ERROR_STATUS = {
     "file_not_found": 404,
     "backend_not_found": 404,
     "invalid_run_transition": 409,
+    "replay_diverged": 409,
+    "continue_not_supported": 409,
     "run_not_stale": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
@@ -139,7 +141,7 @@ def handler_for(
                 self._json(200, self.app.list_backends())
                 return
 
-            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|resume|rerun|reconcile|events|legacy-events))?", path)
+            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events))?", path)
             if match:
                 run_id, action = match.groups()
                 if method == "GET" and action is None:
@@ -147,8 +149,8 @@ def handler_for(
                 elif method == "POST" and action == "stop":
                     self._require_empty_body()
                     self._json(200, self.app.stop_run(run_id))
-                elif method == "POST" and action == "resume":
-                    self._json(200, self.app.resume_run(run_id, self._body(optional=True)))
+                elif method == "POST" and action == "recover":
+                    self._json(200, self.app.recover_run(run_id, self._body()))
                 elif method == "POST" and action == "rerun":
                     self._require_empty_body()
                     item = self.app.rerun(run_id)

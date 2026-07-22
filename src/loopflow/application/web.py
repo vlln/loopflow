@@ -89,18 +89,49 @@ class WebApplication:
         self.runs.write_metadata(run_dir, metadata)
         return self.runs.read_summary(run_dir)
 
-    def resume_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+    def recover_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         run_dir = self._run_dir(run_id)
         metadata = read_json(run_dir / "run.json")
-        if self.runs.read_summary(run_dir)["status"] not in {"failed", "stopped"}:
-            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be resumed")
-        options = self._execution_options(body or {}, resume=True)
+        if self.runs.read_summary(run_dir)["status"] != "failed":
+            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be recovered")
+        body = body or {}
+        _fields(body, {"mode"})
+        mode = body.get("mode", "retry")
+        if mode not in {"retry", "continue"}:
+            raise ApplicationError("validation_failed", "mode must be retry or continue")
+        if mode == "continue" and not metadata.get("can_recover_continue"):
+            raise ApplicationError(
+                "continue_not_supported",
+                f"Run '{run_id}' has no durable failed session",
+            )
         if self.executor is None:
             raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
-        returned = self.executor.start(metadata["loop"], metadata.get("args", {}), {**options, "resume": True}, run_id=run_id)
+        try:
+            returned = self.executor.start(
+                metadata["loop"],
+                metadata.get("args", {}),
+                {"recover": True, "recovery_mode": mode},
+                run_id=run_id,
+            )
+        except RuntimeError as error:
+            if str(error) in {
+                "invalid_run_transition",
+                "replay_diverged",
+                "continue_not_supported",
+            }:
+                if str(error) == "replay_diverged":
+                    raise ApplicationError("replay_diverged", f"Run '{run_id}' replay diverged") from error
+                if str(error) == "continue_not_supported":
+                    raise ApplicationError("continue_not_supported", f"Run '{run_id}' cannot continue its session") from error
+                raise ApplicationError("invalid_run_transition", f"Run '{run_id}' already has a worker") from error
+            raise
         if returned != run_id:
-            raise ApplicationError("internal_error", "Executor changed run_id during resume")
+            raise ApplicationError("internal_error", "Executor changed run_id during recovery")
         return self.runs.read_summary(run_dir)
+
+    def resume_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Deprecated application alias retained for non-Web CLI callers."""
+        return self.recover_run(run_id, {"mode": "retry"})
 
     def rerun(self, run_id: str) -> dict[str, Any]:
         source = self._run_dir(run_id)
