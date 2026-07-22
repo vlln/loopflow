@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -533,35 +532,24 @@ def list():
 @click.argument("run_id")
 def stop(run_id):
     """Stop a running loop."""
-    run_dir = _find_run_by_id(run_id)
-    if run_dir is None:
-        print(f"Error: run '{run_id}' not found", file=sys.stderr)
-        sys.exit(1)
+    from loopflow.application.web import ApplicationError, WebApplication
+    from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
+    from loopflow.infrastructure.web_storage import RunRepository
 
-    run_json = run_dir / "run.json"
-    if not run_json.is_file():
-        print(f"Error: run '{run_id}' has no run.json", file=sys.stderr)
-        sys.exit(1)
-
-    meta = json.loads(run_json.read_text())
-    if meta["status"] != "running":
-        print(f"Run '{run_id}' is not running (status: {meta['status']})", file=sys.stderr)
-        sys.exit(0)
-
-    pid_file = run_dir / "loop.pid"
-    if pid_file.is_file():
-        try:
-            pid = int(pid_file.read_text().strip())
-            os.kill(pid, signal.SIGTERM)
-            print(f"Stopped run '{run_id}' (pid {pid})", file=sys.stderr)
-        except (OSError, ValueError):
-            print(f"Process not found for run '{run_id}', cleaning up", file=sys.stderr)
-            pid_file.unlink()
-    else:
-        print(f"No pid file for run '{run_id}'", file=sys.stderr)
-
-    _finish_run(meta, "stopped")
-    _write_run(run_json, meta)
+    runs_root = _runs_dir()
+    runs = RunRepository(runs_root)
+    loops_root = Path(os.environ.get("LOOPFLOW_LOOPS_DIR", Path.home() / ".loopflow" / "loops"))
+    service = WebApplication(
+        runs=runs,
+        loops=LoopRepository(loops_root, runs),
+        queue=QueueRepository(Path(os.environ.get("LOOPFLOW_QUEUE_DIR", Path.home() / ".loopflow" / "queue"))),
+        backends=BackendRepository(),
+    )
+    try:
+        result = service.stop_run(run_id)
+    except ApplicationError as error:
+        raise click.ClickException(f"{error.code}: {error.message}") from error
+    click.echo(f"Stopped run '{result['run_id']}' ({result['status']})", err=True)
 
 
 @main.command()

@@ -10,7 +10,7 @@ from typing import Any, Protocol
 
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
 from loopflow.infrastructure.web_events import project_events, replay_v2
-from loopflow.infrastructure.web_storage import RunRepository, now_iso, read_json
+from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json, now_iso, read_json
 
 
 class ApplicationError(Exception):
@@ -36,7 +36,17 @@ class WebApplication:
 
     def list_runs(self, *, statuses: list[str] | None = None, loop: str | None = None, q: str | None = None, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
         limit, offset = _page(limit, cursor)
-        valid_statuses = {"running", "done", "failed", "stopped", "stale", "unreadable"}
+        valid_statuses = {
+            "running",
+            "waiting_input",
+            "cancelling",
+            "cancelled",
+            "done",
+            "failed",
+            "stopped",
+            "stale",
+            "unreadable",
+        }
         if statuses and not set(statuses) <= valid_statuses:
             raise ApplicationError("validation_failed", "Unknown Run status")
         items = [self.runs.read_summary(path) for path in self.runs.list_dirs()]
@@ -77,16 +87,38 @@ class WebApplication:
     def stop_run(self, run_id: str) -> dict[str, Any]:
         run_dir = self._run_dir(run_id)
         metadata = read_json(run_dir / "run.json")
-        if self.runs.read_summary(run_dir)["status"] != "running":
+        status = self.runs.read_summary(run_dir)["status"]
+        if status not in {"running", "waiting_input"}:
             raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be stopped")
-        pid = metadata.get("pid")
-        if not isinstance(pid, int) or not self.runs.process_probe.terminate(pid):
-            raise ApplicationError("process_gone", f"Run '{run_id}' process is unavailable")
+        if status == "waiting_input":
+            metadata.update({
+                "status": "cancelled",
+                "finished_at": now_iso(),
+                "stop_summary": "waiting_input_cancelled",
+            })
+            self._clear_worker_identity(metadata)
+            self._write_metadata(run_dir, metadata)
+            self._close_pending_interventions(run_dir)
+            return self.runs.read_summary(run_dir)
+
+        identity = self._worker_identity(metadata)
+        metadata.update({"status": "cancelling", "stop_requested_at": now_iso()})
+        self._write_metadata(run_dir, metadata)
+        stop_summary = "process_gone"
+        if identity is not None and self._identity_matches(identity):
+            stop_summary = self.runs.process_probe.terminate_group(identity["process_group_id"])
         finished = now_iso()
-        metadata.update({"status": "stopped", "finished_at": finished})
-        metadata.pop("pid", None)
-        metadata.pop("process_started_at", None)
-        self.runs.write_metadata(run_dir, metadata)
+        current = read_json(run_dir / "run.json")
+        if current.get("execution_epoch") != metadata.get("execution_epoch") or current.get("status") not in {"cancelling", "cancelled"}:
+            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be stopped")
+        current.update({
+            "status": "cancelled",
+            "finished_at": finished,
+            "error_summary": None,
+            "stop_summary": stop_summary,
+        })
+        self._clear_worker_identity(current)
+        self._write_metadata(run_dir, current)
         return self.runs.read_summary(run_dir)
 
     def recover_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -235,6 +267,66 @@ class WebApplication:
         if path is None:
             raise ApplicationError("run_not_found", f"Run '{run_id}' was not found")
         return path
+
+    def _write_metadata(self, run_dir: Path, metadata: dict[str, Any]) -> None:
+        try:
+            self.runs.write_metadata(run_dir, metadata)
+        except OSError as error:
+            raise ApplicationError("atomic_write_failed", str(error)) from error
+
+    def _worker_identity(self, metadata: dict[str, Any]) -> dict[str, Any] | None:
+        pid = metadata.get("pid")
+        process_group_id = metadata.get("process_group_id")
+        process_started_at = metadata.get("process_started_at")
+        execution_epoch = metadata.get("execution_epoch")
+        if (
+            isinstance(pid, int)
+            and isinstance(process_group_id, int)
+            and isinstance(process_started_at, str)
+            and process_started_at
+            and isinstance(execution_epoch, int)
+        ):
+            return {
+                "pid": pid,
+                "process_group_id": process_group_id,
+                "process_started_at": process_started_at,
+                "execution_epoch": execution_epoch,
+            }
+        return None
+
+    def _identity_matches(self, identity: dict[str, Any]) -> bool:
+        pid = identity["pid"]
+        return (
+            self.runs.process_probe.identity(pid) == identity["process_started_at"]
+            and self.runs.process_probe.group_id(pid) == identity["process_group_id"]
+        )
+
+    def _clear_worker_identity(self, metadata: dict[str, Any]) -> None:
+        metadata.pop("pid", None)
+        metadata.pop("process_started_at", None)
+        metadata.pop("process_group_id", None)
+
+    def _close_pending_interventions(self, run_dir: Path) -> None:
+        interventions = run_dir / "interventions"
+        if not interventions.is_dir():
+            return
+        closed_at = now_iso()
+        for path in interventions.glob("*.json"):
+            try:
+                value = read_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(value, dict) or value.get("status") not in {None, "pending"}:
+                continue
+            value.update({
+                "status": "closed",
+                "closed_at": closed_at,
+                "close_reason": "run_cancelled",
+            })
+            try:
+                atomic_write_json(path, value)
+            except OSError:
+                continue
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
         allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args"}

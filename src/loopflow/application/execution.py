@@ -31,6 +31,7 @@ def execute_workflow(
     if options.get("mock"):
         set_mock(options["mock"])
     started = now_iso()
+    pid = os.getpid()
     run_metadata = {
         "loop": loop,
         "run_id": run_id,
@@ -46,8 +47,9 @@ def execute_workflow(
             for key, value in options.items()
             if key in {"backend", "model", "mock", "from_phase", "only_phase"}
         },
-        "pid": os.getpid(),
-        "process_started_at": SystemProcessProbe().identity(os.getpid()),
+        "pid": pid,
+        "process_group_id": os.getpgrp(),
+        "process_started_at": SystemProcessProbe().identity(pid),
     }
     if recover and (run_dir / "run.json").is_file():
         previous = read_json(run_dir / "run.json")
@@ -57,8 +59,9 @@ def execute_workflow(
             "status": "running",
             "started_at": started,
             "finished_at": None,
-            "pid": os.getpid(),
-            "process_started_at": SystemProcessProbe().identity(os.getpid()),
+            "pid": pid,
+            "process_group_id": os.getpgrp(),
+            "process_started_at": SystemProcessProbe().identity(pid),
             "counter": 0,
             "execution_epoch": int(previous.get("execution_epoch", 0)) + 1,
             "execution_options": frozen_options,
@@ -90,7 +93,7 @@ def execute_workflow(
     try:
         module.run(**kwargs)
     except KeyboardInterrupt:
-        status, error = "stopped", None
+        status, error = "cancelled", None
     except Exception as exc:
         from loopflow.infrastructure.recovery import ReplayDiverged
 
@@ -121,8 +124,12 @@ def execute_workflow(
         run_metadata.pop("can_recover_continue", None)
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)
+    run_metadata.pop("process_group_id", None)
     current = read_json(run_dir / "run.json")
-    if current.get("execution_epoch") == run_metadata.get("execution_epoch"):
+    if (
+        current.get("execution_epoch") == run_metadata.get("execution_epoch")
+        and current.get("status") == "running"
+    ):
         atomic_write_json(run_dir / "run.json", run_metadata)
 
 
@@ -135,6 +142,11 @@ def _execute_workflow_process(
     execution_lock: Path,
 ) -> None:
     try:
+        if hasattr(os, "setsid"):
+            try:
+                os.setsid()
+            except OSError:
+                pass
         execute_workflow(loop, args, options, run_id, run_dir)
     finally:
         for path in (execution_lock, run_dir / ".recovery.ready"):

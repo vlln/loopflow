@@ -32,6 +32,7 @@ class WebFixtureFactory:
         state: dict[str, Any] | None = None,
         pid: int | None = None,
         process_started_at: str | None = None,
+        process_group_id: int | None = None,
     ) -> Path:
         run_dir = self.runs / run_id
         run_dir.mkdir()
@@ -44,8 +45,10 @@ class WebFixtureFactory:
             "started_at": FIXED_TIME,
             "finished_at": FIXED_TIME if status != "running" else None,
             "updated_at": FIXED_TIME,
+            "execution_epoch": 1,
             "pid": pid,
             "process_started_at": process_started_at,
+            "process_group_id": process_group_id,
         }
         self.write_json(run_dir / "run.json", metadata)
         if state is not None:

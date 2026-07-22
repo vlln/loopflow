@@ -27,7 +27,7 @@ function installFetch(durable = true) {
     if (path === '/api/v1/runs') return options?.method === 'POST' ? response(runs[0], 201) : response({ items: runs, next_cursor: null });
     if (path === '/api/v1/runs/run-live') return response(detail);
     if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[1], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
-    if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'stopped', allowed_actions: ['rerun'] });
+    if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);

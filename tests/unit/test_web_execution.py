@@ -34,6 +34,30 @@ def test_execute_workflow_writes_terminal_metadata_and_v2_phase(tmp_path, monkey
     assert "pid" not in metadata and event["version"] == 2 and event["phase_id"] == "phase-1"
 
 
+def test_execute_workflow_terminal_guard_does_not_overwrite_cancelled(tmp_path, monkeypatch):
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    run = tmp_path / "run"
+    run.mkdir()
+    workflow = loop / "workflow.py"
+    workflow.write_text(
+        "import json\n"
+        "def run(args, **kwargs):\n"
+        "    path = args['run_json']\n"
+        "    data = json.loads(open(path).read())\n"
+        "    data['status'] = 'cancelled'\n"
+        "    data['finished_at'] = 'stop-won'\n"
+        "    open(path, 'w').write(json.dumps(data))\n"
+    )
+
+    execute_workflow("hello", {"run_json": str(run / "run.json")}, {}, "run-1", run)
+
+    metadata = json.loads((run / "run.json").read_text())
+    assert metadata["status"] == "cancelled"
+    assert metadata["finished_at"] == "stop-won"
+
+
 def test_execute_workflow_recovery_preserves_id_but_restarts_default_state(tmp_path, monkeypatch):
     loops = tmp_path / "loops"
     create_loop(loops)

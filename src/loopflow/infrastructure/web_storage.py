@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -76,7 +78,11 @@ def read_run_index(runs_root: Path) -> dict[str, dict[str, str]]:
 class ProcessProbe(Protocol):
     def identity(self, pid: int) -> str | None: ...
 
+    def group_id(self, pid: int) -> int | None: ...
+
     def terminate(self, pid: int) -> bool: ...
+
+    def terminate_group(self, process_group_id: int, *, grace_seconds: float = 0.2) -> str: ...
 
 
 class SystemProcessProbe:
@@ -102,11 +108,48 @@ class SystemProcessProbe:
         value = result.stdout.strip()
         return f"ps:{value}" if result.returncode == 0 and value else None
 
+    def group_id(self, pid: int) -> int | None:
+        try:
+            return os.getpgid(pid)
+        except OSError:
+            return None
+
     def terminate(self, pid: int) -> bool:
         try:
             os.kill(pid, 15)
             return True
         except (OSError, ValueError):
+            return False
+
+    def terminate_group(self, process_group_id: int, *, grace_seconds: float = 0.2) -> str:
+        if process_group_id <= 0:
+            return "gone"
+        try:
+            os.killpg(process_group_id, signal.SIGTERM)
+        except ProcessLookupError:
+            return "gone"
+        except OSError:
+            return "gone"
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline:
+            if not self._group_alive(process_group_id):
+                return "terminated"
+            time.sleep(0.01)
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except ProcessLookupError:
+            return "terminated"
+        except OSError:
+            return "gone"
+        return "killed"
+
+    def _group_alive(self, process_group_id: int) -> bool:
+        try:
+            os.killpg(process_group_id, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError:
             return False
 
 
@@ -137,11 +180,14 @@ def allowed_actions(status: str, *, can_recover_continue: bool = False) -> list[
         if can_recover_continue:
             actions.insert(1, "recover_continue")
         return actions
+    if status == "waiting_input":
+        return ["respond", "stop"]
     return {
         "running": ["stop"],
         "stale": ["reconcile"],
         "stopped": ["rerun"],
         "done": ["rerun"],
+        "cancelled": ["rerun"],
     }.get(status, [])
 
 
@@ -280,13 +326,19 @@ class RunRepository:
         )
         metadata.pop("pid", None)
         metadata.pop("process_started_at", None)
+        metadata.pop("process_group_id", None)
         atomic_write_json(run_dir / "run.json", metadata)
         return self.read_summary(run_dir)
 
     def _identity_matches(self, metadata: dict[str, Any]) -> bool:
         pid = metadata.get("pid")
         expected = metadata.get("process_started_at")
-        return isinstance(pid, int) and bool(expected) and self.process_probe.identity(pid) == expected
+        if not isinstance(pid, int) or not expected or self.process_probe.identity(pid) != expected:
+            return False
+        process_group_id = metadata.get("process_group_id")
+        if isinstance(process_group_id, int):
+            return self.process_probe.group_id(pid) == process_group_id
+        return True
 
     def _working_directory(self, run_dir: Path) -> str:
         record = self._index_records().get(run_dir.name)

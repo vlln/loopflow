@@ -79,6 +79,14 @@ TEST_NODES = {
     "AC-020-F-1": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
     "AC-020-F-2": "tests/unit/test_web_execution.py::test_background_executor_rejects_second_worker_for_same_run",
     "AC-020-F-3": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
+    "AC-021-N-1": "tests/unit/test_web_application.py::test_create_stop_recover_rerun_and_invalid_transition",
+    "AC-021-N-2": "tests/unit/test_web_application.py::test_stop_waiting_input_cancels_without_worker_and_closes_pending_request",
+    "AC-021-B-1": "tests/unit/test_web_application.py::test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun",
+    "AC-021-B-2": "tests/unit/test_web_application.py::test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun",
+    "AC-021-E-1": "tests/unit/test_web_execution.py::test_execute_workflow_terminal_guard_does_not_overwrite_cancelled",
+    "AC-021-E-2": "tests/unit/test_web_application.py::test_stop_rejects_cancelled_without_modifying_run",
+    "AC-021-F-1": "tests/unit/test_web_application.py::test_stop_does_not_signal_when_cancelling_write_fails",
+    "AC-021-F-2": "tests/unit/test_web_application.py::test_stop_pid_reuse_does_not_signal_and_records_process_gone",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {

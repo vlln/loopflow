@@ -21,8 +21,14 @@ class Probe:
     def identity(self, pid):
         return "same" if pid == 7 else None
 
+    def group_id(self, pid):
+        return 70 if pid == 7 else None
+
     def terminate(self, pid):
         return pid == 7
+
+    def terminate_group(self, process_group_id, *, grace_seconds=0.2):
+        return "terminated" if process_group_id == 70 else "gone"
 
 
 class Executor:
@@ -35,7 +41,17 @@ class Executor:
         run_id = run_id or f"created-{self.count}"
         path = self.factory.runs / run_id
         path.mkdir(exist_ok=True)
-        self.factory.write_json(path / "run.json", {"run_id": run_id, "loop": loop, "args": args, "status": "running", "created": "2026-07-18T22:00:00Z", "pid": 7, "process_started_at": "same"})
+        self.factory.write_json(path / "run.json", {
+            "run_id": run_id,
+            "loop": loop,
+            "args": args,
+            "status": "running",
+            "created": "2026-07-18T22:00:00Z",
+            "execution_epoch": 1,
+            "pid": 7,
+            "process_group_id": 70,
+            "process_started_at": "same",
+        })
         return run_id
 
 
@@ -86,13 +102,13 @@ def test_run_rest_location_filters_and_errors(api):
 
 def test_run_lifecycle_commands_preserve_contract(api):
     client, factory, _ = api
-    running = factory.create_run("running", status="running", pid=7, process_started_at="same")
+    running = factory.create_run("running", status="running", pid=7, process_started_at="same", process_group_id=70)
     failed = factory.create_run("failed", status="failed", args={"attempt": 2})
     done = factory.create_run("done-source", status="done", args={"x": 1})
     stale = factory.create_run("stale", status="running", pid=9, process_started_at="gone")
 
     stopped = client.request("POST", "/api/v1/runs/running/stop")
-    assert stopped.status == 200 and stopped.json()["status"] == "stopped"
+    assert stopped.status == 200 and stopped.json()["status"] == "cancelled"
     metadata = json.loads((running / "run.json").read_text())
     assert metadata["finished_at"] and "pid" not in metadata
     recovered = client.request("POST", "/api/v1/runs/failed/recover", {"mode": "retry"})

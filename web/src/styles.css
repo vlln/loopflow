@@ -96,7 +96,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .status { display: inline-flex; min-height: 24px; flex: 0 0 auto; align-items: center; gap: 5px; padding: 0 8px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 9px; font-weight: 650; text-transform: capitalize; }
 .status-running, .status-available, .status-done { color: var(--mint-strong); }
 .status-failed, .status-unavailable { color: var(--danger); }
-.status-stopped, .status-stale { color: var(--warning); }
+.status-stopped, .status-stale, .status-cancelling { color: var(--warning); }
+.status-cancelled { color: var(--muted); }
 .run-row.is-selected .status { background: var(--surface-soft); }
 
 .run-detail-panel { display: grid; grid-template-rows: auto auto 250px minmax(0, 1fr); gap: 10px; padding: 0; background: transparent; border: 0; border-radius: 0; }
