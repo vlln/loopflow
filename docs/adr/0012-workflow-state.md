@@ -8,6 +8,8 @@ created: 2026-07-09T12:00:00Z
 
 # ADR 0012: Workflow State Persistence
 
+> 2026-07-22 修订：`meta.state` 声明、属性访问和 `state.json` 投影继续有效；recover 不再以旧 `state.json` 为起点，而是按 [ADR 0036](0036-recovery-intervention.md) 从默认值确定性重放并重建 state。
+
 ## Context
 
 bio-reproducer 的 `attempt` 计数器在 resume 后归零——workflow 脚本的 Python 变量不持久。workflow 作者被迫手动写文件：

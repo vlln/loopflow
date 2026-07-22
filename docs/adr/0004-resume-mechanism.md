@@ -2,11 +2,13 @@
 title: ADR-0004
 description: 崩溃恢复机制：序号计数器重放 vs 显式状态检查点
 type: adr
-status: accepted
+status: superseded
 created: 2026-07-07T12:00:00Z
 ---
 
 # ADR-0004: Resume 恢复机制
+
+> 2026-07-22：由 [ADR 0036](0036-recovery-intervention.md) 替代。序号重放的核心思路保留，但缓存身份、命中条件、retry/continue 和 Run 生命周期以 ADR 0036 为准。
 
 ---
 

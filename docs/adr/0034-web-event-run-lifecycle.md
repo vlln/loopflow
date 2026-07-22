@@ -8,6 +8,8 @@ created: 2026-07-18T00:00:00Z
 
 # ADR 0034: Web 事件与 Run 生命周期契约
 
+> 2026-07-22 修订：事件信封、SSE、原子写和 stale reconcile 继续有效；缓存命中、recover、`cancelled/waiting_input` 状态和 stop 终态语义由 [ADR 0036](0036-recovery-intervention.md) 替代本 ADR 中相冲突的 resume/stopped 条款。
+
 ## Context
 
 WebUI 要同时观察正在写入的 Run、重建带循环的 Phase 执行图、查看 Agent Call 过程并在断线后继续消费事件。现有运行目录中有两种 JSONL：`events.jsonl` 是 Run 级时间线，`<seq>.jsonl` 是 Agent 调用的 resume 缓存。两者服务于不同正确性目标，不能因 Web 展示而合并为一种格式。

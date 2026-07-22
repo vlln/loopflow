@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DESIGN` |
-| **设计评估** | v0.17.2 已发布：WebUI 收尾（Run 目录索引持久化、Operations Workspace 优化、类型化 Markdown 渲染）。新一轮迭代待启动。 |
+| **设计评估** | 恢复与介入契约已通过审查并冻结：确定性 Call 重放、retry/continue、永久停止和持久化人工回答。待独立状态 commit 后进入 TEST_INFRA。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

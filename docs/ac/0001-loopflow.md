@@ -44,6 +44,8 @@ created: 2026-07-07T12:00:00Z
 
 # AC-002: Resume 崩溃恢复
 
+> 2026-07-22：AC-002-N-1、N-2、B-1、E-1、F-1 已由 [AC-020](0011-recovery-intervention.md#AC-020-可校验恢复) 替代；AC-002-B-2 的不存在 Run 行为继续有效。
+
 验证 loop 运行中断后，resume 能正确恢复。
 
 ## 正常场景
@@ -75,6 +77,8 @@ created: 2026-07-07T12:00:00Z
 ---
 
 # AC-003: 运行实例管理
+
+> 2026-07-22：AC-003-N-3、E-1 的 stop 预期已由 [AC-021](0011-recovery-intervention.md#AC-021-可靠停止) 替代；其他场景继续有效。
 
 验证 status、list、stop 命令的正确性。
 

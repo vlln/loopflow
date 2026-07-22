@@ -7,6 +7,7 @@
 | [0033](0033-webui-architecture.md) | 本地 WebUI 技术栈与分层 | accepted | Spec v12 |
 | [0034](0034-web-event-run-lifecycle.md) | Web 事件与 Run 生命周期契约 | accepted | Spec v12 |
 | [0035](0035-webui-test-infrastructure.md) | WebUI 测试与交付基础设施 | accepted | Spec v12 / AC-0010 / Interface 0001 |
+| [0036](0036-recovery-intervention.md) | 可校验恢复、永久停止与人工介入 | accepted | Spec v13 / AC-0011 / Interface 0001 |
 
 ## 状态说明
 
