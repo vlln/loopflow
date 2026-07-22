@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `TEST_INFRA` |
-| **设计评估** | 恢复与介入契约已通过审查并冻结：确定性 Call 重放、retry/continue、永久停止和持久化人工回答。当前建立 AC-020 至 AC-022 的测试基建。 |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | 恢复与介入契约及测试基建已就绪：AC-020 至 AC-022 共 32 个场景具备 fixture、fault fake、v13 schema 和 planned manifest。当前可按 Plan 实现 recover、stop 与 intervene 产品行为。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
