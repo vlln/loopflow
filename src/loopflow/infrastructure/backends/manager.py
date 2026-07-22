@@ -79,6 +79,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
     from loopflow.infrastructure.backends.claude import ClaudeBackend
     from loopflow.infrastructure.backends.codex import CodexBackend
     from loopflow.infrastructure.backends.gemini import GeminiBackend
+    from loopflow.infrastructure.backends.grok import GrokBackend
     from loopflow.infrastructure.backends.kimi import KimiBackend
     from loopflow.infrastructure.backends.kiro import KiroBackend
     from loopflow.infrastructure.backends.opencode import OpencodeBackend
@@ -94,6 +95,8 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         "opencode": OpencodeBackend,
         "qwen": QwenBackend,
         "gemini": GeminiBackend,
+        "grok": GrokBackend,
+        "gork": GrokBackend,
     }
 
     if backend is None:

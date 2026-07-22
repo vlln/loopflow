@@ -48,6 +48,16 @@ BACKEND_META: dict[str, dict[str, str]] = {
         "homepage": "https://geminicli.com/",
         "auth_help": "Run 'gemini auth' to configure authentication.",
     },
+    "grok": {
+        "binary": "grok",
+        "homepage": "https://x.ai/cli",
+        "auth_help": "Run 'grok login' or set XAI_API_KEY.",
+    },
+    "gork": {
+        "binary": "grok",
+        "homepage": "https://x.ai/cli",
+        "auth_help": "Run 'grok login' or set XAI_API_KEY.",
+    },
 }
 
 
