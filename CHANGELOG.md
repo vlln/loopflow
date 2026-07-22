@@ -27,7 +27,7 @@
 - **queue 模块**：`infrastructure/queue.py`，文件队列（`~/.loopflow/queue/`），支持 enqueue / dequeue / list / size
 - **resource lock**：`lock.py` 扩展 resource 粒度锁，TTL 30 分钟自动清理
 - **dispatch 模块**：`infrastructure/dispatch.py`，扫描队列、优先级排序、资源锁、执行 loop
-- **CLI 命令**：`loop enqueue`（入队）、`loop dispatch`（调度执行）
+- **CLI 命令**：`loopflow enqueue`（入队）、`loopflow dispatch`（调度执行）
 - 外部调度器文档：macOS 推荐 launchd，Linux 用 cron/systemd timer
 
 ## [0.16.0] — 2026-07-14
@@ -145,7 +145,7 @@
 ## [0.8.0] — 2026-07-10
 
 ### Added
-- `meta.requires.environment`：workflow 声明环境文件路径（如 `environment.yml`），`loop run`/`loop resume` 启动时校验文件存在
+- `meta.requires.environment`：workflow 声明环境文件路径（如 `environment.yml`），`loopflow run`/`loopflow resume` 启动时校验文件存在
 - 松散校验：检查文件存在，不激活环境，不安装依赖，不解析内容
 - 隔离层级体系：声明层（environment 文件）→ 文件系统（worktree）→ 环境激活（conda，未来）→ 完整隔离（容器，未来）
 
@@ -230,7 +230,7 @@
 ## [0.2.2] — 2026-07-09
 
 ### Added
-- `loop run` 和 `loop resume` 结束自动渲染执行图
+- `loopflow run` 和 `loopflow resume` 结束自动渲染执行图
 - `--watch` 标志：Rich Live 实时增量渲染执行图
 - `--mock` 标志：无需安装 AI 后端即可测试
 - `--no-graph` 标志：关闭 status 图形输出
@@ -261,12 +261,12 @@
 - PhaseGraph 执行图：纯数据结构（`graph.py`），邻接表 + 边计数 + 环检测，不依赖任何渲染库
 - TerminalGraphRenderer：Rich 终端渲染，支持线性/回边（循环）/分支三种布局
 - `phase()` 和 `agent()` 自动写入 events.jsonl 事件流
-- `loop status --graph` 显示执行图，`--no-graph` 关闭
+- `loopflow status --graph` 显示执行图，`--no-graph` 关闭
 - 21 个 graph 单元测试 + 4 个集成测试
 
 ### Changed
 - `phase()` 和 `log()` 除 stderr 输出外，同时写入结构化事件到 events.jsonl
-- `loop status` 不再统计 events.jsonl 为 agent 调用
+- `loopflow status` 不再统计 events.jsonl 为 agent 调用
 
 ---
 
@@ -276,7 +276,7 @@
 - Loop 定义：以文件夹形式组织（workflow.py + agents/），支持 `~/.loopflow/loops/` 目录
 - Workflow Runtime：agent/parallel/pipeline/phase/log/args/workflow API，与 Claude Code Workflow 签名一致
 - 崩溃恢复：序号计数器重放，已完成 agent 调用自动跳过，对 workflow 作者透明
-- CLI 命令：loop run / resume / status / list / stop
+- CLI 命令：loopflow run / resume / status / list / stop
 - 多后端支持：从 subagent-skills 复用 8 种后端适配器（kimi/claude/codex/pi/opencode/qwen/kiro/gemini）
 - 测试框架：pytest + coverage.py，50 个测试（41 unit + 9 integration），59% 覆盖率
 - CI/CD：GitHub Actions workflow，Python 3.10 + 3.14 矩阵测试

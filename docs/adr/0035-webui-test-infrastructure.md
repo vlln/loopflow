@@ -88,7 +88,7 @@ GitHub Actions 使用独立 jobs：
 
 ### 8. 本地部署底座
 
-loopflow 是本地 CLI 安装包，不配置远程生产平台。TEST_INFRA 适用的部署底座是可复现的 wheel 流水线：前端 production build、静态资产同步、wheel 构建、隔离安装，并通过 `importlib.resources` 读取入口与 hashed asset。浏览器框架使用 tests-only loopback 占位 server 验证静态页面，不注册生产 CLI，也不实现 `/api/v1`。实际 `loop web` 启动、监听和远程绑定双确认留给 DEVELOP 的产品实现与测试。
+loopflow 是本地 CLI 安装包，不配置远程生产平台。TEST_INFRA 适用的部署底座是可复现的 wheel 流水线：前端 production build、静态资产同步、wheel 构建、隔离安装，并通过 `importlib.resources` 读取入口与 hashed asset。浏览器框架使用 tests-only loopback 占位 server 验证静态页面，不注册生产 CLI，也不实现 `/api/v1`。实际 `loopflow web` 启动、监听和远程绑定双确认留给 DEVELOP 的产品实现与测试。
 
 ## Alternatives
 

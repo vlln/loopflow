@@ -30,7 +30,7 @@ Spec 0001 v12 增加本地 WebUI 控制台。WebUI 需要读取 Loop、Run、Que
 
 ### 1. 服务进程与网络边界
 
-新增 `loop web` 启动 Python HTTP server，默认绑定 `127.0.0.1`。非 loopback 地址必须同时指定目标 `host` 和独立的 `allow-remote` 显式开关；仅指定 `host` 必须拒绝启动。首版不提供认证、多用户会话或远程协作。
+新增 `loopflow web` 启动 Python HTTP server，默认绑定 `127.0.0.1`。非 loopback 地址必须同时指定目标 `host` 和独立的 `allow-remote` 显式开关；仅指定 `host` 必须拒绝启动。首版不提供认证、多用户会话或远程协作。
 
 生产安装包携带 Vite 构建后的静态资产。Node.js、Vite 和前端依赖不进入 Python 运行时依赖，也不在用户启动 WebUI 时参与执行。
 

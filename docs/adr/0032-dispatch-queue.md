@@ -10,7 +10,7 @@ created: 2026-07-18T00:00:00Z
 
 ## Context
 
-loopflow 已实现编排（workflow.py + agent/parallel/pipeline/phase）和运行实例管理（run/resume/status/list/stop），但缺失调度层。当前 loop 只能通过 `loop run <name>` 手动触发，没有自动触发、任务排队、资源互斥的能力。
+loopflow 已实现编排（workflow.py + agent/parallel/pipeline/phase）和运行实例管理（run/resume/status/list/stop），但缺失调度层。当前 loop 只能通过 `loopflow run <name>` 手动触发，没有自动触发、任务排队、资源互斥的能力。
 
 引入调度机制需要回答三个问题：
 1. 触发信号如何到达 loopflow？
@@ -40,20 +40,20 @@ Loop 在 `loop.md` 的 frontmatter 中声明可被什么触发（见 ADR 0031）
 ```
 
 入队路径：
-- `loop enqueue <name> --args '<json>'` → 写入队列
-- `loop run <name> --args '<json>'` → 直接执行，不经过队列（保持手动触发语义）
+- `loopflow enqueue <name> --args '<json>'` → 写入队列
+- `loopflow run <name> --args '<json>'` → 直接执行，不经过队列（保持手动触发语义）
 
 ### 3. Dispatch
 
-新命令 `loop dispatch`——幂等、可被 cron/launchd 重复调用：
+新命令 `loopflow dispatch`——幂等、可被 cron/launchd 重复调用：
 
 ```
-loop dispatch 逻辑:
+loopflow dispatch 逻辑:
   1. 扫描 ~/.loopflow/queue/*.json
   2. 按 priority 降序 → created 升序排列
   3. 对每个任务:
      a. 检查资源锁（同一 resource 不能同时跑两个 loop）
-     b. 加锁成功 → 从队列删除 → 执行 loop run → 解锁
+     b. 加锁成功 → 从队列删除 → 执行 loopflow run → 解锁
      c. 加锁失败 → 跳过，留队列
 ```
 
@@ -70,20 +70,20 @@ loop dispatch 逻辑:
 
 ### 5. 外部调度器
 
-`loop dispatch` 是一个幂等的 CLI 命令，loopflow 本身不负责周期调用它。用户选择外部调度器来驱动：
+`loopflow dispatch` 是一个幂等的 CLI 命令，loopflow 本身不负责周期调用它。用户选择外部调度器来驱动：
 
 ```
 外部调度器（cron / launchd / systemd / GitHub Actions）
     │
-    └── 每 N 分钟调用: loop dispatch
+    └── 每 N 分钟调用: loopflow dispatch
                           │
                           ├── 扫描 ~/.loopflow/queue/
                           ├── 按优先级取任务
                           ├── 加资源锁
-                          └── loop run <name>
+                          └── loopflow run <name>
 ```
 
-**设计边界：loopflow 不拥有调度节奏。** 调度器的选择、安装、启停是运维操作，不属于 loopflow 的机制。loopflow 只提供 `loop dispatch` 这个命令——它总是安全的（幂等），可以随时被外部定时器调用。
+**设计边界：loopflow 不拥有调度节奏。** 调度器的选择、安装、启停是运维操作，不属于 loopflow 的机制。loopflow 只提供 `loopflow dispatch` 这个命令——它总是安全的（幂等），可以随时被外部定时器调用。
 
 #### macOS 推荐：launchd
 
@@ -95,7 +95,7 @@ loop dispatch 逻辑:
     <string>com.loopflow.dispatch</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/loop</string>
+        <string>/usr/local/bin/loopflow</string>
         <string>dispatch</string>
     </array>
     <key>StartInterval</key>
@@ -112,7 +112,7 @@ loop dispatch 逻辑:
 
 | 平台 | 调度器 | 配置方式 |
 |------|--------|---------|
-| Linux | `cron` | `*/5 * * * * loop dispatch` |
+| Linux | `cron` | `*/5 * * * * loopflow dispatch` |
 | Linux | `systemd timer` | `OnUnitActiveSec=300` + 配套 `.service` |
 | GitHub Actions | `schedule` | `cron: "*/5 * * * *"` 触发 workflow |
 
@@ -136,7 +136,7 @@ src/loopflow/infrastructure/
 CLI 新命令在展示层：
 
 ```
-src/loopflow/presentation/cli.py  # + loop dispatch / loop enqueue
+src/loopflow/presentation/cli.py  # + loopflow dispatch / loopflow enqueue
 ```
 
 ## Consequences

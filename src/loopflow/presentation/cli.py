@@ -1,11 +1,13 @@
 """loopflow CLI — AI Agent loop orchestration tool.
 
 Commands:
-    loop run <name> [--args '<json>']
-    loop resume <run-id>
-    loop status <run-id>
-    loop list
-    loop stop <run-id>
+    loopflow run <name> [--args '<json>']
+    loopflow resume <run-id>
+    loopflow status <run-id>
+    loopflow list
+    loopflow stop <run-id>
+
+The alias ``loop`` is also available (e.g. ``loop run <name>``).
 """
 
 from __future__ import annotations

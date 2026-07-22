@@ -367,4 +367,4 @@ stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感�
 
 ## 八、服务启动约束
 
-`loop web` 默认 `host=127.0.0.1`。非 loopback host 必须同时设置 `allow_remote=true`，否则 CLI 非零退出且不创建监听 socket。远程绑定成功时 stderr 必须输出远程暴露警告。该约束属于启动接口，不通过 HTTP 修改。
+`loopflow web` 默认 `host=127.0.0.1`。非 loopback host 必须同时设置 `allow_remote=true`，否则 CLI 非零退出且不创建监听 socket。远程绑定成功时 stderr 必须输出远程暴露警告。该约束属于启动接口，不通过 HTTP 修改。
