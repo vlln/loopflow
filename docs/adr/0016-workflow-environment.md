@@ -31,7 +31,7 @@ meta = {
 
 ### 2. 松散校验：声明存在，不强制激活
 
-- `loop run` 启动时检查 `environment` 指向的文件是否存在
+- `loopflow run` 启动时检查 `environment` 指向的文件是否存在
 - 存在 → 通过，记录日志
 - 不存在 → 报错退出
 - **不执行** `conda env create` 或 `conda activate`
@@ -75,7 +75,7 @@ requires:
 
 ### 5. 当前不做的事
 
-- **不自动激活环境**：`loop run` 不调用 conda
+- **不自动激活环境**：`loopflow run` 不调用 conda
 - **不解析环境文件内容**：不检查 java 版本、nextflow 版本
 - **不安装依赖**：不执行 `conda env create`
 - **不做 agent 级环境声明**：`requires.environment` 仅在 workflow 级

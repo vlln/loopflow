@@ -16,7 +16,7 @@ created: 2026-07-18T00:00:00Z
 | queue | `infrastructure/queue.py` | 新增：enqueue / dequeue / list_queue / queue_size |
 | lock | `infrastructure/lock.py` | 新增 resource 粒度锁 + TTL 清理 |
 | dispatch | `infrastructure/dispatch.py` | 新增：扫描队列、排序、加锁、执行（可注入 run_func） |
-| CLI | `presentation/cli.py` | 新增 `loop enqueue`、`loop dispatch` |
+| CLI | `presentation/cli.py` | 新增 `loopflow enqueue`、`loopflow dispatch` |
 
 ## 测试
 

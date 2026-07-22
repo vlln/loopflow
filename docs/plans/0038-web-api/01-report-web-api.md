@@ -1,6 +1,6 @@
 ---
 title: Web API Report
-description: 记录 REST、SSE、静态资源和 loop web 安全绑定实现证据。
+description: 记录 REST、SSE、静态资源和 loopflow web 安全绑定实现证据。
 type: report
 status: complete
 created: 2026-07-19T06:05:00Z
@@ -8,7 +8,7 @@ created: 2026-07-19T06:05:00Z
 
 # 结果
 
-已完成标准库 REST/SSE/static server、统一错误信封、1 MiB 请求限制、持久化 cursor replay/live tail，以及默认 loopback 和 remote 双确认的 `loop web` 命令。
+已完成标准库 REST/SSE/static server、统一错误信封、1 MiB 请求限制、持久化 cursor replay/live tail，以及默认 loopback 和 remote 双确认的 `loopflow web` 命令。
 
 # Acceptance Results
 

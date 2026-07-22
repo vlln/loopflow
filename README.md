@@ -48,7 +48,7 @@ You are a helpful assistant. Answer concisely.
 ### 3. 运行
 
 ```bash
-loop run hello
+loopflow run hello
 ```
 
 ```
@@ -203,7 +203,7 @@ results = pipeline(
 
 ### `args`
 
-`loop run` 时 `--args '<json>'` 传入的参数，在 workflow.py 中通过 `args` 参数访问。
+`loopflow run` 时 `--args '<json>'` 传入的参数，在 workflow.py 中通过 `args` 参数访问。
 
 ### `state`
 
@@ -219,41 +219,41 @@ def run(agent, ..., state):
 
 ## CLI 参考
 
-### `loop run <name>`
+### `loopflow run <name>`
 
 启动一个 loop。每次运行创建新的实例和 ID。
 
 ```bash
-loop run hello                           # 运行
-loop run hello --args '{"key": "val"}'   # 传参
-loop run hello --mock bash               # mock: shell 执行（兼容旧用法）
-loop run hello --mock auto               # mock: 根据 schema 自动生成数据
-loop run hello --watch                   # 实时显示执行图
+loopflow run hello                           # 运行
+loopflow run hello --args '{"key": "val"}'   # 传参
+loopflow run hello --mock bash               # mock: shell 执行（兼容旧用法）
+loopflow run hello --mock auto               # mock: 根据 schema 自动生成数据
+loopflow run hello --watch                   # 实时显示执行图
 ```
 
-### `loop resume <run-id>`
+### `loopflow resume <run-id>`
 
 恢复崩溃的运行。已完成的 agent 调用自动跳过。
 
 ```bash
-loop resume a1b2c3d4
+loopflow resume a1b2c3d4
 ```
 
-### `loop status <run-id>`
+### `loopflow status <run-id>`
 
 查看运行状态。
 
 ```bash
-loop status a1b2c3d4           # 基本信息
-loop status a1b2c3d4 --graph   # 含执行图
-loop status a1b2c3d4 --no-graph # 不含执行图
+loopflow status a1b2c3d4           # 基本信息
+loopflow status a1b2c3d4 --graph   # 含执行图
+loopflow status a1b2c3d4 --no-graph # 不含执行图
 ```
 
-### `loop list`
+### `loopflow list`
 
 列出所有 loop 定义和运行实例。
 
-### `loop stop <run-id>`
+### `loopflow stop <run-id>`
 
 停止正在运行的实例。
 
@@ -282,7 +282,7 @@ loopflow 自动记录 phase 之间的转移关系，在运行结束时渲染执�
 
 ## 崩溃恢复
 
-`loop run` 运行中如果进程崩溃（Ctrl+C、断电、网络断开），可以 `loop resume <run-id>` 恢复：
+`loopflow run` 运行中如果进程崩溃（Ctrl+C、断电、网络断开），可以 `loopflow resume <run-id>` 恢复：
 
 1. `workflow.py` 从头重新执行
 2. 每个 `agent()` 调用检查序号缓存——如果该序号已完成且 exit_code=0，直接返回缓存结果
@@ -346,7 +346,7 @@ pip install -e .
 # 测试：进入 loop 目录，激活 pixi 环境，运行
 cd ~/.loopflow/loops/bio-reproducer
 pixi shell
-loop run bio-reproducer --args '{"paper_doi": "10.1101/...", "language": "zh"}'
+loopflow run bio-reproducer --args '{"paper_doi": "10.1101/...", "language": "zh"}'
 ```
 
 ---
@@ -360,4 +360,4 @@ ls ~/.loopflow/loops/
 # demo-graph/  — 执行图展示
 ```
 
-每个示例都是一个完整的 loop，可以直接 `loop run <name>` 运行。
+每个示例都是一个完整的 loop，可以直接 `loopflow run <name>` 运行。

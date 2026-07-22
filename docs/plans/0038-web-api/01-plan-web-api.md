@@ -1,6 +1,6 @@
 ---
 title: Web API Plan
-description: 实现标准库 REST、SSE、静态资源服务和 loop web 安全绑定命令。
+description: 实现标准库 REST、SSE、静态资源服务和 loopflow web 安全绑定命令。
 type: plan
 status: done
 created: 2026-07-19T06:05:00Z
@@ -12,7 +12,7 @@ created: 2026-07-19T06:05:00Z
 
 # Request
 
-实现 `/api/v1` 全部 endpoint、统一错误信封、1 MiB 请求限制、SSE replay/live tail、wheel 静态资源与 `loop web`。
+实现 `/api/v1` 全部 endpoint、统一错误信封、1 MiB 请求限制、SSE replay/live tail、wheel 静态资源与 `loopflow web`。
 
 # Output Format
 
@@ -44,7 +44,7 @@ created: 2026-07-19T06:05:00Z
 2. 接入 WebApplication 全部 REST endpoint。
 3. 实现 SSE replay/live tail 与 stream end/error。
 4. 实现 package static fallback 和安全路径。
-5. 实现 `loop web` bind safety 与 composition root。
+5. 实现 `loopflow web` bind safety 与 composition root。
 6. 运行契约、集成、coverage、MR 与 submission gates。
 
 # Acceptance

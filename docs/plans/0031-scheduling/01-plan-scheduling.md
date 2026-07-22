@@ -20,7 +20,7 @@ created: 2026-07-18T00:00:00Z
 | 02 | queue 模块：enqueue / dequeue / list 操作 | 新增 `infrastructure/queue.py` |
 | 03 | resource lock 扩展：lock.py 支持 resource 粒度锁 + TTL 清理 | 修改 `lock.py` |
 | 04 | dispatch 模块：扫描队列、排序、加锁、执行 | 新增 `infrastructure/dispatch.py` |
-| 05 | CLI 命令：`loop enqueue`、`loop dispatch` | 修改 `presentation/cli.py` |
+| 05 | CLI 命令：`loopflow enqueue`、`loopflow dispatch` | 修改 `presentation/cli.py` |
 
 ## Constraints
 
@@ -33,4 +33,4 @@ created: 2026-07-18T00:00:00Z
 
 - 所有 AC-010 ~ AC-013 场景通过
 - 现有 195 个测试无回归
-- `loop enqueue` + `loop dispatch` 端到端手动穿越
+- `loopflow enqueue` + `loopflow dispatch` 端到端手动穿越

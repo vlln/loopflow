@@ -10,7 +10,7 @@ created: 2026-07-10T11:30:00Z
 
 ## 范围
 
-实现 `meta.requires.environment` 声明，`loop run`/`loop resume` 启动时校验文件存在。
+实现 `meta.requires.environment` 声明，`loopflow run`/`loopflow resume` 启动时校验文件存在。
 
 ## 步骤
 

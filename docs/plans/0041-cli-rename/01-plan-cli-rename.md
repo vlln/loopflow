@@ -2,7 +2,7 @@
 title: 01-plan-cli-rename
 description: 将 CLI 二进制名称从 `loop` 改为 `loopflow`，保留 `loop` 别名向后兼容。同步更新所有文档中的 CLI 命令引用。
 type: plan
-status: pending
+status: done
 created: 2026-07-21T00:00:00Z
 ---
 

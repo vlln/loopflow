@@ -30,7 +30,7 @@ dispatcher 需要扫描所有 loop 的元数据来做路由决策，但不能 im
 - **Frontmatter**：机器可读的结构化元数据（name、description、triggers、resources）
 - **Body**：Agent 和人类可读的文档（目的、流程、权限边界、升级条件）
 
-**loop.md 是必选的。** 没有 loop.md 的目录不被视为 loop——`loop list` 不列出，`loop run` 拒绝执行。这是消除双重真相的机制：身份信息（name、description）只在 loop.md 中定义，不在 workflow.py meta 中重复。
+**loop.md 是必选的。** 没有 loop.md 的目录不被视为 loop——`loopflow list` 不列出，`loopflow run` 拒绝执行。这是消除双重真相的机制：身份信息（name、description）只在 loop.md 中定义，不在 workflow.py meta 中重复。
 
 ### Frontmatter 字段
 
@@ -99,7 +99,7 @@ resources:
 
 ### 迁移
 
-- 现有 loop 需要补一个 `loop.md`（至少含 name 和 description）才能继续被 `loop list` 发现和 `loop run` 执行
+- 现有 loop 需要补一个 `loop.md`（至少含 name 和 description）才能继续被 `loopflow list` 发现和 `loopflow run` 执行
 - `make-loop` skill 更新为生成 `loop.md`
 
 ## 验证

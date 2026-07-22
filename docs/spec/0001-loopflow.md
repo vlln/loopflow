@@ -22,18 +22,18 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | 编号 | 角色 | 需求 | 目的 | 优先级 |
 |------|------|------|------|--------|
 | US-001 | 开发者 | 用 Python 定义 loop（workflow.py + agent 定义文件） | 编排 Agent 循环工作流，自由控制循环条件、退出逻辑、状态累积 | P0 |
-| US-002 | 开发者 | 通过 CLI 运行 loop（`loop run <name>`） | 启动一个运行实例，执行中可查看进度 | P0 |
-| US-003 | 开发者 | 崩溃后 resume 运行实例（`loop resume <run-id>`） | 已完成 Agent 调用自动跳过，不重复执行，不丢失进度 | P0 |
-| US-004 | 开发者 | 查看运行实例状态（`loop status <run-id>`） | 了解当前进度、各 Agent 调用结果 | P0 |
-| US-005 | 开发者 | 列出所有 loop 定义和运行实例（`loop list`） | 管理本地 loop 和运行历史 | P1 |
-| US-006 | 开发者 | 停止运行中的实例（`loop stop <run-id>`） | 中断异常或不再需要的运行 | P2 |
+| US-002 | 开发者 | 通过 CLI 运行 loop（`loopflow run <name>`） | 启动一个运行实例，执行中可查看进度 | P0 |
+| US-003 | 开发者 | 崩溃后 resume 运行实例（`loopflow resume <run-id>`） | 已完成 Agent 调用自动跳过，不重复执行，不丢失进度 | P0 |
+| US-004 | 开发者 | 查看运行实例状态（`loopflow status <run-id>`） | 了解当前进度、各 Agent 调用结果 | P0 |
+| US-005 | 开发者 | 列出所有 loop 定义和运行实例（`loopflow list`） | 管理本地 loop 和运行历史 | P1 |
+| US-006 | 开发者 | 停止运行中的实例（`loopflow stop <run-id>`） | 中断异常或不再需要的运行 | P2 |
 | US-007 | 开发者 | 在工作流中并行调用多个 Agent（parallel） | 同一轮迭代内并发审查，提高效率 | P0 |
 | US-008 | 开发者 | 在工作流中流水线处理多个 item（pipeline） | 每个 item 独立流经多个 stage，无屏障 | P1 |
 | US-009 | 开发者 | 嵌套调用子 workflow（workflow） | 复用已有 loop 定义 | P2 |
 | US-010 | 开发者 | 在 agent 调用层设置 goal 反馈循环 | agent 内部自主迭代直到目标完成或阻塞，无需 workflow 层处理重试逻辑 | P1 |
 | US-011 | 开发者 | 声明 loop 的触发方式（loop.md frontmatter） | loop 可被 cron、文件监视或手动触发 | P1 |
-| US-012 | 开发者 | 通过 `loop dispatch` 自动调度待执行任务 | 扫描队列，按优先级取任务，加资源锁后执行 | P1 |
-| US-013 | 开发者 | 通过 `loop enqueue` 将任务加入队列 | 延迟执行，由 dispatch 统一调度 | P1 |
+| US-012 | 开发者 | 通过 `loopflow dispatch` 自动调度待执行任务 | 扫描队列，按优先级取任务，加资源锁后执行 | P1 |
+| US-013 | 开发者 | 通过 `loopflow enqueue` 将任务加入队列 | 延迟执行，由 dispatch 统一调度 | P1 |
 | US-014 | 开发者 | 同一资源上的 loop 互斥执行 | 防止两个 loop 同时操作同一 repo | P1 |
 | US-015 | 开发者 | 通过 `loop.md` 了解 loop 的目的、流程、权限边界 | 人类和 Agent 无需读 workflow.py 即可理解 loop | P2 |
 | US-016 | 开发者 | 在本地 WebUI 的常驻 Runs 列表中切换运行实例 | 不离开工作台即可比较状态并定位当前 Run | P0 |
@@ -50,7 +50,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 
 | 模块 | 提供的能力 | 目录路径 | 优先级 |
 |------|-----------|---------|---------|
-| CLI | loop run / resume / status / list / stop 命令解析和路由 | `src/loopflow/cli.py` | P0 |
+| CLI | loopflow run / resume / status / list / stop 命令解析和路由 | `src/loopflow/cli.py` | P0 |
 | Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/log/args/workflow 运行时 API，支持 goal 反馈循环 | `src/loopflow/runtime.py` | P0 |
 | Agent | Agent = Backend + Capabilities：能力声明（skills/schema/goal/model）的 marshalling，遵循"尽力而为"原则（backend 原生支持优先，否则框架降级） | `src/loopflow/agent.py` | P0 |
 | Backend Layer | 适配 8 种 AI Agent 后端，默认 CLI 传输，输出归一化为 ACP 兼容事件 | `src/loopflow/backends/` | P0 |
@@ -58,7 +58,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
 | Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |
 | Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义，读取 `loop.md` 获取元数据 | `src/loopflow/discovery.py` | P0 |
-| Dispatch | 扫描队列、按优先级排序、资源锁检查、执行 loop run | `src/loopflow/dispatch.py` | P1 |
+| Dispatch | 扫描队列、按优先级排序、资源锁检查、执行 loopflow run | `src/loopflow/dispatch.py` | P1 |
 | Queue | 队列读写（enqueue、dequeue、list），文件持久化在 `~/.loopflow/queue/` | `src/loopflow/queue.py` | P1 |
 | Web Application | 提供 Loop、Run、Phase、Agent Call、Backend 的查询模型及 run/stop/resume 应用命令，供 CLI 与 Web 复用 | `src/loopflow/application/` | P0 |
 | Web API | 提供本机 HTTP 查询、命令接口和 Run 事件流，不直接实现领域逻辑 | `src/loopflow/presentation/web/` | P0 |
@@ -84,7 +84,7 @@ pwd (工作目录)                          ~/.loopflow/ (loopflow 数据目录)
 │                                          └── <name>/     (分发用声明)
 ```
 
-`pwd` 是工作目录，`loop run` 在此目录下运行 workflow。worktree 隔离在 `pwd/.agents/worktrees/` 下创建，属于项目级资源。`~/.loopflow/runs/` 存储 loopflow 内部运行时状态（类比实例化内存数据），`~/.loopflow/loops/` 存储 workflow 定义。runs 按 `lf_<pwd-path>` 分组，其中 `<pwd-path>` 是工作目录的绝对路径，`/` 替换为 `-`。
+`pwd` 是工作目录，`loopflow run` 在此目录下运行 workflow。worktree 隔离在 `pwd/.agents/worktrees/` 下创建，属于项目级资源。`~/.loopflow/runs/` 存储 loopflow 内部运行时状态（类比实例化内存数据），`~/.loopflow/loops/` 存储 workflow 定义。runs 按 `lf_<pwd-path>` 分组，其中 `<pwd-path>` 是工作目录的绝对路径，`/` 替换为 `-`。
 
 `runs/runs_index.jsonl` 保存无损定位映射，每个 Run 一行，字段固定为 `working_directory`（真实绝对工作目录）、`runs_directory`（`lf_<pwd-path>` 分组目录的绝对路径）和 `run_id`。创建 Run 时追加记录；读取旧 Run 或遇到缺失、损坏的索引记录时，允许回退到目录扫描及 `lf_<pwd-path>` 分组名。
 
@@ -161,9 +161,9 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | state | object | optional | 声明的持久化状态变量，key 为变量名，value 为默认值。仅支持 JSON 可序列化类型 |
 | state.<key> | any | optional | 默认值，类型即约定类型。首次运行时以默认值初始化，每次 agent() 成功后自动持久化 |
 | requires | object | optional | workflow 级别的依赖声明 |
-| requires.environment | string | optional | 环境声明文件路径（相对路径，如 `environment.yml` 或 `pixi.toml`）。`loop run` 启动时校验文件存在，不自动激活或安装。推荐使用 pixi（原生支持 skill 隔离和 npm 依赖），但 loopflow 不约束文件格式 |
+| requires.environment | string | optional | 环境声明文件路径（相对路径，如 `environment.yml` 或 `pixi.toml`）。`loopflow run` 启动时校验文件存在，不自动激活或安装。推荐使用 pixi（原生支持 skill 隔离和 npm 依赖），但 loopflow 不约束文件格式 |
 
-`meta` 必须是纯字面量（无变量、函数调用、表达式），用于静态发现和进度显示。`phases` 声明预期阶段，运行时 `phase()` 调用锚定到声明上。`state` 声明持久化变量，运行时通过 `state.key` 属性访问，自动保存到 `state.json`。`requires.environment` 声明环境文件，`loop run` 启动时校验存在性，激活由 agent 或用户完成。
+`meta` 必须是纯字面量（无变量、函数调用、表达式），用于静态发现和进度显示。`phases` 声明预期阶段，运行时 `phase()` 调用锚定到声明上。`state` 声明持久化变量，运行时通过 `state.key` 属性访问，自动保存到 `state.json`。`requires.environment` 声明环境文件，`loopflow run` 启动时校验存在性，激活由 agent 或用户完成。
 
 ### 运行实例（文件系统）
 
@@ -175,7 +175,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 └── <seq>.jsonl              # 每个 agent 调用的输出缓存
 ```
 
-`<pwd-path>` 是工作目录的绝对路径，`/` 替换为 `-`。例如 `pwd=/Users/vlln/projects/myapp` → `lf_Users-vlln-projects-myapp`。`<uuid>` 是 `uuid.uuid4().hex`，每次 `loop run` 生成唯一标识。
+`<pwd-path>` 是工作目录的绝对路径，`/` 替换为 `-`。例如 `pwd=/Users/vlln/projects/myapp` → `lf_Users-vlln-projects-myapp`。`<uuid>` 是 `uuid.uuid4().hex`，每次 `loopflow run` 生成唯一标识。
 
 ### runs_index.jsonl
 
@@ -305,8 +305,8 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 
 | 规则编号 | 描述 | 触发条件 | 约束 |
 |----------|------|----------|------|
-| BR-001 | 同一 session 不可并发执行 | `loop run` 时检查 lock | 文件锁阻塞，提示已有进程 |
-| BR-002 | Resume 时已完成 Agent 调用自动跳过 | `loop resume` 时检查 `<seq>.jsonl` 是否存在且 `agent_done` 的 `exit_code=0` | 缓存命中则直接返回，不真正执行 |
+| BR-001 | 同一 session 不可并发执行 | `loopflow run` 时检查 lock | 文件锁阻塞，提示已有进程 |
+| BR-002 | Resume 时已完成 Agent 调用自动跳过 | `loopflow resume` 时检查 `<seq>.jsonl` 是否存在且 `agent_done` 的 `exit_code=0` | 缓存命中则直接返回，不真正执行 |
 | BR-003 | Agent 调用序号严格递增 | 每次 `agent()` 调用时 counter+1 | 序号即缓存 key，不可跳跃 |
 | BR-004 | workflow.py 必须定义 `run()` 函数 | 加载 workflow.py 时检查 | 缺少则报错退出 |
 | BR-005 | Agent 定义文件必须含 name 和 description | 解析 agent 文件时检查 | 缺少则报错退出 |
@@ -330,14 +330,14 @@ Agent 隔离层级体系（递进）：
 |----------|------|----------|------|
 | BR-012 | Mock 模式 | `--mock <mode>`（bash 或 auto） | bash：把 prompt 当 shell 执行。auto：有 `output` schema 时根据 schema 生成 mock dict（enum 取第一个值，number 取 0，array 取空列表）；无 schema 时返回固定字符串 `"mock response"` |
 | BR-013 | Skill 注入 | `agent()` 调用时 `requires.skills` 非空 | 按 `~/.agents/skills/` → `~/.loopflow/skills/` 顺序查找 skill 目录。后端支持原生 skill 参数时优先使用；否则将 skill 名称、描述、路径注入到 system prompt。skill 目录不存在时标记为 `[not found]`，不阻塞运行 |
-| BR-014 | 环境文件校验 | `loop run` 启动时 `meta.requires.environment` 存在 | 检查环境文件是否存在（相对于 workflow 目录）。存在则通过，不存在则报错退出。不解析文件内容，不激活环境，不安装依赖 |
+| BR-014 | 环境文件校验 | `loopflow run` 启动时 `meta.requires.environment` 存在 | 检查环境文件是否存在（相对于 workflow 目录）。存在则通过，不存在则报错退出。不解析文件内容，不激活环境，不安装依赖 |
 | BR-015 | Agent 输出实时可见 | `agent()` 执行期间 | `text_handler` 流式写入时同步 append `agent_message_chunk` 事件到 `<seq>.jsonl` 和 `events.jsonl`。完成后写入 `agent_done`。用户可通过 `cat <seq>.jsonl` 实时查看 agent 输出进度 |
 | BR-016 | 缓存事件 ACP 归一化 | `agent()` 执行时 | CLI 后端将原生输出转换为 ACP `SessionNotification` 兼容事件（`agent_message_chunk`/`agent_thought_chunk`/`tool_call`/`tool_call_update`/`usage_update`）。未来 ACP 后端直接透传 |
 | BR-017 | Goal 反馈循环 | `agent()` 调用时 `goal` 参数非空 | 框架进入 goal 模式：内部循环调用 agent，每次迭代复用同一 session（首次 create，后续 resume）。Agent 通过 `__goal.status` 声明状态（active/complete/blocked）。complete 时剥离 `__goal` 返回业务 result。同一 reason 连续 3 次 blocked 抛 `GoalBlocked`。达到 `goal_max_iterations`（默认 10）抛 `GoalBlocked`。`__goal` schema wrapper 由框架自动注入和剥离，对业务层透明 |
 | BR-018 | loop.md 为元数据权威源 | discovery 扫描 loop 时 | 优先读取 `loop.md` 的 frontmatter。`loop.md` 不存在时回退到 `workflow.py` 的 `meta` 字典 |
-| BR-019 | 队列任务不可并发执行同一资源 | `loop dispatch` 时检查资源锁 | 同一 resource 同时只能有一个 loop 运行。加锁失败则跳过该任务，留在队列 |
-| BR-020 | dispatch 幂等 | 每次 `loop dispatch` 调用 | 扫描全部队列文件，逐个尝试加锁执行。锁文件 TTL 30 分钟，超时自动清理 |
-| BR-021 | 手动触发不经队列 | `loop run <name>` | 直接执行，不经过队列。`loop enqueue` 写入队列，由 `loop dispatch` 统一调度 |
+| BR-019 | 队列任务不可并发执行同一资源 | `loopflow dispatch` 时检查资源锁 | 同一 resource 同时只能有一个 loop 运行。加锁失败则跳过该任务，留在队列 |
+| BR-020 | dispatch 幂等 | 每次 `loopflow dispatch` 调用 | 扫描全部队列文件，逐个尝试加锁执行。锁文件 TTL 30 分钟，超时自动清理 |
+| BR-021 | 手动触发不经队列 | `loopflow run <name>` | 直接执行，不经过队列。`loopflow enqueue` 写入队列，由 `loopflow dispatch` 统一调度 |
 | BR-022 | 队列优先级 | 队列中有多个任务时 | 按 priority 升序 → created 升序排列。不抢占正在运行的 loop |
 | BR-023 | WebUI 仅提供本地控制台 | 启动 Web 服务 | 默认只绑定 `127.0.0.1`；非本机绑定必须显式配置，首版不提供多用户认证 |
 | BR-024 | Runs 使用常驻主从工作台 | 用户进入 WebUI 或切换 Run | 左侧保留可筛选的 Runs 列表，右侧原地切换所选 Run，不设置独立的 Runs 列表页跳转流程 |
