@@ -81,22 +81,51 @@ loopflow 一获得 session ID 就追加 `agent_session` 缓存事件。仅在命
 
 ### 5. 人工介入是持久化、可重放的输入
 
-workflow 可以通过 `intervene(key, prompt, schema=None)` 请求人工输入。`key` 在一次确定性重放路径中稳定且唯一。Agent 需要提问时必须返回以下结构化控制结果；loopflow 不从自然语言输出猜测阻塞：
+人工介入有两个来源，共享同一 Request/Response 持久化模型和 WebUI，但语义不同：
+
+| 来源 | consumer | 默认恢复 | 用途 |
+|------|----------|----------|------|
+| workflow `intervene()` | workflow 代码 | `replay` | workflow-level routing/control gate，回答用于决定后续分支 |
+| Agent structured requests | 当前 Agent session | `continue` | agent-level task input，回答作为继续执行所需信息交还给 Agent |
+
+workflow 可以通过 `intervene(key, prompt, options=None, allow_custom=True)` 请求人工输入。`key` 在一次确定性重放路径中稳定且唯一。该 API 更接近 workflow 路由点，而不是 Agent 自主提问机制；回答由 workflow 显式消费。
+
+Agent 需要提问时必须返回结构化控制结果；loopflow 不从自然语言输出猜测阻塞：
 
 ```json
-{"__loopflow":{"status":"waiting_input","key":"approve","prompt":"Approve?","schema":{"type":"boolean"}}}
+{
+  "__loopflow": {
+    "status": "waiting_input",
+    "requests": [
+      {
+        "key": "scope",
+        "prompt": "本轮是否扩大搜索范围？",
+        "options": ["扩大", "不扩大"],
+        "allow_custom": false
+      },
+      {
+        "key": "note",
+        "prompt": "给下一步的补充说明",
+        "options": [],
+        "allow_custom": true
+      }
+    ]
+  }
+}
 ```
+
+Agent request 的 response 统一为 string。`options` 是可选 string array；`allow_custom=false` 时 response 必须属于 options，`allow_custom=true` 时 response 可以是任意非空 string。一个 Agent turn 可以产生多个 requests。同一 Run 中多个 pending requests 主要来自并行 Agent worker，或单个 Agent turn 的多 request 控制输出。
 
 workflow 直接调用产生的请求使用 `resume_mode=replay`，回答通过确定性重放返回。Agent 产生的请求使用 `resume_mode=continue`，只有在 durable `session_id` 已持久化时才可进入 `waiting_input`；否则本次 Call 以 `continue_not_supported` 失败，不创建一个无法继续的人工请求。
 
 首次遇到未回答请求时：
 
-1. 原子写入 request，包含 `request_id`、`key`、`prompt`、可选 schema、关联 `call_id/session_id`；
+1. 原子写入 request，包含 `request_id`、`source`、`key`、`prompt`、`options`、`allow_custom`、关联 `call_id/session_id`；
 2. 追加 `intervention_requested` 事件；
 3. Run 进入 `waiting_input`，当前执行进程正常退出；
 4. 释放 backend、Run 执行锁和资源锁。
 
-提交回答时先校验 schema，再持久化 immutable response 并追加 `intervention_responded`。随后使用相同 `run_id` 自动开始一次恢复。重放再次到达相同 `key` 时直接返回已持久化 response；若请求关联可恢复 Agent session，则以回答作为新消息继续该 session。
+提交回答时先校验 options/custom 约束，再持久化 immutable string response 并追加 `intervention_responded`。随后使用相同 `run_id` 自动开始一次恢复。重放再次到达相同 workflow `key` 时直接返回已持久化 response；若请求关联可恢复 Agent session，则以回答作为新消息继续该 session。
 
 同一 request 只接受一次回答。重复提交相同或不同值均返回 `intervention_already_answered`。`waiting_input` 不是 goal mode 的 `blocked`：前者等待外部输入且可继续，后者仍表示 Agent 无法推进。
 
