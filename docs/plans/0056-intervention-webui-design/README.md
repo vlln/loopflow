@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Intervention WebUI 设计](01-plan-intervention-webui-design.md) | [Report](01-report-intervention-webui-design.md) | pending |
+| 01 | [Intervention WebUI 设计](01-plan-intervention-webui-design.md) | [Report](01-report-intervention-webui-design.md) | done |
 
 ## 背景
 

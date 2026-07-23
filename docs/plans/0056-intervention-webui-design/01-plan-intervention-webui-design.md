@@ -2,7 +2,7 @@
 title: Intervention WebUI Design Plan
 description: 设计用户回答问题介入链路的 WebUI 信息架构、状态表达和交互规则
 type: plan
-status: pending
+status: done
 created: 2026-07-23T15:00:00Z
 ---
 
@@ -79,21 +79,48 @@ Intervention panel 不只展示 pending request：
 
 # Review Questions
 
-请审核以下设计决策：
+审核结论：
 
-1. `cancelled + pending request` 时，回答问题是否应作为最高优先级主操作，`recover_retry` 降为次要动作？
-2. 首版是否接受只支持顶层 schema type，而不做完整 JSON Schema form renderer？
-3. 回答成功但自动恢复失败时，UI 是否需要区分“response 已保存”和“Run 恢复失败”？
-4. 多个 request 是否先按“最早 pending 为主、其他只读折叠”处理？
+1. `cancelled + pending request` 时，回答问题作为最高优先级主操作，`recover_retry` 降为次要动作。
+2. 首版接受只支持顶层 schema type，不做完整 JSON Schema form renderer。
+3. 回答成功但自动恢复失败时，UI 必须区分“response 已保存”和“Run 恢复失败”。
+4. 多个 request 首版按“最早 pending 为主、其他只读折叠”处理。
+
+# Backend Contract Gap
+
+第 3 点需要后端契约支持。当前实现顺序是：
+
+1. `POST /runs/{run_id}/interventions/{request_id}/response` 先原子持久化 answer；
+2. 再自动启动 recover；
+3. 如果 recover 返回 `replay_diverged`、`continue_not_supported` 或 `invalid_run_transition`，HTTP 只返回普通错误。
+
+这意味着前端不能仅凭本次 error response 判断 answer 是否已保存，只能再查询 `GET /runs/{run_id}/interventions` 推断。后续 TEST_INFRA 需要先冻结一个明确契约，例如在错误响应 `details` 中携带：
+
+```json
+{
+  "response_persisted": true,
+  "request_id": "approve-1",
+  "run_id": "abc",
+  "recovery_started": false
+}
+```
+
+或引入等价的 read model 字段。该契约必须区分：
+
+- schema 校验失败：answer 未保存；
+- duplicate answer：answer 原本已存在；
+- answer 已保存但自动恢复失败；
+- answer 已保存且恢复 worker 已启动。
 
 # Acceptance For Next Stage
 
-设计审核通过后，下一阶段应先进入 TEST_INFRA：
+设计已审核通过。下一阶段应先进入 TEST_INFRA：
 
 1. 补 AC，覆盖 intervention panel 视觉层级、cancelled + respond 优先级、answered/history/error 状态。
-2. 补 WebUI contract/DOM 测试计划。
-3. 再进入 DEVELOP 调整现有 0055 实现。
+2. 补 Web API error details 契约，覆盖 answer persisted 但 recovery failed 的区分。
+3. 补 WebUI contract/DOM 测试计划。
+4. 再进入 DEVELOP 调整现有 0055 实现。
 
 # Exit
 
-本 Plan 经用户审核后，才能标记 done 并进入 TEST_INFRA。当前保持 pending。
+本 Plan 已经用户审核通过，可进入 TEST_INFRA。
