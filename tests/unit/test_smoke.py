@@ -1,9 +1,14 @@
 """Smoke tests for loopflow package."""
 
+import tomllib
+from pathlib import Path
+
 
 def test_import():
     import loopflow
-    assert loopflow.__version__ == "0.17.1"
+
+    project = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+    assert loopflow.__version__ == project["project"]["version"]
 
 
 def test_backends_exist():
