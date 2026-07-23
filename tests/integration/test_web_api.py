@@ -13,6 +13,7 @@ from loopflow.infrastructure.web_storage import RunRepository
 from http.server import ThreadingHTTPServer
 
 from loopflow.presentation.web.server import create_server, handler_for, is_loopback
+from tests.web_support.contracts import validate_contract
 from tests.web_support.factories import WebFixtureFactory
 from tests.web_support.http import JsonHttpClient, parse_sse
 
@@ -143,6 +144,9 @@ def test_intervention_endpoints_list_validate_and_respond(api):
         "schema": {"type": "boolean"},
         "status": "pending",
         "resume_mode": "replay",
+        "call_id": None,
+        "created_at": "2026-07-18T22:00:00Z",
+        "responded_at": None,
     })
 
     listed = client.request("GET", "/api/v1/runs/waiting/interventions")
@@ -171,6 +175,9 @@ def test_intervention_endpoints_list_validate_and_respond(api):
         "schema": {"type": "boolean"},
         "status": "pending",
         "resume_mode": "replay",
+        "call_id": None,
+        "created_at": "2026-07-18T22:00:00Z",
+        "responded_at": None,
     })
     stopped = client.request("POST", "/api/v1/runs/cancelled-waiting/stop")
     cancelled_answered = client.request(
@@ -180,10 +187,12 @@ def test_intervention_endpoints_list_validate_and_respond(api):
     )
 
     assert listed.status == 200 and listed.json()["items"][0]["prompt"] == "Approve?"
+    validate_contract("intervention", listed.json()["items"][0])
     assert listed.json()["items"][0]["can_continue_session"] is False
     assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
     assert answered.status == 200 and answered.json()["run_id"] == "waiting"
     listed_after = client.request("GET", "/api/v1/runs/waiting/interventions")
+    validate_contract("intervention", listed_after.json()["items"][0])
     assert listed_after.json()["items"][0]["response"] is True
     assert listed_after.json()["items"][0]["responded_at"]
     assert duplicate.status == 409

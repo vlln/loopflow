@@ -152,6 +152,8 @@ function RunsWorkspace() {
 function InterventionPanel({ runId, items, onAnswered, onError }: { runId: string; items: InterventionSummary[]; onAnswered: () => Promise<void>; onError: (message: string) => void }) {
   const pending = items.find((item) => item.status === 'pending') ?? items[0] ?? null;
   const [busy, setBusy] = useState(false);
+  const [textValue, setTextValue] = useState('');
+  const [numberValue, setNumberValue] = useState('');
   const [jsonValue, setJsonValue] = useState('null');
   if (!pending) return <section className="intervention-panel"><Empty title="Waiting for input" detail="No pending request is available." /></section>;
   const schemaType = typeof pending.schema?.type === 'string' ? pending.schema.type : null;
@@ -165,7 +167,12 @@ function InterventionPanel({ runId, items, onAnswered, onError }: { runId: strin
     try { await submit(JSON.parse(jsonValue)); }
     catch (cause) { onError(messageOf(cause)); }
   };
-  return <section className="intervention-panel" aria-label="Intervention request"><div><span className="eyebrow">{pending.key}</span><h3>{pending.prompt}</h3></div>{schemaType === 'boolean' ? <div className="intervention-actions"><button className="primary-button" disabled={busy} onClick={() => void submit(true)}><Check size={14} />Approve</button><button className="secondary-button" disabled={busy} onClick={() => void submit(false)}><X size={14} />Reject</button></div> : <div className="intervention-json"><textarea aria-label="Intervention response" value={jsonValue} onChange={(event) => setJsonValue(event.target.value)} spellCheck={false} /><button className="primary-button" disabled={busy} onClick={() => void submitJson()}><Check size={14} />Submit</button></div>}</section>;
+  const submitNumber = async () => {
+    const value = Number(numberValue);
+    if (!numberValue.trim() || !Number.isFinite(value)) { onError('response must be number'); return; }
+    await submit(value);
+  };
+  return <section className="intervention-panel" aria-label="Intervention request"><div><span className="eyebrow">{pending.key}</span><h3>{pending.prompt}</h3>{pending.resume_mode === 'continue' && <span className="intervention-mode">Session continuation</span>}</div>{schemaType === 'boolean' ? <div className="intervention-actions"><button className="primary-button" disabled={busy} onClick={() => void submit(true)}><Check size={14} />Approve</button><button className="secondary-button" disabled={busy} onClick={() => void submit(false)}><X size={14} />Reject</button></div> : schemaType === 'string' ? <div className="intervention-field"><input aria-label="Intervention response" value={textValue} onChange={(event) => setTextValue(event.target.value)} /><button className="primary-button" disabled={busy} onClick={() => void submit(textValue)}><Check size={14} />Submit</button></div> : schemaType === 'number' ? <div className="intervention-field"><input aria-label="Intervention response" type="number" value={numberValue} onChange={(event) => setNumberValue(event.target.value)} /><button className="primary-button" disabled={busy} onClick={() => void submitNumber()}><Check size={14} />Submit</button></div> : <div className="intervention-json"><textarea aria-label="Intervention response" value={jsonValue} onChange={(event) => setJsonValue(event.target.value)} spellCheck={false} /><button className="primary-button" disabled={busy} onClick={() => void submitJson()}><Check size={14} />Submit</button></div>}</section>;
 }
 
 function PhaseNodeView({ data, selected }: NodeProps<Node<{ label: string; count: number; current: boolean }>>) {

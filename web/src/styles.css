@@ -215,9 +215,13 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 
 .intervention-panel { display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: #202625; }
 .intervention-panel h3 { margin-top: 4px; color: var(--text); font-size: 14px; line-height: 1.35; }
+.intervention-mode { display: block; margin-top: 6px; color: var(--quiet); font-size: 9px; }
 .intervention-actions { display: flex; gap: 8px; }
-.intervention-json { display: grid; min-width: min(360px, 48%); grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
-.intervention-json textarea { min-height: 42px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-deep); color: var(--text); font: 11px/1.45 monospace; }
+.intervention-field, .intervention-json { display: grid; min-width: min(360px, 48%); grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.intervention-field input, .intervention-json textarea { border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-deep); color: var(--text); outline: 0; }
+.intervention-field input { height: 38px; padding: 0 10px; font-size: 11px; }
+.intervention-json textarea { min-height: 42px; resize: vertical; font: 11px/1.45 monospace; }
+.intervention-field input:focus, .intervention-json textarea:focus { border-color: rgb(204 251 241 / 44%); }
 
 /* Loops uses a focused editor rhythm: quiet navigation, dominant preview. */
 .loops-workspace { grid-template-columns: 272px minmax(0, 1fr); gap: 10px; }

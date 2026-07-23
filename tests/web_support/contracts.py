@@ -157,6 +157,43 @@ DIAGNOSTIC_SCHEMA = {
     },
 }
 
+INTERVENTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "request_id",
+        "key",
+        "prompt",
+        "schema",
+        "status",
+        "call_id",
+        "resume_mode",
+        "can_continue_session",
+        "created_at",
+        "responded_at",
+    ],
+    "properties": {
+        "request_id": {"type": "string"},
+        "key": {"type": "string", "minLength": 1},
+        "prompt": {"type": "string", "minLength": 1},
+        "schema": {"type": ["object", "null"]},
+        "status": {"enum": ["pending", "answered", "closed"]},
+        "call_id": NULLABLE_STRING,
+        "resume_mode": {"enum": ["replay", "continue"]},
+        "can_continue_session": {"type": "boolean"},
+        "response": {},
+        "created_at": {"type": "string"},
+        "responded_at": NULLABLE_STRING,
+    },
+    "allOf": [
+        {
+            "if": {"properties": {"status": {"const": "answered"}}},
+            "then": {"required": ["response"]},
+            "else": {"not": {"required": ["response"]}},
+        }
+    ],
+}
+
 V2_EVENT_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -181,6 +218,7 @@ SCHEMAS = {
     "queue_item": QUEUE_ITEM_SCHEMA,
     "backend": BACKEND_SCHEMA,
     "diagnostic": DIAGNOSTIC_SCHEMA,
+    "intervention": INTERVENTION_SCHEMA,
     "v2_event": V2_EVENT_SCHEMA,
 }
 
@@ -250,6 +288,18 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "stdout": "",
             "stderr": "diagnostic timed out after 100ms",
             "diagnosed_at": "2026-07-18T22:00:00Z",
+        },
+        "intervention": {
+            "request_id": "approve-1",
+            "key": "approve",
+            "prompt": "Approve?",
+            "schema": {"type": "boolean"},
+            "status": "pending",
+            "call_id": None,
+            "resume_mode": "replay",
+            "can_continue_session": False,
+            "created_at": "2026-07-18T22:00:00Z",
+            "responded_at": None,
         },
         "v2_event": {
             "version": 2,
