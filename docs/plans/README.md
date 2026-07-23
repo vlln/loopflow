@@ -30,7 +30,7 @@
 | [0059](0059-agent-intervention-design/) | Agent structured intervention 设计修订 | done | 2026-07-23 |
 | [0060](0060-agent-intervention-test-infra/) | Agent structured intervention 测试契约 | done | 2026-07-23 |
 | [0061](0061-agent-intervention-implementation/) | Agent structured intervention 实现 | done | 2026-07-23 |
-| [0062](0062-system-test-certification/) | SYSTEM_TEST 发布前认证 | pending | 2026-07-23 |
+| [0062](0062-system-test-certification/) | SYSTEM_TEST 发布前认证 | done | 2026-07-23 |
 | [0063](0063-system-test-fix/) | SYSTEM_TEST 局部修复 | done | 2026-07-23 |
 
 ## 状态说明

@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0063 已修复 SYSTEM_TEST 暴露的 workflow kwargs 注入兼容与 vNext contract example 漏同步；当前重新进入 SYSTEM_TEST，继续 0062 发布前系统级认证。 |
+| **设计评估** | 0062 SYSTEM_TEST 认证已通过：MR gate 全绿，Python/Web/Browser/Wheel/manifest 均通过；无阻塞级缺陷，可进入 RELEASE。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
