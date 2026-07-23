@@ -2,7 +2,7 @@
 title: System Test Certification Plan
 description: 在 develop 上执行发布前系统级验证、失败分类和 RELEASE 入口判定
 type: plan
-status: pending
+status: complete
 created: 2026-07-23T00:00:00Z
 ---
 
