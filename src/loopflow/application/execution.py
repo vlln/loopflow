@@ -24,7 +24,7 @@ def execute_workflow(
     run_dir: Path,
 ) -> None:
     """Execute one workflow in the current process and persist its lifecycle."""
-    from loopflow.runtime import agent, log, parallel, phase, pipeline, set_mock, workflow
+    from loopflow.runtime import agent, intervene, log, parallel, phase, pipeline, set_mock, workflow
 
     recover = bool(options.get("recover") or options.get("resume"))
     module, metadata, loop_dir = load_loop(loop)
@@ -87,17 +87,21 @@ def execute_workflow(
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
     set_context(context)
-    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow}
-    if "state" in inspect.signature(module.run).parameters:
+    state_requested = "state" in inspect.signature(module.run).parameters
+    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
+    if state_requested:
         kwargs["state"] = state
     try:
         module.run(**kwargs)
     except KeyboardInterrupt:
         status, error = "cancelled", None
     except Exception as exc:
+        from loopflow.infrastructure.intervention import InterventionPending
         from loopflow.infrastructure.recovery import ReplayDiverged
 
-        if isinstance(exc, ReplayDiverged):
+        if isinstance(exc, InterventionPending):
+            status, error = "waiting_input", None
+        elif isinstance(exc, ReplayDiverged):
             status, error = "failed", "replay_diverged"
         else:
             status, error = "failed", str(exc)
@@ -122,6 +126,8 @@ def execute_workflow(
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
         run_metadata.pop("can_recover_continue", None)
+        if state_requested and context.state is not None:
+            atomic_write_json(run_dir / "state.json", context.state.to_dict())
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)
     run_metadata.pop("process_group_id", None)
@@ -208,7 +214,7 @@ class BackgroundRunExecutor:
                 epoch_started = int(metadata.get("execution_epoch", 0)) > previous_epoch
                 return epoch_started and (
                     ready_path.is_file()
-                    or metadata.get("status") in {"done", "failed", "cancelled"}
+                    or metadata.get("status") in {"done", "failed", "cancelled", "waiting_input"}
                 )
             except (OSError, ValueError, json.JSONDecodeError):
                 return False

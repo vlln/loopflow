@@ -126,6 +126,44 @@ def test_run_lifecycle_commands_preserve_contract(api):
     assert conflict.status == 409 and conflict.json()["error"]["code"] == "invalid_run_transition"
 
 
+def test_intervention_endpoints_list_validate_and_respond(api):
+    client, factory, _ = api
+    waiting = factory.create_run("waiting", status="waiting_input")
+    interventions = waiting / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve-1.json", {
+        "request_id": "approve-1",
+        "key": "approve",
+        "prompt": "Approve?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+
+    listed = client.request("GET", "/api/v1/runs/waiting/interventions")
+    invalid = client.request(
+        "POST",
+        "/api/v1/runs/waiting/interventions/approve-1/response",
+        {"response": "yes"},
+    )
+    answered = client.request(
+        "POST",
+        "/api/v1/runs/waiting/interventions/approve-1/response",
+        {"response": True},
+    )
+    duplicate = client.request(
+        "POST",
+        "/api/v1/runs/waiting/interventions/approve-1/response",
+        {"response": False},
+    )
+
+    assert listed.status == 200 and listed.json()["items"][0]["prompt"] == "Approve?"
+    assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
+    assert answered.status == 200 and answered.json()["run_id"] == "waiting"
+    assert duplicate.status == 409
+    assert duplicate.json()["error"]["code"] == "intervention_already_answered"
+
+
 def test_queue_loops_and_backend_endpoints(api):
     client, _, _ = api
     loops = client.request("GET", "/api/v1/loops")

@@ -37,6 +37,8 @@ export interface RunDetail extends RunSummary {
   malformed: RunEvent[];
 }
 
+export interface InterventionSummary { request_id: string; key: string; prompt: string; schema: Record<string, unknown> | null; status: string; resume_mode: string; call_id: string | null; created_at: string | null; responded_at: string | null }
+
 export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null }
 export interface LoopFile { path: string; media_type: string | null; size: number; previewable: boolean }
 export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }

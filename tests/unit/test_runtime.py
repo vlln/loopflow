@@ -271,6 +271,67 @@ class TestAgent:
                 assert done["call_id"] == "0001" and done["status"] == "succeeded"
                 assert done["exit_code"] == 0 and done["session_id"] == "test-sid"
 
+    def test_agent_structured_intervention_requires_durable_session(self, temp_run_dir, mock_backend):
+        from loopflow.domain.capabilities import Capabilities
+        from loopflow.runtime import RunContext, agent, set_context
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+        mock_backend.capabilities = Capabilities(resume_session=True, durable_session_id=True)
+        control = {
+            "__loopflow": {
+                "status": "waiting_input",
+                "key": "approve",
+                "prompt": "Approve?",
+                "schema": {"type": "boolean"},
+            }
+        }
+
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent", return_value=(
+                [{"type": "agent_message", "content": json.dumps(control)},
+                 {"type": "agent_done", "exit_code": 0, "session_id": "sid-durable"}]
+            )):
+                with pytest.raises(RuntimeError, match="intervention_pending"):
+                    agent("ask")
+
+        request = json.loads(next((temp_run_dir / "interventions").glob("*.json")).read_text())
+        assert request["resume_mode"] == "continue"
+        assert request["call_id"] == "0001"
+        assert request["session_id"] == "sid-durable"
+
+    def test_agent_intervention_without_durable_session_fails_without_request(self, temp_run_dir, mock_backend):
+        from loopflow.domain.capabilities import Capabilities
+        from loopflow.runtime import RunContext, agent, set_context
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+        mock_backend.capabilities = Capabilities(resume_session=True, durable_session_id=False)
+        control = {"__loopflow": {"status": "waiting_input", "key": "approve", "prompt": "Approve?", "schema": None}}
+
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent", return_value=(
+                [{"type": "agent_message", "content": json.dumps(control)},
+                 {"type": "agent_done", "exit_code": 0, "session_id": "sid"}]
+            )):
+                with pytest.raises(RuntimeError, match="continue_not_supported"):
+                    agent("ask")
+
+        assert not (temp_run_dir / "interventions").exists()
+
+    def test_agent_natural_language_question_is_plain_output(self, temp_run_dir, mock_backend):
+        from loopflow.runtime import RunContext, agent, set_context
+        ctx = RunContext(run_dir=temp_run_dir)
+        set_context(ctx)
+
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent", return_value=(
+                [{"type": "agent_message", "content": "Should I continue?"},
+                 {"type": "agent_done", "exit_code": 0, "session_id": "sid"}]
+            )):
+                result = agent("ask")
+
+        assert result.value == "Should I continue?"
+        assert not (temp_run_dir / "interventions").exists()
+
     def test_agent_resume_cache_hit(self, temp_run_dir, mock_backend):
         from loopflow.runtime import RunContext, set_context, agent
         # Pre-write cache

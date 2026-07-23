@@ -26,7 +26,10 @@ function installFetch(durable = true) {
     if (path.startsWith('/api/v1/runs?')) return response({ items: runs.filter((run) => path.includes('status=failed') ? run.status === 'failed' : true), next_cursor: null });
     if (path === '/api/v1/runs') return options?.method === 'POST' ? response(runs[0], 201) : response({ items: runs, next_cursor: null });
     if (path === '/api/v1/runs/run-live') return response(detail);
-    if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[1], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
+    if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'] });
+    if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: [{ request_id: 'approve-1', key: 'approve', prompt: 'Approve?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, created_at: '2026-07-18T22:00:00Z', responded_at: null }] });
+    if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[2], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
+    if (path.includes('/api/v1/runs/run-waiting/interventions/approve-1/response')) return response({ ...runs[1], status: 'running', allowed_actions: ['stop'] });
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);
@@ -127,6 +130,19 @@ it('disables Continue when the failed backend has no durable session', async () 
   expect(unavailable).toBeDisabled();
   expect(unavailable).toHaveAttribute('title', 'Backend did not persist a durable session');
   expect(screen.queryByRole('button', { name: 'Resume run' })).not.toBeInTheDocument();
+});
+
+it('answers a waiting intervention with a boolean control', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+
+  expect(await screen.findByRole('heading', { name: 'Approve?' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Resume run' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-waiting/interventions/approve-1/response'));
 });
 
 it('navigates Loop declarations and renders files', async () => {

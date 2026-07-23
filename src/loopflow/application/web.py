@@ -10,6 +10,14 @@ from typing import Any, Protocol
 
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
 from loopflow.infrastructure.web_events import project_events, replay_v2
+from loopflow.infrastructure.intervention import (
+    InterventionAlreadyAnswered,
+    InterventionNotFound,
+    InterventionValidationError,
+    answer_request,
+    list_requests,
+    read_request,
+)
 from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json, now_iso, read_json
 
 
@@ -159,6 +167,56 @@ class WebApplication:
             raise
         if returned != run_id:
             raise ApplicationError("internal_error", "Executor changed run_id during recovery")
+        return self.runs.read_summary(run_dir)
+
+    def list_interventions(self, run_id: str) -> dict[str, Any]:
+        return {"items": list_requests(self._run_dir(run_id))}
+
+    def respond_intervention(self, run_id: str, request_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        run_dir = self._run_dir(run_id)
+        body = body or {}
+        _fields(body, {"response"})
+        if "response" not in body:
+            raise ApplicationError("validation_failed", "response is required")
+        try:
+            existing = read_request(run_dir, request_id)
+            if existing.get("status") == "answered" or "response" in existing:
+                raise InterventionAlreadyAnswered(request_id)
+            if self.runs.read_summary(run_dir)["status"] != "waiting_input":
+                raise ApplicationError("invalid_run_transition", f"Run '{run_id}' is not waiting for input")
+            request = answer_request(run_dir, run_id, request_id, body["response"])
+        except InterventionNotFound as error:
+            raise ApplicationError("intervention_not_found", f"Intervention '{request_id}' was not found") from error
+        except InterventionAlreadyAnswered as error:
+            raise ApplicationError("intervention_already_answered", f"Intervention '{request_id}' was already answered") from error
+        except InterventionValidationError as error:
+            raise ApplicationError("validation_failed", str(error)) from error
+        if self.executor is None:
+            raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
+        metadata = read_json(run_dir / "run.json")
+        mode = "continue" if request.get("resume_mode") == "continue" else "retry"
+        if mode == "continue":
+            metadata["failed_call_id"] = request.get("call_id")
+            metadata["failed_session_id"] = request.get("session_id")
+            metadata["can_recover_continue"] = True
+            self._write_metadata(run_dir, metadata)
+        try:
+            returned = self.executor.start(
+                metadata["loop"],
+                metadata.get("args", {}),
+                {"recover": True, "recovery_mode": mode},
+                run_id=run_id,
+            )
+        except RuntimeError as error:
+            if str(error) == "replay_diverged":
+                raise ApplicationError("replay_diverged", f"Run '{run_id}' replay diverged") from error
+            if str(error) == "continue_not_supported":
+                raise ApplicationError("continue_not_supported", f"Run '{run_id}' cannot continue its session") from error
+            if str(error) == "invalid_run_transition":
+                raise ApplicationError("invalid_run_transition", f"Run '{run_id}' already has a worker") from error
+            raise
+        if returned != run_id:
+            raise ApplicationError("internal_error", "Executor changed run_id during intervention response")
         return self.runs.read_summary(run_dir)
 
     def resume_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:

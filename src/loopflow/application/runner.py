@@ -22,6 +22,11 @@ from loopflow.domain import (
     marshal,
     run_goal_loop,
 )
+from loopflow.infrastructure.intervention import (
+    InterventionIdentity,
+    answered_for_call,
+    request_or_answer,
+)
 
 
 # ── infra retry patterns ────────────────────────────────────────────────────
@@ -277,7 +282,14 @@ class AgentRunner:
             selection = select_for_replay(
                 cache_path, call_id=call_id, input_digest=input_digest
             )
-            if selection.outcome in {"hit", "legacy_hit"}:
+            target = self.ctx.recovery_target_call_id
+            target_continue = (
+                self.ctx.recovery_mode == "continue"
+                and target is not None
+                and target == call_id
+                and not self.ctx.recovery_target_reached
+            )
+            if selection.outcome in {"hit", "legacy_hit"} and not target_continue:
                 self.ctx.legacy_recovery = selection.outcome == "legacy_hit"
                 cached = selection.segment.text
                 if schema:
@@ -287,7 +299,6 @@ class AgentRunner:
                         pass
                 else:
                     return cached, None
-            target = self.ctx.recovery_target_call_id
             is_target = not self.ctx.recovery_target_reached
             if is_target and target is not None and target != call_id:
                 raise ReplayDiverged(
@@ -309,6 +320,12 @@ class AgentRunner:
                 resume_session_id = segment.session_id
             if is_target:
                 self.ctx.mark_recovery_ready()
+
+        backend_prompt = prompt
+        if resume_session_id:
+            answered = answered_for_call(self.ctx.run_dir, call_id)
+            if answered is not None:
+                backend_prompt = json.dumps(answered.get("response"), ensure_ascii=False)
 
         start_type = "agent_resume" if resume_session_id else "agent_start"
         append_cache_event(
@@ -357,7 +374,7 @@ class AgentRunner:
             else:
                 # Real backend call with infra retry
                 text, exit_code, backend_sid = self._call_backend(
-                    prompt, retry_hint, session, model, cwd, cache_path,
+                    backend_prompt, retry_hint, session, model, cwd, cache_path,
                     resume_session_id, attempt, call_id, input_digest,
                 )
 
@@ -371,12 +388,14 @@ class AgentRunner:
                 try:
                     result = json.loads(text)
                     self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
+                    self._handle_control_result(result, backend_sid, call_id)
                     self._persist_state()
                     return result, backend_sid
                 except json.JSONDecodeError:
                     extracted = extract_json(text, schema)
                     if extracted is not None:
                         self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
+                        self._handle_control_result(extracted, backend_sid, call_id)
                         self._persist_state()
                         return extracted, backend_sid
                     if attempt >= max_retries:
@@ -391,10 +410,49 @@ class AgentRunner:
 
             # No schema → return text
             self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
+            self._handle_control_result(_maybe_json(text), backend_sid, call_id)
             self._persist_state()
             return text, backend_sid
 
         raise AgentError(f"Agent failed after {max_retries} retries")
+
+    def _handle_control_result(
+        self,
+        result: Any,
+        backend_sid: str | None,
+        call_id: str,
+    ) -> None:
+        if not isinstance(result, dict):
+            return
+        control = result.get("__loopflow")
+        if not isinstance(control, dict) or control.get("status") != "waiting_input":
+            return
+        key = control.get("key")
+        prompt = control.get("prompt")
+        schema = control.get("schema")
+        if not isinstance(key, str) or not key or not isinstance(prompt, str) or not prompt:
+            raise RuntimeError("validation_failed")
+        if schema is not None and not isinstance(schema, dict):
+            raise RuntimeError("validation_failed")
+        caps = self.backend.capabilities if self.backend else Capabilities()
+        if not (
+            backend_sid
+            and getattr(caps, "resume_session", False)
+            and getattr(caps, "durable_session_id", False)
+        ):
+            raise RuntimeError("continue_not_supported")
+        request_or_answer(
+            self.ctx.run_dir,
+            self.ctx.run_id,
+            InterventionIdentity(
+                key=key,
+                prompt=prompt,
+                schema=schema,
+                resume_mode="continue",
+                call_id=call_id,
+                session_id=backend_sid,
+            ),
+        )
 
     def _call_backend(
         self,
@@ -509,3 +567,10 @@ class AgentRunner:
         raise AgentError(
             f"Agent call failed after {len(INFRA_BACKOFF)} infra retries"
         )
+
+
+def _maybe_json(text: str) -> Any:
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return None

@@ -13,6 +13,7 @@
 | [0042](0042-recovery-controls-infra/) | 恢复控制测试基础设施 | done | 2026-07-22 |
 | [0043](0043-recovery-engine/) | 确定性恢复引擎 | done | 2026-07-22 |
 | [0044](0044-reliable-stop/) | 可靠停止 | done | 2026-07-22 |
+| [0045](0045-intervention-control/) | 阻塞人工介入 | done | 2026-07-22 |
 | [0046](0046-grok-backend/) | Grok 后端接入 | done | 2026-07-22 |
 | [0047](0047-grok-acp/) | Grok ACP 接入 | done | 2026-07-22 |
 

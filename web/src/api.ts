@@ -1,4 +1,4 @@
-import type { Backend, Diagnostic, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunSummary } from './types';
+import type { Backend, Diagnostic, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunSummary } from './types';
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public status: number, public details: Record<string, unknown> = {}) {
@@ -21,6 +21,8 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   runs: (params = '') => request<Page<RunSummary>>(`/runs${params}`),
   run: (id: string) => request<RunDetail>(`/runs/${encodeURIComponent(id)}`),
+  interventions: (id: string) => request<{ items: InterventionSummary[] }>(`/runs/${encodeURIComponent(id)}/interventions`),
+  respondIntervention: (id: string, requestId: string, response: unknown) => request<RunSummary>(`/runs/${encodeURIComponent(id)}/interventions/${encodeURIComponent(requestId)}/response`, { method: 'POST', body: JSON.stringify({ response }) }),
   createRun: (body: Record<string, unknown>) => request<RunSummary>('/runs', { method: 'POST', body: JSON.stringify(body) }),
   runAction: (id: string, action: string, body?: Record<string, unknown>) => request<RunSummary>(`/runs/${encodeURIComponent(id)}/${action}`, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }),
   loops: () => request<Page<LoopSummary>>('/loops'),

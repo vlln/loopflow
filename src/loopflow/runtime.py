@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import threading
+import types
 from pathlib import Path
 from typing import Any, Callable
 
@@ -20,6 +21,7 @@ from loopflow.infrastructure.context import (
     _write_event,
     set_context,
 )
+from loopflow.infrastructure.intervention import InterventionIdentity, request_or_answer
 from loopflow.infrastructure.backends import manager as _backend_manager
 from loopflow.infrastructure.worktree import _create_worktree
 from loopflow.presentation.events import _emit_log, _emit_phase
@@ -195,14 +197,11 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
     if not path.is_file():
         return None
 
-    spec = importlib.util.spec_from_file_location(
-        f"wf_sub_{_ctx_module._ctx.run_id}_{path.stem}", path)
-    if spec is None or spec.loader is None:
-        return None
-
-    mod = importlib.util.module_from_spec(spec)
+    mod = types.ModuleType(f"wf_sub_{_ctx_module._ctx.run_id}_{path.stem}")
+    mod.__file__ = str(path)
     try:
-        spec.loader.exec_module(mod)
+        source = path.read_text(encoding="utf-8")
+        exec(compile(source, str(path), "exec"), mod.__dict__)
     except Exception:
         return None
 
@@ -213,7 +212,7 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
     sig = inspect.signature(mod.run)
     run_kwargs = dict(
         agent=agent, parallel=parallel, pipeline=pipeline,
-        phase=phase, log=log, args=args or {},
+        phase=phase, log=log, args=args or {}, intervene=intervene,
         workflow=workflow,
     )
     if "state" in sig.parameters:
@@ -227,3 +226,23 @@ def phase(title: str) -> None:
 
 def log(message: str) -> None:
     _emit_log(message)
+
+
+def intervene(key: str, prompt: str, schema: dict | None = None) -> Any:
+    if not isinstance(key, str) or not key:
+        raise ValueError("intervention key must be a non-empty string")
+    if not isinstance(prompt, str) or not prompt:
+        raise ValueError("intervention prompt must be a non-empty string")
+    if schema is not None and not isinstance(schema, dict):
+        raise ValueError("intervention schema must be object or null")
+    ctx = _ctx_module._ctx
+    return request_or_answer(
+        ctx.run_dir,
+        ctx.run_id,
+        InterventionIdentity(
+            key=key,
+            prompt=prompt,
+            schema=schema,
+            resume_mode="replay",
+        ),
+    )

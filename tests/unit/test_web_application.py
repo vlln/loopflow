@@ -201,6 +201,88 @@ def test_continue_requires_durable_session_and_concurrent_recovery_is_rejected(t
     assert error.value.code == "invalid_run_transition"
 
 
+def test_intervention_response_validates_persists_and_recovers_same_run(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve-1.json", {
+        "request_id": "approve-1",
+        "key": "approve",
+        "prompt": "Approve?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+
+    listed = service.list_interventions("waiting")
+    result = service.respond_intervention("waiting", "approve-1", {"response": True})
+
+    request = json.loads((interventions / "approve-1.json").read_text())
+    assert listed["items"][0]["prompt"] == "Approve?"
+    assert request["status"] == "answered"
+    assert request["response"] is True
+    assert result["run_id"] == "waiting"
+    assert service.executor.calls[-1] == (
+        "hello",
+        {},
+        {"recover": True, "recovery_mode": "retry"},
+        "waiting",
+    )
+
+
+def test_intervention_response_rejects_invalid_and_duplicate_without_recovery(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve-1.json", {
+        "request_id": "approve-1",
+        "key": "approve",
+        "prompt": "Approve?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+
+    with pytest.raises(ApplicationError) as invalid:
+        service.respond_intervention("waiting", "approve-1", {"response": "yes"})
+
+    before = (interventions / "approve-1.json").read_bytes()
+    assert invalid.value.code == "validation_failed"
+    assert service.executor.calls == []
+    assert (interventions / "approve-1.json").read_bytes() == before
+
+    service.respond_intervention("waiting", "approve-1", {"response": False})
+    answered = (interventions / "approve-1.json").read_bytes()
+    with pytest.raises(ApplicationError) as duplicate:
+        service.respond_intervention("waiting", "approve-1", {"response": True})
+
+    assert duplicate.value.code == "intervention_already_answered"
+    assert (interventions / "approve-1.json").read_bytes() == answered
+    assert len(service.executor.calls) == 1
+
+
+def test_intervention_null_schema_accepts_any_json_value(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "free-1.json", {
+        "request_id": "free-1",
+        "key": "free",
+        "prompt": "Value?",
+        "schema": None,
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+
+    service.respond_intervention("waiting", "free-1", {"response": {"x": [1]}})
+
+    request = json.loads((interventions / "free-1.json").read_text())
+    assert request["response"] == {"x": [1]}
+
+
 def test_rerun_preserves_source_and_queue_validates(tmp_path):
     service, factory, _ = app(tmp_path)
     source = factory.create_run("done", args={"x": 1})

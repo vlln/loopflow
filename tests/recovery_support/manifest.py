@@ -87,6 +87,17 @@ TEST_NODES = {
     "AC-021-E-2": "tests/unit/test_web_application.py::test_stop_rejects_cancelled_without_modifying_run",
     "AC-021-F-1": "tests/unit/test_web_application.py::test_stop_does_not_signal_when_cancelling_write_fails",
     "AC-021-F-2": "tests/unit/test_web_application.py::test_stop_pid_reuse_does_not_signal_and_records_process_gone",
+    "AC-022-N-1": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
+    "AC-022-N-2": "tests/unit/test_web_application.py::test_intervention_response_validates_persists_and_recovers_same_run",
+    "AC-022-N-3": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_requires_durable_session",
+    "AC-022-N-4": "web/src/App.test.tsx::answers a waiting intervention with a boolean control",
+    "AC-022-B-1": "tests/integration/test_web_api.py::test_intervention_endpoints_list_validate_and_respond",
+    "AC-022-B-2": "tests/unit/test_web_application.py::test_intervention_null_schema_accepts_any_json_value",
+    "AC-022-E-1": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
+    "AC-022-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
+    "AC-022-E-3": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+    "AC-022-F-1": "tests/unit/test_web_execution.py::test_workflow_intervention_replay_diverges_on_prompt_change",
+    "AC-022-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {

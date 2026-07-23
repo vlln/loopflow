@@ -40,6 +40,7 @@ ERROR_STATUS = {
     "invalid_run_transition": 409,
     "replay_diverged": 409,
     "continue_not_supported": 409,
+    "intervention_already_answered": 409,
     "run_not_stale": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
@@ -48,6 +49,7 @@ ERROR_STATUS = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "intervention_not_found": 404,
     "atomic_write_failed": 500,
     "internal_error": 500,
     "diagnostic_start_failed": 503,
@@ -139,6 +141,17 @@ def handler_for(
                 return
             if method == "GET" and path == "/backends":
                 self._json(200, self.app.list_backends())
+                return
+
+            intervention = re.fullmatch(r"/runs/([^/]+)/interventions(?:/([^/]+)/response)?", path)
+            if intervention:
+                run_id, request_id = intervention.groups()
+                if method == "GET" and request_id is None:
+                    self._json(200, self.app.list_interventions(run_id))
+                elif method == "POST" and request_id is not None:
+                    self._json(200, self.app.respond_intervention(run_id, request_id, self._body()))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
                 return
 
             match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events))?", path)

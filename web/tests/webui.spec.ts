@@ -25,7 +25,7 @@ async function installApi(page: Page) {
       return json({ items, next_cursor: null });
     }
     if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } }] });
-    if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[1], allowed_actions: ['recover_retry', 'recover_continue'] });
+    if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[2], allowed_actions: ['recover_retry', 'recover_continue'] });
     if (/\/api\/v1\/runs\/[^/]+\/(stop|recover|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'running', allowed_actions: ['stop'] });
     if (path === '/api/v1/loops') return json({ items: [loopSummary], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return json(loopDetail);
@@ -130,7 +130,7 @@ test('all icon-only controls expose names and tooltips', async ({ page }) => {
 
 test('keeps a thousand Runs reachable without resizing the workspace', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium-1440', 'large-list boundary is viewport-independent');
-  const bulkRuns = Array.from({ length: 1000 }, (_, index) => { const id = `bulk-${String(index + 1).padStart(4, '0')}`; return { ...runs[1], run_id: id, working_directory: `lf_tmp-bulk-${String(index + 1).padStart(4, '0')}` }; });
+  const bulkRuns = Array.from({ length: 1000 }, (_, index) => { const id = `bulk-${String(index + 1).padStart(4, '0')}`; return { ...runs[2], run_id: id, working_directory: `lf_tmp-bulk-${String(index + 1).padStart(4, '0')}` }; });
   await page.unroute('**/api/v1/**');
   await page.route('**/api/v1/runs?*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: bulkRuns, next_cursor: null }) }));
   await page.route('**/api/v1/runs/*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...detail, ...bulkRuns.at(-1), allowed_actions: ['recover_retry'] }) }));

@@ -350,7 +350,7 @@
       "fixture": "workflow 调用 `intervene(key=\"approve\", prompt=\"Approve?\", schema={\"type\":\"boolean\"})`，尚无 response",
       "action": "运行 workflow",
       "assertion": "request 原子持久化；追加 intervention_requested；Run 变为 waiting_input；worker 退出且释放执行锁",
-      "test_node": "planned::ac-022-n-1",
+      "test_node": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
       "targets": [
         "unit:intervention"
       ],
@@ -366,7 +366,7 @@
       "fixture": "A 为 waiting_input，request R 未回答",
       "action": "对 R 提交 boolean `true`",
       "assertion": "response 持久化；追加 intervention_responded；A 自动恢复；重放到相同 key 时返回 true；A.run_id 不变",
-      "test_node": "planned::ac-022-n-2",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_validates_persists_and_recovers_same_run",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
@@ -382,7 +382,7 @@
       "fixture": "Agent 结构化请求人工输入且缓存含 durable session_id",
       "action": "回答 request",
       "assertion": "前序 Call 返回缓存；目标 Call 使用回答恢复原 backend session；自然语言文本不用于推断请求",
-      "test_node": "planned::ac-022-n-3",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_requires_durable_session",
       "targets": [
         "unit:session-intervention"
       ],
@@ -398,7 +398,7 @@
       "fixture": "Run A 为 waiting_input，request schema 为 boolean",
       "action": "在 WebUI 选择 A",
       "assertion": "展示 request prompt 和布尔输入控件；不展示自由文本 Resume；提交后按钮禁用直到响应完成",
-      "test_node": "planned::ac-022-n-4",
+      "test_node": "web/src/App.test.tsx::answers a waiting intervention with a boolean control",
       "targets": [
         "ui:intervention"
       ],
@@ -414,7 +414,7 @@
       "fixture": "Web 服务在 Run waiting_input 期间重启",
       "action": "重启后查询 request 并回答",
       "assertion": "request 仍可读取；回答后同一 Run 恢复，不依赖旧进程内存",
-      "test_node": "planned::ac-022-b-1",
+      "test_node": "tests/integration/test_web_api.py::test_intervention_endpoints_list_validate_and_respond",
       "targets": [
         "unit:intervention"
       ],
@@ -430,7 +430,7 @@
       "fixture": "request schema 为 null",
       "action": "提交任意 JSON 值",
       "assertion": "值作为 immutable response 接受并在重放时原样返回",
-      "test_node": "planned::ac-022-b-2",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_null_schema_accepts_any_json_value",
       "targets": [
         "unit:intervention"
       ],
@@ -446,7 +446,7 @@
       "fixture": "request schema 要求 boolean",
       "action": "提交字符串 `\"yes\"`",
       "assertion": "返回 422 validation_failed；request 保持未回答；不启动恢复 worker",
-      "test_node": "planned::ac-022-e-1",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
@@ -463,7 +463,7 @@
       "fixture": "response 已提交",
       "action": "再次提交相同或不同值",
       "assertion": "返回 409 intervention_already_answered；原 response 不变；不重复启动恢复",
-      "test_node": "planned::ac-022-e-2",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
@@ -480,7 +480,7 @@
       "fixture": "Agent 返回结构化 intervention，但没有 durable session_id",
       "action": "处理 Agent 结果",
       "assertion": "Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request",
-      "test_node": "planned::ac-022-e-3",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
       "targets": [
         "unit:session-intervention"
       ],
@@ -496,7 +496,7 @@
       "fixture": "workflow 重放时相同位置产生不同 intervention key 或 prompt digest",
       "action": "回答后自动恢复",
       "assertion": "Run 变为 failed，错误为 replay_diverged；不把旧 response 注入新请求",
-      "test_node": "planned::ac-022-f-1",
+      "test_node": "tests/unit/test_web_execution.py::test_workflow_intervention_replay_diverges_on_prompt_change",
       "targets": [
         "unit:intervention-replay"
       ],
@@ -512,7 +512,7 @@
       "fixture": "Agent 仅在自然语言输出中提出问题，没有结构化请求",
       "action": "Agent 正常返回",
       "assertion": "loopflow 不创建 intervention；结果按普通 Agent 输出处理",
-      "test_node": "planned::ac-022-f-2",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
       "targets": [
         "unit:agent-control-output"
       ],

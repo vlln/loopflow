@@ -213,6 +213,12 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .diagnostic-panel { flex: 0 0 auto; padding: 14px; }.diagnostic-panel > header { min-height: 42px; padding: 0 2px 12px; }.diagnostic-context { display: flex; min-width: 0; align-items: center; gap: 14px; color: var(--muted); font-size: 9px; }.diagnostic-context code { max-width: 360px; overflow: hidden; color: var(--quiet); text-overflow: ellipsis; white-space: nowrap; }
 .diagnostic-console { min-height: 118px; overflow: hidden; border-radius: 6px; background: var(--surface-deep); }.console-heading { display: flex; min-height: 38px; align-items: center; gap: 8px; padding: 0 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; }.console-heading .status { margin-left: auto; }.console-heading time { color: var(--quiet); }.diagnostic-console pre { min-height: 76px; max-height: 150px; overflow: auto; margin: 0; padding: 12px; color: #b8bfbd; font-size: 9px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 
+.intervention-panel { display: flex; min-height: 84px; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: #202625; }
+.intervention-panel h3 { margin-top: 4px; color: var(--text); font-size: 14px; line-height: 1.35; }
+.intervention-actions { display: flex; gap: 8px; }
+.intervention-json { display: grid; min-width: min(360px, 48%); grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.intervention-json textarea { min-height: 42px; resize: vertical; border: 1px solid var(--line-strong); border-radius: 6px; background: var(--surface-deep); color: var(--text); font: 11px/1.45 monospace; }
+
 /* Loops uses a focused editor rhythm: quiet navigation, dominant preview. */
 .loops-workspace { grid-template-columns: 272px minmax(0, 1fr); gap: 10px; }
 .loops-workspace .panel { border-radius: 8px; }

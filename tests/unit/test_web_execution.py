@@ -124,6 +124,64 @@ def test_recovery_fails_when_workflow_ends_before_target(tmp_path, monkeypatch):
     assert metadata["error_summary"] == "replay_diverged"
 
 
+def test_workflow_intervention_waits_and_replays_answer(tmp_path, monkeypatch):
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    loop.joinpath("workflow.py").write_text(
+        "def run(intervene, state, **kwargs):\n"
+        "    state.count = intervene('approve', 'Approve?', {'type': 'boolean'})\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    run = tmp_path / "run"
+    run.mkdir()
+
+    execute_workflow("hello", {}, {}, "run-1", run)
+
+    metadata = json.loads((run / "run.json").read_text())
+    request = json.loads(next((run / "interventions").glob("*.json")).read_text())
+    assert metadata["status"] == "waiting_input"
+    assert request["status"] == "pending"
+    request["status"] = "answered"
+    request["response"] = True
+    request["responded_at"] = "now"
+    next((run / "interventions").glob("*.json")).write_text(json.dumps(request))
+
+    execute_workflow("hello", {}, {"recover": True, "recovery_mode": "retry"}, "run-1", run)
+
+    metadata = json.loads((run / "run.json").read_text())
+    assert metadata["status"] == "done"
+    assert json.loads((run / "state.json").read_text())["count"] is True
+
+
+def test_workflow_intervention_replay_diverges_on_prompt_change(tmp_path, monkeypatch):
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    workflow = loop / "workflow.py"
+    workflow.write_text(
+        "def run(intervene, **kwargs):\n"
+        "    intervene('approve', 'Approve?', {'type': 'boolean'})\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    run = tmp_path / "run"
+    run.mkdir()
+    execute_workflow("hello", {}, {}, "run-1", run)
+    request_path = next((run / "interventions").glob("*.json"))
+    request = json.loads(request_path.read_text())
+    request["status"] = "answered"
+    request["response"] = True
+    request_path.write_text(json.dumps(request))
+    workflow.write_text(
+        "def run(intervene, **kwargs):\n"
+        "    intervene('approve', 'Changed?', {'type': 'boolean'})\n"
+    )
+
+    execute_workflow("hello", {}, {"recover": True, "recovery_mode": "retry"}, "run-1", run)
+
+    metadata = json.loads((run / "run.json").read_text())
+    assert metadata["status"] == "failed"
+    assert metadata["error_summary"] == "replay_diverged"
+
+
 def test_background_executor_rejects_second_worker_for_same_run(tmp_path):
     run = tmp_path / "runs" / "same"
     run.mkdir(parents=True)
