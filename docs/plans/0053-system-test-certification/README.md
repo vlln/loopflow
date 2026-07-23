@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [系统测试认证](01-plan-system-test-certification.md) | 待创建 | pending |
+| 01 | [系统测试认证](01-plan-system-test-certification.md) | [Report](01-report-system-test-certification.md) | done |
 
 ## 背景
 

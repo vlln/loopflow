@@ -2,7 +2,7 @@
 title: System Test Certification Plan
 description: 在取消恢复语义实现后重新执行 develop 系统级验证
 type: plan
-status: pending
+status: done
 created: 2026-07-23T13:30:00Z
 ---
 

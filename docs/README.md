@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0050/0051/0052 已完成取消恢复语义修订、测试契约同步和产品实现。`cancelled` 可按恢复边界 recover/respond，waiting_input stop 保留 pending request，atomic worker 取消边界禁止 continue。下一步重新执行系统测试认证，再恢复 0049 release certification。 |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | 0050/0051/0052 已完成取消恢复语义修订、测试契约同步和产品实现；0053 SYSTEM_TEST 通过。`cancelled` 可按恢复边界 recover/respond，waiting_input stop 保留 pending request，atomic worker 取消边界禁止 continue。下一步恢复 0049 release certification。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
