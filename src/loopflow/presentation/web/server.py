@@ -143,6 +143,14 @@ def handler_for(
                 self._json(200, self.app.list_backends())
                 return
 
+            batch_intervention = re.fullmatch(r"/runs/([^/]+)/interventions/responses", path)
+            if batch_intervention:
+                if method == "POST":
+                    self._json(200, self.app.respond_interventions(batch_intervention.group(1), self._body()))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
+                return
+
             intervention = re.fullmatch(r"/runs/([^/]+)/interventions(?:/([^/]+)/response)?", path)
             if intervention:
                 run_id, request_id = intervention.groups()

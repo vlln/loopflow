@@ -35,8 +35,11 @@ class InterventionValidationError(ValueError):
 class InterventionIdentity:
     key: str
     prompt: str
-    schema: dict[str, Any] | None
     resume_mode: str
+    source: str = "workflow"
+    options: tuple[str, ...] = ()
+    allow_custom: bool = True
+    schema: dict[str, Any] | None = None
     call_id: str | None = None
     session_id: str | None = None
 
@@ -67,9 +70,24 @@ def list_requests(run_dir: Path) -> list[dict[str, Any]]:
 
 
 def answered_for_call(run_dir: Path, call_id: str) -> dict[str, Any] | None:
-    for item in list_requests(run_dir):
-        if item.get("call_id") == call_id and item.get("status") == "answered":
-            return read_request(run_dir, str(item["request_id"]))
+    answers = [
+        read_request(run_dir, str(item["request_id"]))
+        for item in list_requests(run_dir)
+        if item.get("call_id") == call_id and item.get("status") == "answered"
+    ]
+    if len(answers) == 1:
+        return answers[0]
+    if answers:
+        return {
+            "responses": [
+                {
+                    "key": item.get("key"),
+                    "prompt": item.get("prompt"),
+                    "response": item.get("response"),
+                }
+                for item in answers
+            ]
+        }
     return None
 
 
@@ -84,10 +102,17 @@ def read_request(run_dir: Path, request_id: str) -> dict[str, Any]:
 
 
 def request_or_answer(run_dir: Path, run_id: str, identity: InterventionIdentity) -> Any:
-    request_id = request_id_for(identity.key)
+    request_id = _request_id_for_identity(identity)
     path = request_path(run_dir, request_id)
     prompt_digest = stable_digest(identity.prompt)
-    schema_digest = stable_digest(identity.schema)
+    schema_digest = stable_digest(
+        {
+            "schema": identity.schema,
+            "options": list(identity.options),
+            "allow_custom": identity.allow_custom,
+            "source": identity.source,
+        }
+    )
     if path.is_file():
         current = read_request(run_dir, request_id)
         if (
@@ -105,8 +130,11 @@ def request_or_answer(run_dir: Path, run_id: str, identity: InterventionIdentity
     request = {
         "request_id": request_id,
         "key": identity.key,
+        "source": identity.source,
         "prompt": identity.prompt,
         "prompt_digest": prompt_digest,
+        "options": list(identity.options),
+        "allow_custom": identity.allow_custom,
         "schema": identity.schema,
         "schema_digest": schema_digest,
         "resume_mode": identity.resume_mode,
@@ -128,31 +156,72 @@ def request_or_answer(run_dir: Path, run_id: str, identity: InterventionIdentity
 
 
 def answer_request(run_dir: Path, run_id: str, request_id: str, response: Any) -> dict[str, Any]:
-    request = read_request(run_dir, request_id)
-    if request.get("status") == "answered" or "response" in request:
-        raise InterventionAlreadyAnswered(request_id)
-    if request.get("status") != "pending":
-        raise InterventionNotFound(request_id)
-    validate_response(request.get("schema"), response)
-    answered = dict(request)
-    answered.update({
-        "status": "answered",
-        "response": response,
-        "responded_at": now_iso(),
-        "updated_at": now_iso(),
-    })
-    atomic_write_json(request_path(run_dir, request_id), answered)
-    EventWriter().append(
-        run_dir,
-        "intervention_responded",
-        run_id=run_id,
-        call_id=answered.get("call_id"),
-        payload={"request_id": request_id},
-    )
-    return answered
+    return answer_requests(run_dir, run_id, [{"request_id": request_id, "response": response}])[0]
 
 
-def validate_response(schema: Any, response: Any) -> None:
+def answer_requests(run_dir: Path, run_id: str, responses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not responses:
+        raise InterventionValidationError("responses must be a non-empty array")
+    seen: set[str] = set()
+    prepared: list[tuple[str, dict[str, Any], Any]] = []
+    for item in responses:
+        if not isinstance(item, dict):
+            raise InterventionValidationError("each response must be an object")
+        request_id = item.get("request_id")
+        if not isinstance(request_id, str) or not request_id:
+            raise InterventionValidationError("request_id is required")
+        if request_id in seen:
+            raise InterventionValidationError("duplicate request_id")
+        seen.add(request_id)
+        response = item.get("response")
+        request = read_request(run_dir, request_id)
+        if request.get("status") == "answered" or "response" in request:
+            raise InterventionAlreadyAnswered(request_id)
+        if request.get("status") != "pending":
+            raise InterventionNotFound(request_id)
+        validate_response(request, response)
+        prepared.append((request_id, request, response))
+
+    answered_items: list[dict[str, Any]] = []
+    answered_at = now_iso()
+    for request_id, request, response in prepared:
+        answered = dict(request)
+        answered.update({
+            "status": "answered",
+            "response": response,
+            "responded_at": answered_at,
+            "updated_at": now_iso(),
+        })
+        atomic_write_json(request_path(run_dir, request_id), answered)
+        EventWriter().append(
+            run_dir,
+            "intervention_responded",
+            run_id=run_id,
+            call_id=answered.get("call_id"),
+            payload={"request_id": request_id},
+        )
+        answered_items.append(answered)
+    return answered_items
+
+
+def validate_response(request_or_schema: Any, response: Any) -> None:
+    if isinstance(request_or_schema, dict) and (
+        "options" in request_or_schema or "allow_custom" in request_or_schema or "schema" in request_or_schema
+    ):
+        request = request_or_schema
+        if request.get("source") == "agent" or "options" in request or "allow_custom" in request:
+            if not isinstance(response, str) or not response:
+                raise InterventionValidationError("response must be a non-empty string")
+            options = request.get("options")
+            if not isinstance(options, list) or any(not isinstance(item, str) for item in options):
+                raise InterventionValidationError("options must be a string array")
+            allow_custom = bool(request.get("allow_custom", True))
+            if not allow_custom and response not in options:
+                raise InterventionValidationError("response must match one of the request options")
+            return
+        schema = request.get("schema")
+    else:
+        schema = request_or_schema
     if schema is None:
         return
     if not isinstance(schema, dict):
@@ -177,9 +246,11 @@ def _summary(request: dict[str, Any]) -> dict[str, Any]:
     )
     summary = {
         "request_id": request.get("request_id"),
+        "source": request.get("source", "workflow" if request.get("resume_mode") == "replay" else "agent"),
         "key": request.get("key"),
         "prompt": request.get("prompt"),
-        "schema": request.get("schema"),
+        "options": request.get("options") if isinstance(request.get("options"), list) else _options_from_schema(request.get("schema")),
+        "allow_custom": bool(request.get("allow_custom", request.get("schema") is None)),
         "status": request.get("status"),
         "resume_mode": request.get("resume_mode"),
         "call_id": request.get("call_id"),
@@ -188,5 +259,35 @@ def _summary(request: dict[str, Any]) -> dict[str, Any]:
         "responded_at": request.get("responded_at"),
     }
     if request.get("status") == "answered" and "response" in request:
-        summary["response"] = request.get("response")
+        summary["response"] = _response_to_string(request.get("response"))
     return summary
+
+
+def _options_from_schema(schema: Any) -> list[str]:
+    if isinstance(schema, dict) and schema.get("type") == "boolean":
+        return ["true", "false"]
+    return []
+
+
+def _response_to_string(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return "null"
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _request_id_for_identity(identity: InterventionIdentity) -> str:
+    if identity.source == "agent" and identity.call_id:
+        slug_key = f"{identity.call_id}-{identity.key}"
+        digest_key: Any = {
+            "source": identity.source,
+            "call_id": identity.call_id,
+            "key": identity.key,
+        }
+        slug = re.sub(r"[^a-zA-Z0-9_.-]+", "-", slug_key).strip("-")[:40] or "request"
+        digest = stable_digest(digest_key).split(":", 1)[1][:12]
+        return f"{slug}-{digest}"
+    return request_id_for(identity.key)

@@ -290,7 +290,7 @@ def test_intervention_response_validates_persists_and_recovers_same_run(tmp_path
     assert listed["items"][0]["can_continue_session"] is False
     assert request["status"] == "answered"
     assert request["response"] is True
-    assert listed_after["items"][0]["response"] is True
+    assert listed_after["items"][0]["response"] == "true"
     assert listed_after["items"][0]["responded_at"] == request["responded_at"]
     assert result["run_id"] == "waiting"
     assert service.executor.calls[-1] == (
@@ -482,6 +482,77 @@ def test_intervention_null_schema_accepts_any_json_value(tmp_path):
 
     request = json.loads((interventions / "free-1.json").read_text())
     assert request["response"] == {"x": [1]}
+
+
+def test_batch_intervention_response_persists_all_and_recovers_once(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    for request_id, options, allow_custom in (
+        ("first", ["yes", "no"], False),
+        ("second", ["ship", "hold"], True),
+    ):
+        factory.write_json(interventions / f"{request_id}.json", {
+            "request_id": request_id,
+            "source": "agent",
+            "key": request_id,
+            "prompt": f"{request_id}?",
+            "options": options,
+            "allow_custom": allow_custom,
+            "schema": None,
+            "status": "pending",
+            "resume_mode": "continue",
+            "call_id": "0001",
+            "session_id": "sid-1",
+        })
+
+    result = service.respond_interventions("waiting", {
+        "responses": [
+            {"request_id": "first", "response": "yes"},
+            {"request_id": "second", "response": "custom note"},
+        ]
+    })
+
+    assert result["run_id"] == "waiting"
+    assert len(service.executor.calls) == 1
+    assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "continue"}
+    assert json.loads((interventions / "first.json").read_text())["response"] == "yes"
+    assert json.loads((interventions / "second.json").read_text())["response"] == "custom note"
+
+
+def test_batch_intervention_response_is_all_or_nothing(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    for request_id in ("first", "second"):
+        factory.write_json(interventions / f"{request_id}.json", {
+            "request_id": request_id,
+            "source": "agent",
+            "key": request_id,
+            "prompt": f"{request_id}?",
+            "options": ["yes", "no"],
+            "allow_custom": False,
+            "schema": None,
+            "status": "pending",
+            "resume_mode": "continue",
+            "call_id": "0001",
+            "session_id": "sid-1",
+        })
+    before = {path.name: path.read_bytes() for path in interventions.glob("*.json")}
+
+    with pytest.raises(ApplicationError) as error:
+        service.respond_interventions("waiting", {
+            "responses": [
+                {"request_id": "first", "response": "yes"},
+                {"request_id": "second", "response": "other"},
+            ]
+        })
+
+    assert error.value.code == "validation_failed"
+    assert service.executor.calls == []
+    assert {path.name: path.read_bytes() for path in interventions.glob("*.json")} == before
 
 
 def test_rerun_preserves_source_and_queue_validates(tmp_path):

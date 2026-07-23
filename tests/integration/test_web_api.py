@@ -193,12 +193,53 @@ def test_intervention_endpoints_list_validate_and_respond(api):
     assert answered.status == 200 and answered.json()["run_id"] == "waiting"
     listed_after = client.request("GET", "/api/v1/runs/waiting/interventions")
     validate_contract("intervention", listed_after.json()["items"][0])
-    assert listed_after.json()["items"][0]["response"] is True
+    assert listed_after.json()["items"][0]["response"] == "true"
     assert listed_after.json()["items"][0]["responded_at"]
     assert duplicate.status == 409
     assert duplicate.json()["error"]["code"] == "intervention_already_answered"
     assert stopped.status == 200 and stopped.json()["allowed_actions"] == ["recover_retry", "respond", "rerun"]
     assert cancelled_answered.status == 200
+
+
+def test_batch_intervention_endpoint_is_all_or_nothing(api):
+    client, factory, _ = api
+    waiting = factory.create_run("batch-waiting", status="waiting_input")
+    interventions = waiting / "interventions"
+    interventions.mkdir()
+    for request_id in ("first", "second"):
+        factory.write_json(interventions / f"{request_id}.json", {
+            "request_id": request_id,
+            "source": "agent",
+            "key": request_id,
+            "prompt": f"{request_id}?",
+            "options": ["yes", "no"],
+            "allow_custom": False,
+            "schema": None,
+            "status": "pending",
+            "resume_mode": "continue",
+            "call_id": "0001",
+            "session_id": "sid-1",
+            "created_at": "2026-07-18T22:00:00Z",
+            "responded_at": None,
+        })
+    before = {path.name: path.read_bytes() for path in interventions.glob("*.json")}
+
+    invalid = client.request("POST", "/api/v1/runs/batch-waiting/interventions/responses", {
+        "responses": [
+            {"request_id": "first", "response": "yes"},
+            {"request_id": "second", "response": "other"},
+        ]
+    })
+    assert invalid.status == 422
+    assert {path.name: path.read_bytes() for path in interventions.glob("*.json")} == before
+
+    answered = client.request("POST", "/api/v1/runs/batch-waiting/interventions/responses", {
+        "responses": [
+            {"request_id": "first", "response": "yes"},
+            {"request_id": "second", "response": "no"},
+        ]
+    })
+    assert answered.status == 200 and answered.json()["run_id"] == "batch-waiting"
 
 
 def test_queue_loops_and_backend_endpoints(api):

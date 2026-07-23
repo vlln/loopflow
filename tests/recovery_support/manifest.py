@@ -132,6 +132,22 @@ TEST_NODES = {
     "AC-022-E-5": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
     "AC-022-F-1": "tests/unit/test_web_execution.py::test_workflow_intervention_replay_diverges_on_prompt_change",
     "AC-022-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
+    "AC-023-N-1": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-N-2": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+    "AC-023-N-3": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-N-4": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
+    "AC-023-N-5": "web/src/App.test.tsx::answers multiple pending requests in one submit",
+    "AC-023-B-1": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-B-2": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+    "AC-023-B-3": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+    "AC-023-E-1": "tests/unit/test_web_application.py::test_batch_intervention_response_is_all_or_nothing",
+    "AC-023-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
+    "AC-023-E-3": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+    "AC-023-E-4": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
+    "AC-023-E-5": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-F-1": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
+    "AC-023-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+    "AC-023-F-3": "tests/integration/test_web_api.py::test_batch_intervention_endpoint_is_all_or_nothing",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {

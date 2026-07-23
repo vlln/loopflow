@@ -228,13 +228,28 @@ def log(message: str) -> None:
     _emit_log(message)
 
 
-def intervene(key: str, prompt: str, schema: dict | None = None) -> Any:
+def intervene(
+    key: str,
+    prompt: str,
+    schema: dict | None = None,
+    *,
+    options: list[str] | tuple[str, ...] | None = None,
+    allow_custom: bool = True,
+) -> Any:
     if not isinstance(key, str) or not key:
         raise ValueError("intervention key must be a non-empty string")
     if not isinstance(prompt, str) or not prompt:
         raise ValueError("intervention prompt must be a non-empty string")
     if schema is not None and not isinstance(schema, dict):
         raise ValueError("intervention schema must be object or null")
+    if options is None:
+        request_options: tuple[str, ...] = ()
+    elif isinstance(options, (list, tuple)) and all(isinstance(item, str) for item in options):
+        request_options = tuple(options)
+    else:
+        raise ValueError("intervention options must be a string array")
+    if not isinstance(allow_custom, bool):
+        raise ValueError("intervention allow_custom must be boolean")
     ctx = _ctx_module._ctx
     return request_or_answer(
         ctx.run_dir,
@@ -242,6 +257,8 @@ def intervene(key: str, prompt: str, schema: dict | None = None) -> Any:
         InterventionIdentity(
             key=key,
             prompt=prompt,
+            options=request_options,
+            allow_custom=allow_custom,
             schema=schema,
             resume_mode="replay",
         ),

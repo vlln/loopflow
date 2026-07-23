@@ -325,7 +325,8 @@ class AgentRunner:
         if resume_session_id:
             answered = answered_for_call(self.ctx.run_dir, call_id)
             if answered is not None:
-                backend_prompt = json.dumps(answered.get("response"), ensure_ascii=False)
+                payload = answered if "responses" in answered else answered.get("response")
+                backend_prompt = json.dumps(payload, ensure_ascii=False)
 
         start_type = "agent_resume" if resume_session_id else "agent_start"
         append_cache_event(
@@ -427,13 +428,6 @@ class AgentRunner:
         control = result.get("__loopflow")
         if not isinstance(control, dict) or control.get("status") != "waiting_input":
             return
-        key = control.get("key")
-        prompt = control.get("prompt")
-        schema = control.get("schema")
-        if not isinstance(key, str) or not key or not isinstance(prompt, str) or not prompt:
-            raise RuntimeError("validation_failed")
-        if schema is not None and not isinstance(schema, dict):
-            raise RuntimeError("validation_failed")
         caps = self.backend.capabilities if self.backend else Capabilities()
         if not (
             backend_sid
@@ -441,18 +435,53 @@ class AgentRunner:
             and getattr(caps, "durable_session_id", False)
         ):
             raise RuntimeError("continue_not_supported")
-        request_or_answer(
-            self.ctx.run_dir,
-            self.ctx.run_id,
-            InterventionIdentity(
-                key=key,
-                prompt=prompt,
-                schema=schema,
-                resume_mode="continue",
-                call_id=call_id,
-                session_id=backend_sid,
-            ),
-        )
+        requests = control.get("requests")
+        if requests is None:
+            requests = [{
+                "key": control.get("key"),
+                "prompt": control.get("prompt"),
+                "schema": control.get("schema"),
+            }]
+        if not isinstance(requests, list) or not requests:
+            raise RuntimeError("validation_failed")
+        first_pending = None
+        from loopflow.infrastructure.intervention import InterventionPending
+        for item in requests:
+            if not isinstance(item, dict):
+                raise RuntimeError("validation_failed")
+            key = item.get("key")
+            prompt = item.get("prompt")
+            options = item.get("options", [])
+            allow_custom = item.get("allow_custom", True)
+            schema = item.get("schema")
+            if not isinstance(key, str) or not key or not isinstance(prompt, str) or not prompt:
+                raise RuntimeError("validation_failed")
+            if not isinstance(options, list) or any(not isinstance(option, str) for option in options):
+                raise RuntimeError("validation_failed")
+            if not isinstance(allow_custom, bool):
+                raise RuntimeError("validation_failed")
+            if schema is not None and not isinstance(schema, dict):
+                raise RuntimeError("validation_failed")
+            try:
+                request_or_answer(
+                    self.ctx.run_dir,
+                    self.ctx.run_id,
+                    InterventionIdentity(
+                        key=key,
+                        prompt=prompt,
+                        source="agent",
+                        options=tuple(options),
+                        allow_custom=allow_custom,
+                        schema=schema,
+                        resume_mode="continue",
+                        call_id=call_id,
+                        session_id=backend_sid,
+                    ),
+                )
+            except InterventionPending as pending:
+                first_pending = first_pending or pending
+        if first_pending is not None:
+            raise first_pending
 
     def _call_backend(
         self,

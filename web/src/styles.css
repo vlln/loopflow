@@ -228,6 +228,16 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .intervention-field input { height: 38px; padding: 0 10px; font-size: 11px; }
 .intervention-json textarea { min-height: 42px; resize: vertical; padding: 8px 10px; font: 11px/1.45 monospace; }
 .intervention-field input:focus, .intervention-json textarea:focus { border-color: rgb(204 251 241 / 44%); }
+.intervention-questions { display: grid; max-height: 260px; gap: 8px; overflow: auto; padding-right: 2px; }
+.intervention-question { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-deep); }
+.intervention-question header { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.intervention-question header span { overflow: hidden; color: var(--muted); font-size: 10px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.intervention-question p { margin: 0; color: var(--text); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
+.intervention-options { display: flex; flex-wrap: wrap; gap: 6px; }
+.intervention-options button { min-height: 30px; padding: 0 9px; border: 1px solid var(--line-strong); border-radius: 6px; background: transparent; color: var(--muted); font-size: 10px; }
+.intervention-options button:hover, .intervention-options button.is-selected { border-color: #64d8ca; background: #26302e; color: var(--text); }
+.intervention-question input { width: 100%; height: 36px; padding: 0 10px; border: 1px solid var(--line-strong); border-radius: 6px; background: #181b1b; color: var(--text); font-size: 11px; outline: 0; }
+.intervention-question input:focus { border-color: rgb(204 251 241 / 44%); }
 .intervention-history-empty { color: var(--quiet); font-size: 11px; }
 .intervention-history { min-width: 0; border-top: 1px solid var(--line); color: var(--muted); }
 .intervention-history summary { display: flex; min-height: 30px; align-items: center; gap: 6px; color: var(--quiet); font-size: 10px; font-weight: 650; cursor: pointer; }

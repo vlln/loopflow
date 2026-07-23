@@ -153,32 +153,30 @@ function RunsWorkspace() {
 
 function InterventionPanel({ runId, items, onAnswered, onError }: { runId: string; items: InterventionSummary[]; onAnswered: () => Promise<void>; onError: (message: string) => void }) {
   const pendingItems = items.filter((item) => item.status === 'pending');
-  const pending = pendingItems[0] ?? null;
-  const history = pending ? items.filter((item) => item.request_id !== pending.request_id) : items;
+  const history = items.filter((item) => item.status !== 'pending');
   const [busy, setBusy] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [textValue, setTextValue] = useState('');
-  const [numberValue, setNumberValue] = useState('');
-  const [jsonValue, setJsonValue] = useState('null');
-  if (!pending) return <section className="intervention-panel is-history" aria-label="Intervention request"><InterventionHistory items={history} /></section>;
-  const schemaType = typeof pending.schema?.type === 'string' ? pending.schema.type : null;
-  const submit = async (value: unknown) => {
+  const [responses, setResponses] = useState<Record<string, string>>({});
+  useEffect(() => {
+    setResponses((current) => Object.fromEntries(pendingItems.map((item) => [item.request_id, current[item.request_id] ?? defaultResponse(item)])));
+  }, [items]);
+  if (pendingItems.length === 0) return <section className="intervention-panel is-history" aria-label="Intervention request"><InterventionHistory items={history} /></section>;
+  const submit = async () => {
+    const payload = pendingItems.map((item) => ({ request_id: item.request_id, response: responses[item.request_id]?.trim() ?? '' }));
+    if (payload.some((item) => !item.response)) { setSubmitError('all responses are required'); onError('all responses are required'); return; }
     setBusy(true);
     setSubmitError(null);
-    try { await api.respondIntervention(runId, pending.request_id, value); await onAnswered(); }
+    try { await api.respondInterventions(runId, payload); await onAnswered(); }
     catch (cause) { const message = messageOf(cause); setSubmitError(message); onError(message); }
     finally { setBusy(false); }
   };
-  const submitJson = async () => {
-    try { await submit(JSON.parse(jsonValue)); }
-    catch (cause) { const message = messageOf(cause); setSubmitError(message); onError(message); }
-  };
-  const submitNumber = async () => {
-    const value = Number(numberValue);
-    if (!numberValue.trim() || !Number.isFinite(value)) { setSubmitError('response must be number'); onError('response must be number'); return; }
-    await submit(value);
-  };
-  return <section className="intervention-panel" aria-label="Intervention request"><div className="intervention-main"><div><span className="eyebrow">{pending.key}</span><h3>{pending.prompt}</h3><div className="intervention-meta"><Status value={pending.status} />{pending.resume_mode === 'continue' && <span>Session continuation</span>}</div></div>{submitError && <span className="intervention-error" role="status">{submitError}</span>}</div><div className="intervention-response">{schemaType === 'boolean' ? <div className="intervention-actions"><button className="primary-button" disabled={busy} onClick={() => void submit(true)}><Check size={14} />Approve</button><button className="secondary-button" disabled={busy} onClick={() => void submit(false)}><X size={14} />Reject</button></div> : schemaType === 'string' ? <div className="intervention-field"><input aria-label="Intervention response" value={textValue} onChange={(event) => setTextValue(event.target.value)} /><button className="primary-button" disabled={busy} onClick={() => void submit(textValue)}><Check size={14} />Submit</button></div> : schemaType === 'number' ? <div className="intervention-field"><input aria-label="Intervention response" type="number" value={numberValue} onChange={(event) => setNumberValue(event.target.value)} /><button className="primary-button" disabled={busy} onClick={() => void submitNumber()}><Check size={14} />Submit</button></div> : <div className="intervention-json"><textarea aria-label="Intervention response" value={jsonValue} onChange={(event) => setJsonValue(event.target.value)} spellCheck={false} /><button className="primary-button" disabled={busy} onClick={() => void submitJson()}><Check size={14} />Submit</button></div>}{history.length > 0 && <InterventionHistory items={history} />}</div></section>;
+  return <section className="intervention-panel" aria-label="Intervention request"><div className="intervention-main"><div><span className="eyebrow">Input required</span><h3>{pendingItems.length} pending request{pendingItems.length === 1 ? '' : 's'}</h3><div className="intervention-meta"><Status value="pending" />{pendingItems.some((item) => item.resume_mode === 'continue') && <span>Session continuation</span>}</div></div>{submitError && <span className="intervention-error" role="status">{submitError}</span>}</div><div className="intervention-response"><div className="intervention-questions">{pendingItems.map((item) => <InterventionQuestion key={item.request_id} item={item} value={responses[item.request_id] ?? ''} onChange={(value) => setResponses((current) => ({ ...current, [item.request_id]: value }))} />)}</div><div className="intervention-actions"><button className="primary-button" disabled={busy} onClick={() => void submit()}><Check size={14} />Submit all</button></div>{history.length > 0 && <InterventionHistory items={history} />}</div></section>;
+}
+
+function InterventionQuestion({ item, value, onChange }: { item: InterventionSummary; value: string; onChange: (value: string) => void }) {
+  const options = interventionOptions(item);
+  const allowCustom = item.allow_custom ?? options.length === 0;
+  return <article className="intervention-question"><header><span>{item.key}</span><Status value={item.status} /></header><p>{item.prompt}</p>{options.length > 0 && <div className="intervention-options">{options.map((option) => <button key={option} className={value === option ? 'is-selected' : ''} onClick={() => onChange(option)}>{option}</button>)}</div>}{allowCustom && <input aria-label={`Response for ${item.key}`} value={value} onChange={(event) => onChange(event.target.value)} placeholder={options.length ? 'Custom response' : 'Response'} />}</article>;
 }
 
 function InterventionHistory({ items }: { items: InterventionSummary[] }) {
@@ -319,6 +317,8 @@ function Fact({ label, value }: { label: string; value: string }) { return <div 
 function formatDuration(ms: number | null) { if (ms === null) return '—'; if (ms < 1000) return `${ms} ms`; const seconds = Math.round(ms / 1000); return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`; }
 function formatTime(value: unknown) { if (typeof value !== 'string') return ''; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
 function formatResponse(value: unknown) { return typeof value === 'string' ? value : value === undefined ? '—' : value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
+function interventionOptions(item: InterventionSummary) { if (item.options?.length) return item.options; return item.schema?.type === 'boolean' ? ['true', 'false'] : []; }
+function defaultResponse(item: InterventionSummary) { const options = interventionOptions(item); return item.allow_custom === false && options.length === 1 ? options[0] : ''; }
 function eventPayload(event: RunEvent): Record<string, unknown> { return event.payload ?? Object.fromEntries(Object.entries(event).filter(([key]) => !['version', 'event_id', 'type', 'ts', 'run_id', 'phase', 'phase_id', 'call_id'].includes(key))); }
 function firstString(value: Record<string, unknown>, ...keys: string[]) { for (const key of keys) if (typeof value[key] === 'string' && value[key]) return value[key] as string; return null; }
 function eventLabel(event: RunEvent) { return (({ phase: 'Phase entered', agent_start: 'Agent started', agent_message: 'Agent message', agent_message_chunk: 'Agent message', agent_done: 'Agent completed', log: 'Log', error: 'Error' } as Record<string, string>)[event.type] ?? event.type.replaceAll('_', ' ')) || 'Malformed event'; }
