@@ -209,6 +209,17 @@ Body：
 
 200：status=running、execution_epoch 已递增的 `RunSummary`。
 
+前置条件错误由 application command 保证副作用边界：
+
+| 错误 | HTTP/code | 副作用边界 |
+|------|-----------|------------|
+| response 不符合 request schema 或 body 不合约 | 422 `validation_failed` | response 不落盘；不启动恢复 worker |
+| request 不存在 | 404 `intervention_not_found` | Run 和 request 集合不变；不启动恢复 worker |
+| request 已 answered | 409 `intervention_already_answered` | 原 response 不覆盖；不重复启动恢复 worker |
+| Run 当前不允许 respond | 409 `invalid_run_transition` | request 不变；不启动恢复 worker |
+
+response 持久化成功后，后续恢复 worker/agent 失败按普通 Run execution failure 表达，不作为 Intervention 特殊状态建模。
+
 错误：404 `run_not_found` 或 `intervention_not_found`；409 `invalid_run_transition`、`intervention_already_answered`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。
 
 ### `POST /runs/{run_id}/rerun`

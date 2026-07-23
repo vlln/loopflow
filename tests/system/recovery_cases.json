@@ -529,7 +529,7 @@
       "fixture": "request schema 要求 boolean",
       "action": "提交字符串 `\"yes\"`",
       "assertion": "返回 422 validation_failed；request 保持未回答；不启动恢复 worker",
-      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_schema_without_persisting_or_recovery",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
@@ -546,7 +546,7 @@
       "fixture": "response 已提交",
       "action": "再次提交相同或不同值",
       "assertion": "返回 409 intervention_already_answered；原 response 不变；不重复启动恢复",
-      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
@@ -571,6 +571,40 @@
         {
           "kind": "unit",
           "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-4",
+      "fixture": "Run A 存在但 request R 不存在",
+      "action": "对 R 提交 response",
+      "assertion": "返回 404 intervention_not_found；Run/request 集合不变；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 404,
+          "code": "intervention_not_found"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-5",
+      "fixture": "Run A 当前不是 waiting_input/cancelled，但存在 pending request R",
+      "action": "对 R 提交 response",
+      "assertion": "返回 409 invalid_run_transition；R 保持 pending 且 response 不落盘；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
         }
       ]
     },

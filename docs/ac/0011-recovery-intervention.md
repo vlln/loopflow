@@ -113,6 +113,8 @@ created: 2026-07-22T06:35:57Z
 | AC-022-E-1 | request schema 要求 boolean | 提交字符串 `"yes"` | 返回 422 validation_failed；request 保持未回答；不启动恢复 worker | 自动化 |
 | AC-022-E-2 | response 已提交 | 再次提交相同或不同值 | 返回 409 intervention_already_answered；原 response 不变；不重复启动恢复 | 自动化 |
 | AC-022-E-3 | Agent 返回结构化 intervention，但没有 durable session_id | 处理 Agent 结果 | Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request | 自动化 |
+| AC-022-E-4 | Run A 存在但 request R 不存在 | 对 R 提交 response | 返回 404 intervention_not_found；Run/request 集合不变；不启动恢复 worker | 自动化 |
+| AC-022-E-5 | Run A 当前不是 waiting_input/cancelled，但存在 pending request R | 对 R 提交 response | 返回 409 invalid_run_transition；R 保持 pending 且 response 不落盘；不启动恢复 worker | 自动化 |
 
 ## 失败场景
 

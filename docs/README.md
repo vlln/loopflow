@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 0.18.0 本地 RELEASE 已完成：Grok backend/ACP、可靠恢复、attempt 取消和人工介入闭环进入 `main` 与 `develop`，tag `v0.18.0` 已创建。下一轮迭代从 DESIGN 开始；若需要对外发布，还需推送分支和 tag。 |
+| **当前阶段** | `TEST_INFRA` |
+| **设计评估** | 0056 已冻结 Intervention WebUI/respond 语义：respond 前置条件错误是框架层 command 业务边界；进入 TEST_INFRA 补 AC/interface/contract tests 后再调整实现。0.18.0 本地 RELEASE 已完成，若需要对外发布，还需推送分支和 tag。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

@@ -25,6 +25,7 @@
 | [0054](0054-status-contract-alignment/) | 状态契约对齐 | done | 2026-07-23 |
 | [0055](0055-intervention-frontend-contract/) | Intervention 前后端契约对齐 | done | 2026-07-23 |
 | [0056](0056-intervention-webui-design/) | Intervention WebUI 设计 | done | 2026-07-23 |
+| [0057](0057-intervention-respond-test-infra/) | Intervention respond 错误边界测试契约 | done | 2026-07-23 |
 
 ## 状态说明
 

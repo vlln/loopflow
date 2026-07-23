@@ -62,7 +62,7 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-022-B-1 AC-022-B-2", "unit:intervention")
     assign("AC-022-B-3", "GET /api/v1/runs/{run_id}", "GET /api/v1/runs/{run_id}/interventions")
     assign(
-        "AC-022-E-1 AC-022-E-2",
+        "AC-022-E-1 AC-022-E-2 AC-022-E-4 AC-022-E-5",
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response",
     )
     assign("AC-022-E-3", "unit:session-intervention")
@@ -106,9 +106,11 @@ TEST_NODES = {
     "AC-022-B-1": "tests/integration/test_web_api.py::test_intervention_endpoints_list_validate_and_respond",
     "AC-022-B-2": "tests/unit/test_web_application.py::test_intervention_null_schema_accepts_any_json_value",
     "AC-022-B-3": "tests/unit/test_web_application.py::test_cancelled_pending_intervention_remains_pending_without_response",
-    "AC-022-E-1": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
-    "AC-022-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
+    "AC-022-E-1": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_schema_without_persisting_or_recovery",
+    "AC-022-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
     "AC-022-E-3": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+    "AC-022-E-4": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+    "AC-022-E-5": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
     "AC-022-F-1": "tests/unit/test_web_execution.py::test_workflow_intervention_replay_diverges_on_prompt_change",
     "AC-022-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
 }
@@ -150,6 +152,12 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
             "value": 409,
             "code": "intervention_already_answered",
         }
+    ],
+    "AC-022-E-4": [
+        {"kind": "http_status", "value": 404, "code": "intervention_not_found"}
+    ],
+    "AC-022-E-5": [
+        {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
 }
 
