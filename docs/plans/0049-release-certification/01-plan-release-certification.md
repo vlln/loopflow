@@ -2,7 +2,7 @@
 title: Release Certification Plan
 description: 执行 RELEASE 阶段的版本确认、CHANGELOG、release 分支、发布冒烟和 tag
 type: plan
-status: pending
+status: done
 created: 2026-07-23T00:00:00Z
 ---
 

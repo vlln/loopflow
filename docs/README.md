@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | 0050/0051/0052 已完成取消恢复语义修订、测试契约同步和产品实现；0053 SYSTEM_TEST 通过。`cancelled` 可按恢复边界 recover/respond，waiting_input stop 保留 pending request，atomic worker 取消边界禁止 continue。下一步恢复 0049 release certification。 |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | 0.18.0 本地 RELEASE 已完成：Grok backend/ACP、可靠恢复、attempt 取消和人工介入闭环进入 `main` 与 `develop`，tag `v0.18.0` 已创建。下一轮迭代从 DESIGN 开始；若需要对外发布，还需推送分支和 tag。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
