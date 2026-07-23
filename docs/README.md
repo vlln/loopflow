@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | SYSTEM_TEST 已通过：全局 AC manifest、recovery strict manifest、MR gate、前端浏览器测试和 wheel smoke 均通过。当前可进入 RELEASE，需整理 CHANGELOG、确认版本号、建立 release 分支并执行发布冒烟。 |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | RELEASE 前发现取消/恢复语义需要修订：`cancelled` 应表示当前 execution attempt 被取消，而非 Run identity 不可恢复；retry 是恢复默认路径，不单独建模；continue 与 respond 均恢复同一 Run 但动作语义不同。当前退回 DESIGN，需修订 ADR/Spec/Interface/AC 后再进入实现。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
