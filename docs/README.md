@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
-| **设计评估** | 0061 已完成 Agent structured intervention vNext 实现：Agent `requests[]`、string response/options 校验、batch respond、CLI/Web `intervene()` 注入一致和多问题 WebUI 均已落地；准备进入 SYSTEM_TEST 前置检查。 |
+| **当前阶段** | `SYSTEM_TEST` |
+| **设计评估** | 0061 已完成 Agent structured intervention vNext 实现并通过 DEVELOP 目标验证；当前进入 SYSTEM_TEST，执行 0062 发布前系统级认证。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
