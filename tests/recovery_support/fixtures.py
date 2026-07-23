@@ -46,7 +46,7 @@ class InterventionFactory:
             "resume_mode": resume_mode,
             "status": status,
             "created_at": "2026-07-22T08:00:00Z",
-            "answered_at": "2026-07-22T08:01:00Z" if status == "answered" else None,
+            "responded_at": "2026-07-22T08:01:00Z" if status == "answered" else None,
         }
         if status == "answered":
             value["response"] = response
@@ -61,7 +61,7 @@ class InterventionFactory:
             raise RuntimeError("intervention already answered")
         value["status"] = "answered"
         value["response"] = response
-        value["answered_at"] = "2026-07-22T08:01:00Z"
+        value["responded_at"] = "2026-07-22T08:01:00Z"
         self._write_atomic(path, value)
         return path
 

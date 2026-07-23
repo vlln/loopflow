@@ -124,7 +124,7 @@ INTERVENTION_SCHEMA = {
         "resume_mode",
         "can_continue_session",
         "created_at",
-        "answered_at",
+        "responded_at",
     ],
     "properties": {
         "request_id": {"type": "string"},
@@ -137,7 +137,7 @@ INTERVENTION_SCHEMA = {
         "can_continue_session": {"type": "boolean"},
         "response": {},
         "created_at": {"type": "string"},
-        "answered_at": NULLABLE_STRING,
+        "responded_at": NULLABLE_STRING,
     },
     "allOf": [
         {
@@ -220,7 +220,7 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "resume_mode": "replay",
             "can_continue_session": False,
             "created_at": "2026-07-22T08:00:00Z",
-            "answered_at": None,
+            "responded_at": None,
         },
         "backend_capabilities_v13": {
             "native_goal": False,

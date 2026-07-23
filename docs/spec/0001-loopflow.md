@@ -229,7 +229,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | status | string | required | pending / answered / closed；stop waiting_input 不关闭 pending request，closed 仅用于显式废弃或 legacy 读取 |
 | response | any | optional | immutable 回答，仅 status=answered 时存在 |
 | created_at | ISO 8601 | required | 请求创建时间 |
-| answered_at | ISO 8601/null | required | 回答时间 |
+| responded_at | ISO 8601/null | required | 回答时间 |
 
 ### Agent 定义文件
 

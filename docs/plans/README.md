@@ -22,6 +22,7 @@
 | [0051](0051-cancel-recovery-test-infra/) | 取消恢复测试契约同步 | done | 2026-07-23 |
 | [0052](0052-cancel-recovery-implementation/) | 取消恢复语义实现 | done | 2026-07-23 |
 | [0053](0053-system-test-certification/) | 取消恢复后 SYSTEM_TEST 认证 | done | 2026-07-23 |
+| [0054](0054-status-contract-alignment/) | 状态契约对齐 | done | 2026-07-23 |
 
 ## 状态说明
 

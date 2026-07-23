@@ -172,7 +172,10 @@ def validate_response(schema: Any, response: Any) -> None:
 
 
 def _summary(request: dict[str, Any]) -> dict[str, Any]:
-    return {
+    can_continue_session = bool(
+        request.get("resume_mode") == "continue" and request.get("session_id")
+    )
+    summary = {
         "request_id": request.get("request_id"),
         "key": request.get("key"),
         "prompt": request.get("prompt"),
@@ -180,6 +183,10 @@ def _summary(request: dict[str, Any]) -> dict[str, Any]:
         "status": request.get("status"),
         "resume_mode": request.get("resume_mode"),
         "call_id": request.get("call_id"),
+        "can_continue_session": can_continue_session,
         "created_at": request.get("created_at"),
         "responded_at": request.get("responded_at"),
     }
+    if request.get("status") == "answered" and "response" in request:
+        summary["response"] = request.get("response")
+    return summary

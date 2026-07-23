@@ -180,8 +180,12 @@ def test_intervention_endpoints_list_validate_and_respond(api):
     )
 
     assert listed.status == 200 and listed.json()["items"][0]["prompt"] == "Approve?"
+    assert listed.json()["items"][0]["can_continue_session"] is False
     assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
     assert answered.status == 200 and answered.json()["run_id"] == "waiting"
+    listed_after = client.request("GET", "/api/v1/runs/waiting/interventions")
+    assert listed_after.json()["items"][0]["response"] is True
+    assert listed_after.json()["items"][0]["responded_at"]
     assert duplicate.status == 409
     assert duplicate.json()["error"]["code"] == "intervention_already_answered"
     assert stopped.status == 200 and stopped.json()["allowed_actions"] == ["recover_retry", "respond", "rerun"]

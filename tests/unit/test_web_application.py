@@ -283,11 +283,15 @@ def test_intervention_response_validates_persists_and_recovers_same_run(tmp_path
 
     listed = service.list_interventions("waiting")
     result = service.respond_intervention("waiting", "approve-1", {"response": True})
+    listed_after = service.list_interventions("waiting")
 
     request = json.loads((interventions / "approve-1.json").read_text())
     assert listed["items"][0]["prompt"] == "Approve?"
+    assert listed["items"][0]["can_continue_session"] is False
     assert request["status"] == "answered"
     assert request["response"] is True
+    assert listed_after["items"][0]["response"] is True
+    assert listed_after["items"][0]["responded_at"] == request["responded_at"]
     assert result["run_id"] == "waiting"
     assert service.executor.calls[-1] == (
         "hello",
@@ -348,7 +352,29 @@ def test_cancelled_pending_intervention_remains_pending_without_response(tmp_pat
     assert summary["status"] == "cancelled"
     assert "respond" in summary["allowed_actions"]
     assert listed["items"][0]["status"] == "pending"
+    assert listed["items"][0]["can_continue_session"] is False
     assert request["status"] == "pending"
+
+
+def test_continue_intervention_summary_reports_session_capability(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "agent-approve.json", {
+        "request_id": "agent-approve",
+        "key": "agent-approve",
+        "prompt": "Approve agent continuation?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "continue",
+        "call_id": "0002",
+        "session_id": "session-2",
+    })
+
+    listed = service.list_interventions("waiting")
+
+    assert listed["items"][0]["can_continue_session"] is True
 
 
 def test_intervention_response_rejects_invalid_and_duplicate_without_recovery(tmp_path):

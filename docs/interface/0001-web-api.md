@@ -131,7 +131,7 @@ PhaseEdge：`from:string`、`to:string`、`count:integer >= 1`、`is_backedge:bo
 | can_continue_session | boolean | 是 | session 和 backend capability 均满足 continue 条件 |
 | response | any | 条件必填 | status=answered 时必填；其他状态不返回该字段 |
 | created_at | string | 是 | 请求创建时间 |
-| answered_at | string/null | 是 | 回答时间 |
+| responded_at | string/null | 是 | 回答时间 |
 
 ## 三、Runs
 
