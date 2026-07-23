@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | AC-020 确定性恢复、AC-021 可靠停止、AC-022 阻塞人工介入已实现并合并到 develop；全局 AC manifest 与 recovery strict manifest 均无 planned 节点，MR gate 已通过。当前应执行系统级验证、失败分类和发布前判定。 |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | SYSTEM_TEST 已通过：全局 AC manifest、recovery strict manifest、MR gate、前端浏览器测试和 wheel smoke 均通过。当前可进入 RELEASE，需整理 CHANGELOG、确认版本号、建立 release 分支并执行发布冒烟。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
