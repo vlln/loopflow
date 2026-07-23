@@ -639,6 +639,268 @@
           "value": "matches-ac"
         }
       ]
+    },
+    {
+      "ac_id": "AC-023-N-1",
+      "fixture": "Agent 返回 `__loopflow.status=waiting_input`，含两个 requests，backend 已持久化 durable session_id",
+      "action": "运行 workflow",
+      "assertion": "两个 request 原子持久化；`source=agent`、`resume_mode=continue`、response 类型为 string；Run 进入 waiting_input；worker 退出且释放执行锁",
+      "test_node": "planned::ac-023-n-1",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-2",
+      "fixture": "A 为 waiting_input，两个 agent requests 均 pending，分别含 options/custom 约束",
+      "action": "对 A 执行 batch respond，提交两个 string responses",
+      "assertion": "responses all-or-nothing 持久化；只启动一次恢复 worker；同一 Agent session 收到回答继续执行；A.run_id 不变",
+      "test_node": "planned::ac-023-n-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-3",
+      "fixture": "workflow 调用 `intervene(key, prompt, options=[...], allow_custom=False)`",
+      "action": "运行 workflow 并回答一个 option",
+      "assertion": "request `source=workflow`、`resume_mode=replay`；重放到同一 key 后 answer 返回给 workflow；workflow 根据 answer 进入对应分支",
+      "test_node": "planned::ac-023-n-3",
+      "targets": [
+        "unit:intervention-routing"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-4",
+      "fixture": "CLI `loopflow run` 与 Web `POST /runs` 执行同一含 `intervene()` 的 workflow",
+      "action": "分别运行",
+      "assertion": "两条入口均注入 `intervene`，均进入 waiting_input，而不是把 `intervention_pending` 记录为 failed",
+      "test_node": "planned::ac-023-n-4",
+      "targets": [
+        "process:cli-run",
+        "POST /api/v1/runs"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-5",
+      "fixture": "Run A 有多个 pending requests",
+      "action": "在 WebUI 选择 A",
+      "assertion": "显示多问题表单；每个 request 展示 prompt、options 和可选手动输入；用户填写全部后一次提交",
+      "test_node": "planned::ac-023-n-5",
+      "targets": [
+        "ui:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-B-1",
+      "fixture": "并行 Agent worker 同时产生 pending requests",
+      "action": "查询 Run interventions",
+      "assertion": "所有 pending requests 可读；request_id 稳定且不互相覆盖；Run allowed_actions 包含 respond",
+      "test_node": "planned::ac-023-b-1",
+      "targets": [
+        "unit:parallel-intervention",
+        "GET /api/v1/runs/{run_id}/interventions"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-B-2",
+      "fixture": "request `allow_custom=true` 且 options 非空",
+      "action": "batch respond 提交非 options 的非空 string",
+      "assertion": "response 被接受并持久化",
+      "test_node": "planned::ac-023-b-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-B-3",
+      "fixture": "request `allow_custom=false` 且 options 只有一个值",
+      "action": "batch respond 提交该 option",
+      "assertion": "response 被接受并持久化",
+      "test_node": "planned::ac-023-b-3",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-1",
+      "fixture": "request `allow_custom=false` 且 options 不包含 `\"other\"`",
+      "action": "batch respond 提交 `\"other\"`",
+      "assertion": "返回 422 validation_failed；所有 responses 均不落盘；不启动恢复 worker",
+      "test_node": "planned::ac-023-e-1",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "validation_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-2",
+      "fixture": "batch respond 中一个 request 已 answered",
+      "action": "提交 batch",
+      "assertion": "返回 409 intervention_already_answered；所有 responses 均不覆盖/不落盘；不启动恢复 worker",
+      "test_node": "planned::ac-023-e-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "intervention_already_answered"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-3",
+      "fixture": "batch respond 中一个 request_id 不存在",
+      "action": "提交 batch",
+      "assertion": "返回 404 intervention_not_found；所有 responses 均不落盘；不启动恢复 worker",
+      "test_node": "planned::ac-023-e-3",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 404,
+          "code": "intervention_not_found"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-4",
+      "fixture": "Run 当前不是 waiting_input/cancelled",
+      "action": "提交 batch",
+      "assertion": "返回 409 invalid_run_transition；所有 requests 不变；不启动恢复 worker",
+      "test_node": "planned::ac-023-e-4",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-5",
+      "fixture": "Agent structured request 缺 key/prompt，或 options 含非 string",
+      "action": "处理 Agent 结果",
+      "assertion": "Call/Run failed，错误为 validation_failed；不创建 pending request",
+      "test_node": "planned::ac-023-e-5",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-F-1",
+      "fixture": "Agent 返回自然语言问题但无结构化 requests",
+      "action": "Agent 正常返回",
+      "assertion": "loopflow 不创建 intervention；结果按普通 Agent 输出处理",
+      "test_node": "planned::ac-023-f-1",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-F-2",
+      "fixture": "Agent requests 需要 continue，但 durable session_id 未落盘",
+      "action": "处理 Agent 结果",
+      "assertion": "Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request",
+      "test_node": "planned::ac-023-f-2",
+      "targets": [
+        "unit:session-intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-F-3",
+      "fixture": "batch respond 持久化成功后恢复 worker 失败",
+      "action": "提交 batch",
+      "assertion": "responses 保持 answered；后续失败按普通 Run execution failure 表达，不创建 intervention 特殊状态",
+      "test_node": "planned::ac-023-f-3",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
     }
   ]
 }

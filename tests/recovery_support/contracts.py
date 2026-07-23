@@ -148,6 +148,76 @@ INTERVENTION_SCHEMA = {
     ],
 }
 
+INTERVENTION_VNEXT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "request_id",
+        "source",
+        "key",
+        "prompt",
+        "options",
+        "allow_custom",
+        "status",
+        "call_id",
+        "resume_mode",
+        "can_continue_session",
+        "created_at",
+        "responded_at",
+    ],
+    "properties": {
+        "request_id": {"type": "string"},
+        "source": {"enum": ["workflow", "agent"]},
+        "key": {"type": "string", "minLength": 1},
+        "prompt": {"type": "string", "minLength": 1},
+        "options": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
+        "allow_custom": {"type": "boolean"},
+        "status": {"enum": ["pending", "answered", "closed"]},
+        "call_id": NULLABLE_STRING,
+        "resume_mode": {"enum": ["replay", "continue"]},
+        "can_continue_session": {"type": "boolean"},
+        "response": {"type": "string", "minLength": 1},
+        "created_at": {"type": "string"},
+        "responded_at": NULLABLE_STRING,
+    },
+    "allOf": [
+        {
+            "if": {"properties": {"status": {"const": "answered"}}},
+            "then": {"required": ["response"]},
+            "else": {"not": {"required": ["response"]}},
+        },
+        {
+            "if": {"properties": {"source": {"const": "workflow"}}},
+            "then": {"properties": {"resume_mode": {"const": "replay"}}},
+        },
+        {
+            "if": {"properties": {"source": {"const": "agent"}}},
+            "then": {"properties": {"resume_mode": {"const": "continue"}}},
+        },
+    ],
+}
+
+BATCH_INTERVENTION_RESPONSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["responses"],
+    "properties": {
+        "responses": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["request_id", "response"],
+                "properties": {
+                    "request_id": {"type": "string", "minLength": 1},
+                    "response": {"type": "string", "minLength": 1},
+                },
+            },
+        },
+    },
+}
+
 BACKEND_CAPABILITIES_V13_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -171,6 +241,8 @@ SCHEMAS = {
     "run_summary_v13": RUN_SUMMARY_V13_SCHEMA,
     "agent_call_v13": AGENT_CALL_V13_SCHEMA,
     "intervention": INTERVENTION_SCHEMA,
+    "intervention_vnext": INTERVENTION_VNEXT_SCHEMA,
+    "batch_intervention_response": BATCH_INTERVENTION_RESPONSE_SCHEMA,
     "backend_capabilities_v13": BACKEND_CAPABILITIES_V13_SCHEMA,
 }
 
@@ -221,6 +293,26 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "can_continue_session": False,
             "created_at": "2026-07-22T08:00:00Z",
             "responded_at": None,
+        },
+        "intervention_vnext": {
+            "request_id": "scope-1",
+            "source": "agent",
+            "key": "scope",
+            "prompt": "Expand search scope?",
+            "options": ["expand", "keep"],
+            "allow_custom": False,
+            "status": "pending",
+            "call_id": "0001",
+            "resume_mode": "continue",
+            "can_continue_session": True,
+            "created_at": "2026-07-22T08:00:00Z",
+            "responded_at": None,
+        },
+        "batch_intervention_response": {
+            "responses": [
+                {"request_id": "scope-1", "response": "expand"},
+                {"request_id": "note-1", "response": "use official docs"},
+            ]
         },
         "backend_capabilities_v13": {
             "native_goal": False,

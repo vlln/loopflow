@@ -8,6 +8,8 @@ created: 2026-07-22T06:35:57Z
 
 本 AC 替代 AC-002-N-1、AC-002-N-2、AC-002-B-1、AC-002-E-1、AC-002-F-1、AC-003-N-3、AC-003-E-1、AC-014-N-3、AC-014-N-5、AC-014-N-6 和 AC-014-F-1 中与 resume/stop 生命周期冲突的预期；其他既有场景继续有效。
 
+> 2026-07-23：AC-023 定义 Agent structured intervention vNext。AC-022 中 schema/单 request/单 respond 语义在 vNext 实现后由 AC-023 替代；在实现迁移前继续作为当前产品行为证据。
+
 # AC-020: 可校验恢复
 
 验证成功 Call 重放、失败 Call 重跑以及恢复分歧检测。
@@ -122,3 +124,45 @@ created: 2026-07-22T06:35:57Z
 |------|----------|----------|----------|----------|
 | AC-022-F-1 | workflow 重放时相同位置产生不同 intervention key 或 prompt digest | 回答后自动恢复 | Run 变为 failed，错误为 replay_diverged；不把旧 response 注入新请求 | 自动化 |
 | AC-022-F-2 | Agent 仅在自然语言输出中提出问题，没有结构化请求 | Agent 正常返回 | loopflow 不创建 intervention；结果按普通 Agent 输出处理 | 自动化 |
+
+---
+
+# AC-023: Agent structured intervention vNext
+
+验证 Agent 结构化多问题、预设选项、自定义回答、批量提交和 workflow routing gate 的职责边界。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-N-1 | Agent 返回 `__loopflow.status=waiting_input`，含两个 requests，backend 已持久化 durable session_id | 运行 workflow | 两个 request 原子持久化；`source=agent`、`resume_mode=continue`、response 类型为 string；Run 进入 waiting_input；worker 退出且释放执行锁 | 自动化 |
+| AC-023-N-2 | A 为 waiting_input，两个 agent requests 均 pending，分别含 options/custom 约束 | 对 A 执行 batch respond，提交两个 string responses | responses all-or-nothing 持久化；只启动一次恢复 worker；同一 Agent session 收到回答继续执行；A.run_id 不变 | 自动化 |
+| AC-023-N-3 | workflow 调用 `intervene(key, prompt, options=[...], allow_custom=False)` | 运行 workflow 并回答一个 option | request `source=workflow`、`resume_mode=replay`；重放到同一 key 后 answer 返回给 workflow；workflow 根据 answer 进入对应分支 | 自动化 |
+| AC-023-N-4 | CLI `loopflow run` 与 Web `POST /runs` 执行同一含 `intervene()` 的 workflow | 分别运行 | 两条入口均注入 `intervene`，均进入 waiting_input，而不是把 `intervention_pending` 记录为 failed | 自动化 |
+| AC-023-N-5 | Run A 有多个 pending requests | 在 WebUI 选择 A | 显示多问题表单；每个 request 展示 prompt、options 和可选手动输入；用户填写全部后一次提交 | 自动化 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-B-1 | 并行 Agent worker 同时产生 pending requests | 查询 Run interventions | 所有 pending requests 可读；request_id 稳定且不互相覆盖；Run allowed_actions 包含 respond | 自动化 |
+| AC-023-B-2 | request `allow_custom=true` 且 options 非空 | batch respond 提交非 options 的非空 string | response 被接受并持久化 | 自动化 |
+| AC-023-B-3 | request `allow_custom=false` 且 options 只有一个值 | batch respond 提交该 option | response 被接受并持久化 | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-E-1 | request `allow_custom=false` 且 options 不包含 `"other"` | batch respond 提交 `"other"` | 返回 422 validation_failed；所有 responses 均不落盘；不启动恢复 worker | 自动化 |
+| AC-023-E-2 | batch respond 中一个 request 已 answered | 提交 batch | 返回 409 intervention_already_answered；所有 responses 均不覆盖/不落盘；不启动恢复 worker | 自动化 |
+| AC-023-E-3 | batch respond 中一个 request_id 不存在 | 提交 batch | 返回 404 intervention_not_found；所有 responses 均不落盘；不启动恢复 worker | 自动化 |
+| AC-023-E-4 | Run 当前不是 waiting_input/cancelled | 提交 batch | 返回 409 invalid_run_transition；所有 requests 不变；不启动恢复 worker | 自动化 |
+| AC-023-E-5 | Agent structured request 缺 key/prompt，或 options 含非 string | 处理 Agent 结果 | Call/Run failed，错误为 validation_failed；不创建 pending request | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-F-1 | Agent 返回自然语言问题但无结构化 requests | Agent 正常返回 | loopflow 不创建 intervention；结果按普通 Agent 输出处理 | 自动化 |
+| AC-023-F-2 | Agent requests 需要 continue，但 durable session_id 未落盘 | 处理 Agent 结果 | Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request | 自动化 |
+| AC-023-F-3 | batch respond 持久化成功后恢复 worker 失败 | 提交 batch | responses 保持 answered；后续失败按普通 Run execution failure 表达，不创建 intervention 特殊状态 | 自动化 |

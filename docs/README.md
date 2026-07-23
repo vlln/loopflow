@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 0058 已完成 WebUI respond panel 对齐；新的设计问题已确认：Agent structured requests 才是人工介入主路径，`intervene()` 更接近 workflow 路由 gate。当前回到 DESIGN，冻结 Agent questions/options 与 workflow intervene 的职责边界。 |
+| **当前阶段** | `TEST_INFRA` |
+| **设计评估** | 0059 已冻结 Agent structured requests 与 workflow `intervene()` 的职责边界；当前进入 TEST_INFRA，补 vNext AC/interface/contract/manifest，代码实现留到 DEVELOP。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

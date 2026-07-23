@@ -28,6 +28,7 @@
 | [0057](0057-intervention-respond-test-infra/) | Intervention respond 错误边界测试契约 | done | 2026-07-23 |
 | [0058](0058-intervention-webui-implementation/) | Intervention WebUI 实现对齐 | done | 2026-07-23 |
 | [0059](0059-agent-intervention-design/) | Agent structured intervention 设计修订 | done | 2026-07-23 |
+| [0060](0060-agent-intervention-test-infra/) | Agent structured intervention 测试契约 | done | 2026-07-23 |
 
 ## 状态说明
 

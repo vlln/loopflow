@@ -68,6 +68,25 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-022-E-3", "unit:session-intervention")
     assign("AC-022-F-1", "unit:intervention-replay")
     assign("AC-022-F-2", "unit:agent-control-output")
+
+    assign("AC-023-N-1", "unit:agent-control-output")
+    assign("AC-023-N-2", "POST /api/v1/runs/{run_id}/interventions/responses")
+    assign("AC-023-N-3", "unit:intervention-routing")
+    assign("AC-023-N-4", "process:cli-run", "POST /api/v1/runs")
+    assign("AC-023-N-5", "ui:intervention")
+    assign("AC-023-B-1", "unit:parallel-intervention", "GET /api/v1/runs/{run_id}/interventions")
+    assign(
+        "AC-023-B-2 AC-023-B-3",
+        "POST /api/v1/runs/{run_id}/interventions/responses",
+    )
+    assign(
+        "AC-023-E-1 AC-023-E-2 AC-023-E-3 AC-023-E-4",
+        "POST /api/v1/runs/{run_id}/interventions/responses",
+    )
+    assign("AC-023-E-5", "unit:agent-control-output")
+    assign("AC-023-F-1", "unit:agent-control-output")
+    assign("AC-023-F-2", "unit:session-intervention")
+    assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
     return targets
 
 
@@ -159,6 +178,26 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-022-E-5": [
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
+    "AC-023-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-023-B-2": [{"kind": "http_status", "value": 200}],
+    "AC-023-B-3": [{"kind": "http_status", "value": 200}],
+    "AC-023-E-1": [
+        {"kind": "http_status", "value": 422, "code": "validation_failed"}
+    ],
+    "AC-023-E-2": [
+        {
+            "kind": "http_status",
+            "value": 409,
+            "code": "intervention_already_answered",
+        }
+    ],
+    "AC-023-E-3": [
+        {"kind": "http_status", "value": 404, "code": "intervention_not_found"}
+    ],
+    "AC-023-E-4": [
+        {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
+    ],
+    "AC-023-F-3": [{"kind": "http_status", "value": 200}],
 }
 
 
