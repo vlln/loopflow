@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.18.0] — 2026-07-23
+
+### Added
+- Grok backend and Grok ACP support.
+- Verifiable recovery controls for failed and cancelled Runs, including retry and durable-session continue.
+- Persistent intervention requests that can be answered after worker exit or after a waiting Run is cancelled.
+
+### Changed
+- `cancelled` now means the current execution attempt was cancelled, not that the Run identity is unrecoverable.
+- `loopflow stop` on `waiting_input` preserves pending intervention requests.
+- Web/API allowed actions now derive `recover_retry`, `recover_continue` and `respond` from recovery boundaries and pending requests.
+
+### Fixed
+- Atomic/isolated cancelled worker boundaries no longer expose durable-session continue.
+- `src/loopflow/__init__.py` version is synchronized with package metadata for release.
+
 ## [0.17.2] — 2026-07-21
 
 ### Added
