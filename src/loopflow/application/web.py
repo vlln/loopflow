@@ -103,10 +103,10 @@ class WebApplication:
                 "status": "cancelled",
                 "finished_at": now_iso(),
                 "stop_summary": "waiting_input_cancelled",
+                "cancel_point": "no_worker_running",
             })
             self._clear_worker_identity(metadata)
             self._write_metadata(run_dir, metadata)
-            self._close_pending_interventions(run_dir)
             return self.runs.read_summary(run_dir)
 
         identity = self._worker_identity(metadata)
@@ -124,7 +124,10 @@ class WebApplication:
             "finished_at": finished,
             "error_summary": None,
             "stop_summary": stop_summary,
+            "cancel_point": "worker_running",
         })
+        if current.get("active_call_id") is None and current.get("failed_call_id") is not None:
+            current["active_call_id"] = current["failed_call_id"]
         self._clear_worker_identity(current)
         self._write_metadata(run_dir, current)
         return self.runs.read_summary(run_dir)
@@ -132,14 +135,19 @@ class WebApplication:
     def recover_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
         run_dir = self._run_dir(run_id)
         metadata = read_json(run_dir / "run.json")
-        if self.runs.read_summary(run_dir)["status"] != "failed":
+        status = self.runs.read_summary(run_dir)["status"]
+        if status not in {"failed", "cancelled"}:
             raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be recovered")
         body = body or {}
         _fields(body, {"mode"})
         mode = body.get("mode", "retry")
         if mode not in {"retry", "continue"}:
             raise ApplicationError("validation_failed", "mode must be retry or continue")
-        if mode == "continue" and not metadata.get("can_recover_continue"):
+        if status == "cancelled" and not self._cancelled_has_recovery_boundary(run_dir, metadata):
+            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be recovered")
+        if mode == "continue" and (
+            not metadata.get("can_recover_continue") or metadata.get("active_worker_atomic")
+        ):
             raise ApplicationError(
                 "continue_not_supported",
                 f"Run '{run_id}' has no durable failed session",
@@ -182,7 +190,8 @@ class WebApplication:
             existing = read_request(run_dir, request_id)
             if existing.get("status") == "answered" or "response" in existing:
                 raise InterventionAlreadyAnswered(request_id)
-            if self.runs.read_summary(run_dir)["status"] != "waiting_input":
+            status = self.runs.read_summary(run_dir)["status"]
+            if status not in {"waiting_input", "cancelled"}:
                 raise ApplicationError("invalid_run_transition", f"Run '{run_id}' is not waiting for input")
             request = answer_request(run_dir, run_id, request_id, body["response"])
         except InterventionNotFound as error:
@@ -359,32 +368,31 @@ class WebApplication:
             and self.runs.process_probe.group_id(pid) == identity["process_group_id"]
         )
 
-    def _clear_worker_identity(self, metadata: dict[str, Any]) -> None:
-        metadata.pop("pid", None)
-        metadata.pop("process_started_at", None)
-        metadata.pop("process_group_id", None)
+    def _cancelled_has_recovery_boundary(self, run_dir: Path, metadata: dict[str, Any]) -> bool:
+        return bool(
+            metadata.get("cancel_point")
+            or metadata.get("active_call_id")
+            or metadata.get("failed_call_id")
+            or self._has_pending_intervention(run_dir)
+        )
 
-    def _close_pending_interventions(self, run_dir: Path) -> None:
+    def _has_pending_intervention(self, run_dir: Path) -> bool:
         interventions = run_dir / "interventions"
         if not interventions.is_dir():
-            return
-        closed_at = now_iso()
+            return False
         for path in interventions.glob("*.json"):
             try:
                 value = read_json(path)
             except (OSError, json.JSONDecodeError):
                 continue
-            if not isinstance(value, dict) or value.get("status") not in {None, "pending"}:
-                continue
-            value.update({
-                "status": "closed",
-                "closed_at": closed_at,
-                "close_reason": "run_cancelled",
-            })
-            try:
-                atomic_write_json(path, value)
-            except OSError:
-                continue
+            if isinstance(value, dict) and value.get("status") in {None, "pending"}:
+                return True
+        return False
+
+    def _clear_worker_identity(self, metadata: dict[str, Any]) -> None:
+        metadata.pop("pid", None)
+        metadata.pop("process_started_at", None)
+        metadata.pop("process_group_id", None)
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
         allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args"}

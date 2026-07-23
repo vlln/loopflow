@@ -174,7 +174,13 @@ def _duration_ms(metadata: dict[str, Any], now: str | None = None) -> int | None
     return max(0, int((finish_dt - start_dt).total_seconds() * 1000))
 
 
-def allowed_actions(status: str, *, can_recover_continue: bool = False) -> list[str]:
+def allowed_actions(
+    status: str,
+    *,
+    can_recover_retry: bool = False,
+    can_recover_continue: bool = False,
+    can_respond: bool = False,
+) -> list[str]:
     if status == "failed":
         actions = ["recover_retry", "rerun"]
         if can_recover_continue:
@@ -182,12 +188,21 @@ def allowed_actions(status: str, *, can_recover_continue: bool = False) -> list[
         return actions
     if status == "waiting_input":
         return ["respond", "stop"]
+    if status == "cancelled":
+        actions = []
+        if can_recover_retry:
+            actions.append("recover_retry")
+        if can_recover_continue:
+            actions.append("recover_continue")
+        if can_respond:
+            actions.append("respond")
+        actions.append("rerun")
+        return actions
     return {
         "running": ["stop"],
         "stale": ["reconcile"],
         "stopped": ["rerun"],
         "done": ["rerun"],
-        "cancelled": ["rerun"],
     }.get(status, [])
 
 
@@ -273,7 +288,9 @@ class RunRepository:
             "execution_epoch": metadata.get("execution_epoch"),
             "allowed_actions": allowed_actions(
                 status,
-                can_recover_continue=bool(metadata.get("can_recover_continue")),
+                can_recover_retry=self._can_recover_retry(status, metadata, run_dir),
+                can_recover_continue=self._can_recover_continue(status, metadata),
+                can_respond=self._has_pending_intervention(run_dir),
             ),
         }
 
@@ -339,6 +356,36 @@ class RunRepository:
         if isinstance(process_group_id, int):
             return self.process_probe.group_id(pid) == process_group_id
         return True
+
+    def _can_recover_retry(self, status: str, metadata: dict[str, Any], run_dir: Path) -> bool:
+        if status == "failed":
+            return True
+        if status != "cancelled":
+            return False
+        return bool(
+            metadata.get("cancel_point")
+            or metadata.get("active_call_id")
+            or metadata.get("failed_call_id")
+            or self._has_pending_intervention(run_dir)
+        )
+
+    def _can_recover_continue(self, status: str, metadata: dict[str, Any]) -> bool:
+        if status not in {"failed", "cancelled"}:
+            return False
+        return bool(metadata.get("can_recover_continue")) and not bool(metadata.get("active_worker_atomic"))
+
+    def _has_pending_intervention(self, run_dir: Path) -> bool:
+        interventions = run_dir / "interventions"
+        if not interventions.is_dir():
+            return False
+        for path in interventions.glob("*.json"):
+            try:
+                value = read_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(value, dict) and value.get("status") in {None, "pending"}:
+                return True
+        return False
 
     def _working_directory(self, run_dir: Path) -> str:
         record = self._index_records().get(run_dir.name)

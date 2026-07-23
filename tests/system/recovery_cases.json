@@ -236,7 +236,7 @@
       "fixture": "Run A 为 waiting_input 且没有存活 worker，request R 为 pending",
       "action": "对 A 执行 stop",
       "assertion": "不要求 PID；A 原子变为 cancelled；R 仍为 pending；allowed_actions 包含 respond，不把用户未回答解释为放弃 Run",
-      "test_node": "planned::ac-021-n-2",
+      "test_node": "tests/unit/test_web_application.py::test_stop_waiting_input_cancels_without_worker_and_preserves_pending_request",
       "targets": [
         "POST /api/v1/runs/{run_id}/stop"
       ],
@@ -252,7 +252,7 @@
       "fixture": "cancelled Run A 有前序 succeeded 缓存和取消点 Call 0002；两者 input_digest 与当前调用一致",
       "action": "对 A 执行 recover mode=retry",
       "assertion": "沿用 A.run_id；前序缓存命中；0002 创建新 session 重新执行；Run 进入 running 并递增 execution_epoch",
-      "test_node": "planned::ac-021-n-3",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -300,7 +300,7 @@
       "fixture": "running Run A 的 active worker 声明 atomic/isolated，且已持久化 durable session_id",
       "action": "对 A 执行 stop 后再 recover mode=continue",
       "assertion": "返回 409 continue_not_supported；不恢复原 session；recover mode=retry 仍可单独执行",
-      "test_node": "planned::ac-021-b-3",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -317,7 +317,7 @@
       "fixture": "running Run A 的 active worker 非 atomic，且 backend/session 均支持 durable continue",
       "action": "对 A 执行 stop 后再 recover mode=continue",
       "assertion": "目标 Call 使用原 session_id 调用 resume_session；不创建新 session",
-      "test_node": "planned::ac-021-b-4",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
@@ -349,7 +349,7 @@
       "fixture": "A 已 cancelled 且没有可重放边界或 pending request",
       "action": "对 A 执行 recover 或 respond",
       "assertion": "返回 409 invalid_run_transition 或具体恢复错误；run.json 不被错误标记为 done",
-      "test_node": "planned::ac-021-e-2",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_without_boundary_rejects_recover_and_respond",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover",
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
@@ -464,7 +464,7 @@
       "fixture": "A 原为 waiting_input，随后被 stop 为 cancelled，request R 仍 pending",
       "action": "对 R 提交 boolean `true`",
       "assertion": "response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回 true",
-      "test_node": "planned::ac-022-n-5",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_pending_intervention_can_be_answered",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
@@ -512,7 +512,7 @@
       "fixture": "A 为 cancelled 且含 pending request R；用户不提交 response",
       "action": "查询 Run 和 request",
       "assertion": "A 保持 cancelled；R 保持 pending；框架不自动关闭 request，也不把该状态建模为 abandon",
-      "test_node": "planned::ac-022-b-3",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_pending_intervention_remains_pending_without_response",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "GET /api/v1/runs/{run_id}/interventions"

@@ -120,12 +120,16 @@ def execute_workflow(
         )
     if status == "failed" and context._current_call_id:
         run_metadata["failed_call_id"] = context._current_call_id
+        run_metadata["active_call_id"] = context._current_call_id
         run_metadata["failed_session_id"] = context.failed_session_id
         run_metadata["can_recover_continue"] = context.failed_can_continue
     elif status == "done":
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
         run_metadata.pop("can_recover_continue", None)
+        run_metadata.pop("cancel_point", None)
+        run_metadata.pop("active_call_id", None)
+        run_metadata.pop("active_worker_atomic", None)
         if state_requested and context.state is not None:
             atomic_write_json(run_dir / "state.json", context.state.to_dict())
     run_metadata.pop("pid", None)

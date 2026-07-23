@@ -20,6 +20,7 @@
 | [0049](0049-release-certification/) | RELEASE 发布认证 | pending | 2026-07-23 |
 | [0050](0050-cancel-recovery-semantics/) | 取消恢复语义设计修订 | done | 2026-07-23 |
 | [0051](0051-cancel-recovery-test-infra/) | 取消恢复测试契约同步 | done | 2026-07-23 |
+| [0052](0052-cancel-recovery-implementation/) | 取消恢复语义实现 | done | 2026-07-23 |
 
 ## 状态说明
 

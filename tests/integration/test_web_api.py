@@ -111,6 +111,11 @@ def test_run_lifecycle_commands_preserve_contract(api):
     assert stopped.status == 200 and stopped.json()["status"] == "cancelled"
     metadata = json.loads((running / "run.json").read_text())
     assert metadata["finished_at"] and "pid" not in metadata
+    metadata["cancel_point"] = "worker_running"
+    metadata["active_call_id"] = "0001"
+    factory.write_json(running / "run.json", metadata)
+    cancelled_recovered = client.request("POST", "/api/v1/runs/running/recover", {"mode": "retry"})
+    assert cancelled_recovered.status == 200 and cancelled_recovered.json()["run_id"] == "running"
     recovered = client.request("POST", "/api/v1/runs/failed/recover", {"mode": "retry"})
     assert recovered.status == 200 and recovered.json()["run_id"] == "failed"
     assert client.request("POST", "/api/v1/runs/failed/resume", {}).status == 404
@@ -156,12 +161,31 @@ def test_intervention_endpoints_list_validate_and_respond(api):
         "/api/v1/runs/waiting/interventions/approve-1/response",
         {"response": False},
     )
+    cancelled = factory.create_run("cancelled-waiting", status="waiting_input")
+    cancelled_interventions = cancelled / "interventions"
+    cancelled_interventions.mkdir()
+    factory.write_json(cancelled_interventions / "approve-2.json", {
+        "request_id": "approve-2",
+        "key": "approve",
+        "prompt": "Approve later?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+    stopped = client.request("POST", "/api/v1/runs/cancelled-waiting/stop")
+    cancelled_answered = client.request(
+        "POST",
+        "/api/v1/runs/cancelled-waiting/interventions/approve-2/response",
+        {"response": True},
+    )
 
     assert listed.status == 200 and listed.json()["items"][0]["prompt"] == "Approve?"
     assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
     assert answered.status == 200 and answered.json()["run_id"] == "waiting"
     assert duplicate.status == 409
     assert duplicate.json()["error"]["code"] == "intervention_already_answered"
+    assert stopped.status == 200 and stopped.json()["allowed_actions"] == ["recover_retry", "respond", "rerun"]
+    assert cancelled_answered.status == 200
 
 
 def test_queue_loops_and_backend_endpoints(api):

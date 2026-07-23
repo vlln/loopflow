@@ -88,6 +88,7 @@ class RunContext:
         session = f"wf_{self.run_id}_{session_suffix}"
         self._current_call_id = call_id
         self._call_namespace.current_call_id = call_id
+        self._publish_active_call(call_id)
         return session
 
     def next_call_id(self) -> str:
@@ -127,6 +128,23 @@ class RunContext:
     def mark_recovery_ready(self) -> None:
         marker = self.run_dir / ".recovery.ready"
         marker.write_text(str(self.execution_options), encoding="utf-8")
+
+    def _publish_active_call(self, call_id: str) -> None:
+        path = self.run_dir / "run.json"
+        if not path.is_file():
+            return
+        try:
+            from loopflow.infrastructure.web_storage import atomic_write_json, read_json
+
+            metadata = read_json(path)
+            if not isinstance(metadata, dict) or metadata.get("status") != "running":
+                return
+            metadata["active_call_id"] = call_id
+            if "active_worker_atomic" not in metadata and "active_worker_atomic" in self.execution_options:
+                metadata["active_worker_atomic"] = bool(self.execution_options["active_worker_atomic"])
+            atomic_write_json(path, metadata)
+        except (OSError, json.JSONDecodeError):
+            pass
 
     def session_output_path(self, session: str) -> Path:
         return self.run_dir / f"{self._counter:04d}.jsonl"
