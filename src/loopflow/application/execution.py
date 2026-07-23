@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import json
 import multiprocessing
 import os
@@ -14,6 +13,7 @@ from typing import Any
 from loopflow.infrastructure.context import RunContext, State, set_context
 from loopflow.infrastructure.discovery import load_loop
 from loopflow.infrastructure.web_storage import SystemProcessProbe, append_run_index, atomic_write_json, now_iso, read_json
+from loopflow.infrastructure.workflow_args import accepted_kwargs
 
 
 def execute_workflow(
@@ -87,12 +87,10 @@ def execute_workflow(
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
     set_context(context)
-    state_requested = "state" in inspect.signature(module.run).parameters
     kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
-    if state_requested:
-        kwargs["state"] = state
+    kwargs["state"] = state
     try:
-        module.run(**kwargs)
+        module.run(**accepted_kwargs(module.run, kwargs))
     except KeyboardInterrupt:
         status, error = "cancelled", None
     except Exception as exc:
@@ -130,7 +128,7 @@ def execute_workflow(
         run_metadata.pop("cancel_point", None)
         run_metadata.pop("active_call_id", None)
         run_metadata.pop("active_worker_atomic", None)
-        if state_requested and context.state is not None:
+        if "state" in accepted_kwargs(module.run, {"state": state}) and context.state is not None:
             atomic_write_json(run_dir / "state.json", context.state.to_dict())
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)

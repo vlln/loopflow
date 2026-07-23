@@ -208,16 +208,14 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
     if not hasattr(mod, "run"):
         return None
 
-    import inspect
-    sig = inspect.signature(mod.run)
+    from loopflow.infrastructure.workflow_args import accepted_kwargs
     run_kwargs = dict(
         agent=agent, parallel=parallel, pipeline=pipeline,
         phase=phase, log=log, args=args or {}, intervene=intervene,
         workflow=workflow,
     )
-    if "state" in sig.parameters:
-        run_kwargs["state"] = _ctx_module._ctx.state
-    return mod.run(**run_kwargs)
+    run_kwargs["state"] = _ctx_module._ctx.state
+    return mod.run(**accepted_kwargs(mod.run, run_kwargs))
 
 
 def phase(title: str) -> None:

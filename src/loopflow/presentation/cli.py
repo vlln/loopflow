@@ -21,6 +21,7 @@ from pathlib import Path
 
 import click
 
+from loopflow.infrastructure.workflow_args import accepted_kwargs
 from loopflow.infrastructure.web_storage import append_run_index, atomic_write_json
 
 
@@ -232,11 +233,8 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
             phase=phase, log=log, args=args_dict, workflow=workflow,
             intervene=intervene,
         )
-        import inspect
-        sig = inspect.signature(mod.run)
-        if "state" in sig.parameters:
-            run_kwargs["state"] = state
-        result = mod.run(**run_kwargs)
+        run_kwargs["state"] = state
+        result = mod.run(**accepted_kwargs(mod.run, run_kwargs))
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
         _finish_run(run_meta, "stopped")
@@ -357,11 +355,8 @@ def legacy_resume_internal(run_id, mock, watch):
             phase=phase, log=log, args=args_dict, workflow=workflow,
             intervene=intervene,
         )
-        import inspect
-        sig = inspect.signature(mod.run)
-        if "state" in sig.parameters:
-            run_kwargs["state"] = state
-        result = mod.run(**run_kwargs)
+        run_kwargs["state"] = state
+        result = mod.run(**accepted_kwargs(mod.run, run_kwargs))
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
         _finish_run(run_meta, "stopped")

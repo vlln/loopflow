@@ -295,9 +295,11 @@ def contract_examples() -> dict[str, dict[str, Any]]:
         },
         "intervention": {
             "request_id": "approve-1",
+            "source": "workflow",
             "key": "approve",
             "prompt": "Approve?",
-            "schema": {"type": "boolean"},
+            "options": ["true", "false"],
+            "allow_custom": False,
             "status": "pending",
             "call_id": None,
             "resume_mode": "replay",
