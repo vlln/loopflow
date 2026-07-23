@@ -71,7 +71,7 @@ Intervention panel 不只展示 pending request：
 - pending：展示输入控件。
 - answered：展示 response 摘要、responded_at 和只读状态，不显示再次提交控件。
 - submit error：错误贴在 panel 内，同时保留 toast；输入内容不丢失。
-- recovery error：显示“回答已保存，但恢复失败”的区别，避免误以为回答未提交。
+- 回答提交成功后，后续 worker/agent 失败按普通 Run execution failure 展示，不作为 Intervention 特殊状态建模。
 
 ## 5. 多 request 首版只处理一个 pending，但列表要可解释
 
@@ -83,41 +83,30 @@ Intervention panel 不只展示 pending request：
 
 1. `cancelled + pending request` 时，回答问题作为最高优先级主操作，`recover_retry` 降为次要动作。
 2. 首版接受只支持顶层 schema type，不做完整 JSON Schema form renderer。
-3. 回答成功但自动恢复失败时，UI 必须区分“response 已保存”和“Run 恢复失败”。
+3. 不单独建模“回答成功但自动恢复失败”；回答持久化成功后，后续失败归入普通 Run execution failure。
 4. 多个 request 首版按“最早 pending 为主、其他只读折叠”处理。
 
-# Backend Contract Gap
+# Framework Business Boundary
 
-第 3 点需要后端契约支持。当前实现顺序是：
+提交回答的 4 个错误边界属于框架层 application command 业务逻辑，是 respond 命令必须保证的业务不变量，由后端保证，不由 WebUI 自行推断：
 
-1. `POST /runs/{run_id}/interventions/{request_id}/response` 先原子持久化 answer；
-2. 再自动启动 recover；
-3. 如果 recover 返回 `replay_diverged`、`continue_not_supported` 或 `invalid_run_transition`，HTTP 只返回普通错误。
+| 边界 | 框架层保证 | UI 行为 |
+|------|----------|---------|
+| schema 校验失败 | 返回 `422 validation_failed`；response 不落盘；不启动恢复 worker | 保持 pending 输入状态，显示错误 |
+| request 不存在 | 返回 `404 intervention_not_found`；不修改 Run | 显示错误并刷新 Run/request |
+| request 已 answered | 返回 `409 intervention_already_answered`；不覆盖 response；不重复启动恢复 | 切到 answered/history 只读展示 |
+| Run 当前不允许 respond | 返回 `409 invalid_run_transition`；不修改 request | 显示状态冲突并刷新 Run |
 
-这意味着前端不能仅凭本次 error response 判断 answer 是否已保存，只能再查询 `GET /runs/{run_id}/interventions` 推断。后续 TEST_INFRA 需要先冻结一个明确契约，例如在错误响应 `details` 中携带：
+`POST /runs/{run_id}/interventions/{request_id}/response` 的职责是校验并持久化 response，然后让同一 Run 进入恢复执行流程。若 response 已经持久化且恢复 worker 后续失败，该失败属于普通 Run execution failure，由 Run status、events、call status 和 existing recover actions 表达；不新增 `response_persisted`、`recovery_started`、`respond_status` 或独立 lifecycle state。
 
-```json
-{
-  "response_persisted": true,
-  "request_id": "approve-1",
-  "run_id": "abc",
-  "recovery_started": false
-}
-```
-
-或引入等价的 read model 字段。该契约必须区分：
-
-- schema 校验失败：answer 未保存；
-- duplicate answer：answer 原本已存在；
-- answer 已保存但自动恢复失败；
-- answer 已保存且恢复 worker 已启动。
+因此下一阶段需要先用 AC/interface/contract tests 固化上述 4 个框架层业务边界，再补 UI 状态展示；不为低概率恢复失败设计单独的 intervention error 协议。
 
 # Acceptance For Next Stage
 
 设计已审核通过。下一阶段应先进入 TEST_INFRA：
 
 1. 补 AC，覆盖 intervention panel 视觉层级、cancelled + respond 优先级、answered/history/error 状态。
-2. 补 Web API error details 契约，覆盖 answer persisted 但 recovery failed 的区分。
+2. 补 AC/contract，明确 4 个 respond 提交前错误边界由框架保证。
 3. 补 WebUI contract/DOM 测试计划。
 4. 再进入 DEVELOP 调整现有 0055 实现。
 
