@@ -62,7 +62,7 @@ created: 2026-07-18T22:00:00Z
 | error_summary | string/null | 是 | 错误摘要 |
 | parse_error | string/null | 是 | status=unreadable 时为 JSON 解析异常摘要，格式 `line {line}, column {column}: {message}`；其他状态为 null |
 | execution_epoch | integer/null | 是 | 当前执行 fencing token；legacy/unreadable 无法证明时为 null |
-| allowed_actions | string[] | 是 | `stop/recover_retry/recover_continue/respond/rerun/reconcile` 的允许子集 |
+| allowed_actions | string[] | 是 | `stop/recover_retry/recover_continue/respond/rerun/reconcile` 的允许子集；`recover_retry` 是兼容 action 名，表示默认 recover/retry 入口，不对应单独能力字段 |
 
 ### RunDetail
 
@@ -177,21 +177,21 @@ Query：
 
 ### `POST /runs/{run_id}/stop`
 
-无 body。仅 `running` 或 `waiting_input` 可调用。200：status=`cancelled` 的 `RunSummary`。running Run 先持久化 cancelling，再终止已验证身份的进程组；waiting_input 不要求 PID。
+无 body。仅 `running` 或 `waiting_input` 可调用。200：status=`cancelled` 的 `RunSummary`。running Run 先持久化 cancelling，再终止已验证身份的进程组；waiting_input 不要求 PID，pending intervention request 保留，后续可通过 `respond` 恢复同一 Run。
 
 错误：404 `run_not_found`；409 `invalid_run_transition`；500 `atomic_write_failed`。取消意图成功落盘后进程恰好消失，仍返回 200 cancelled，不返回半完成错误。
 
 ### `POST /runs/{run_id}/recover`
 
-仅 failed Run 可调用。恢复沿用原 Run 的 loop、args、backend、model 和其他执行选项，不接受覆盖：
+failed Run 或存在可重放取消边界的 cancelled Run 可调用。恢复沿用原 Run 的 loop、args、backend、model 和其他执行选项，不接受覆盖：
 
 | 字段 | 类型 | 必填 | 默认 | 约束 |
 |------|------|------|------|------|
-| mode | string | 是 | — | `retry` 或 `continue` |
+| mode | string | 是 | — | `retry` 或 `continue`；retry 是默认恢复路径，continue 仅在 durable session 和取消/失败点都允许时可用 |
 
 200：相同 run_id、status=running、execution_epoch 已递增的 `RunSummary`。
 
-错误：404 `run_not_found`；409 `invalid_run_transition`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。
+错误：404 `run_not_found`；409 `invalid_run_transition`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。对 atomic/isolated worker 取消点执行 `mode=continue` 返回 `continue_not_supported`；不得静默降级为 retry。
 
 ### `GET /runs/{run_id}/interventions`
 
@@ -205,7 +205,7 @@ Body：
 {"response": true}
 ```
 
-只允许字段 `response`，其值按请求 schema 校验。成功后 response 不可修改，服务自动恢复相同 run_id。
+只允许字段 `response`，其值按请求 schema 校验。成功后 response 不可修改，服务自动恢复相同 run_id。Run 为 `waiting_input`，或 Run 已 `cancelled` 但 request 仍为 pending 时均可提交；后者表示用户取消了等待中的 execution attempt，但没有关闭该人工输入请求。
 
 200：status=running、execution_epoch 已递增的 `RunSummary`。
 
@@ -380,7 +380,7 @@ Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queu
 
 `version` 无法探测时必须为 null，UI 表示由前端规范决定。
 
-`resume_session` 表示 backend 接受已有 session ID；`durable_session_id` 表示该 ID 可在失败或进程退出后继续使用，并能在 loopflow 恢复所需时机获得。只有两者均为 true 且目标 Call 已持久化 session_id 时，Run 才允许 `recover_continue`。
+`resume_session` 表示 backend 接受已有 session ID；`durable_session_id` 表示该 ID 可在失败或进程退出后继续使用，并能在 loopflow 恢复所需时机获得。只有两者均为 true、目标 Call 已持久化 session_id，且失败/取消点未处于原子或隔离 worker 禁止边界时，Run 才允许 `recover_continue`。
 
 ### `POST /backends/{backend_name}/diagnostics`
 

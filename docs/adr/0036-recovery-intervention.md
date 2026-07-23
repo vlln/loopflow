@@ -1,6 +1,6 @@
 ---
 title: Reliable Recovery, Cancellation, and Intervention
-description: 以可校验 Call 缓存支持 retry/continue 恢复，以终态取消和可重放输入支持可靠停止与人工介入
+description: 以可校验 Call 缓存支持 retry/continue 恢复，以 attempt 取消和可重放输入支持可靠停止与人工介入
 type: adr
 status: accepted
 created: 2026-07-22T06:35:57Z
@@ -15,7 +15,7 @@ ADR 0004 以 `<seq>.jsonl` 和调用序号实现从头重放，已完成调用�
 当前 `resume` 还同时表达停止后继续、失败后重跑等不同意图。用户需要的控制面更窄且语义更严格：
 
 1. 失败后恢复同一 Run，前序成功 Call 从缓存返回；失败 Call 可选择新 session 重跑或恢复原 session 上下文；
-2. `stop` 表示永久结束 Run，不是暂停；
+2. `stop` 表示取消当前 execution attempt，不表达用户永久放弃 Run identity；
 3. workflow 出现需要人类回答的阻塞时，持久化问题并释放执行进程，回答后恢复同一 Run；
 4. 不引入 Python 调用栈序列化、数据库或预定义 DAG 状态机。
 
@@ -32,9 +32,9 @@ ADR 0004 以 `<seq>.jsonl` 和调用序号实现从头重放，已完成调用�
 | `retry` | 校验后返回缓存结果 | 创建新的 backend session 重新执行 |
 | `continue` | 校验后返回缓存结果 | 使用原 `session_id` 调用 backend `resume_session()` |
 
-每次恢复都必须取得 Run 独占锁。首次执行时把自动选择后的有效 backend/model 与其他执行选项冻结到 Run；恢复沿用这些值，不接受覆盖，也不修改 loop、args 或已持久化响应。`done`、`cancelled` 和 legacy `stopped` Run 不允许恢复；`rerun` 仍创建新 Run。
+每次恢复都必须取得 Run 独占锁。首次执行时把自动选择后的有效 backend/model 与其他执行选项冻结到 Run；恢复沿用这些值，不接受覆盖，也不修改 loop、args 或已持久化响应。`retry` 是恢复默认路径，只要 Run 能重放到未提交/失败/取消边界即可尝试；框架不额外建模永远为真的 `can_recover_retry`。`done` 和 legacy `stopped` Run 不允许恢复；`cancelled` 是否可恢复由取消点和重放边界决定。`rerun` 仍创建新 Run，不是旧 Run 的 lifecycle transition。
 
-`continue` 只有在目标 Call 已持久化非空 `session_id` 且 backend 声明支持 durable session resume 时可用。条件不满足时返回 `continue_not_supported`，不得静默降级为 `retry`。
+`continue` 只有在目标 Call 已持久化非空 `session_id`、backend 声明支持 durable session resume，且取消/失败点允许继续该 session 时可用。条件不满足时返回 `continue_not_supported`，不得静默降级为 `retry`。
 
 ### 2. `<call-id>.jsonl` 承载最小 Call 记录
 
@@ -100,7 +100,7 @@ workflow 直接调用产生的请求使用 `resume_mode=replay`，回答通过�
 
 同一 request 只接受一次回答。重复提交相同或不同值均返回 `intervention_already_answered`。`waiting_input` 不是 goal mode 的 `blocked`：前者等待外部输入且可继续，后者仍表示 Agent 无法推进。
 
-### 6. `stop` 是不可恢复的终止
+### 6. `stop` 取消当前 execution attempt
 
 Run 状态扩展为 `running`、`waiting_input`、`cancelling`、`cancelled`、`done`、`failed`；`stopped` 仅作为 legacy 可读状态。状态转换为：
 
@@ -108,14 +108,27 @@ Run 状态扩展为 `running`、`waiting_input`、`cancelling`、`cancelled`、`
 running -> cancelling -> cancelled
 waiting_input -> cancelled
 failed -> running                 recover
+cancelled -> running              recover
 waiting_input -> running          respond
+cancelled -> running              respond pending intervention
 running -> done | failed | waiting_input
 stale -> failed                   reconcile
 ```
 
-停止命令先在 Run 独占锁内持久化取消意图，再终止执行进程组。先发送 SIGTERM，超过 grace period 后发送 SIGKILL。执行进程退出时不得把 `cancelling/cancelled` 覆盖为 `done/failed`。
+停止命令先在 Run 独占锁内持久化取消意图，再终止执行进程组。先发送 SIGTERM，超过 grace period 后发送 SIGKILL。执行进程退出时不得把 `cancelling/cancelled` 覆盖为 `done/failed`。`cancelled` 只表示本次 execution epoch 被取消，不表示用户永久放弃该 Run，也不是“不可恢复”的框架状态；如果具体恢复不可行，由后续 recover/respond 尝试返回 `replay_diverged`、`continue_not_supported` 或其他明确错误。
 
-每次执行获得递增的 `execution_epoch`。worker 写 Run 终态前必须验证自己仍持有当前 epoch；旧 worker 的迟到写入被拒绝。停止 `waiting_input` Run 不需要进程存在，直接进入 `cancelled` 并关闭未回答请求。
+每次执行获得递增的 `execution_epoch`。worker 写 Run 终态前必须验证自己仍持有当前 epoch；旧 worker 的迟到写入被拒绝。
+
+取消点只建模为两类：
+
+| cancel point | 含义 | 恢复语义 |
+|--------------|------|----------|
+| `worker_running` | 有 workflow/Agent worker 正在执行 | `recover` 默认重放前序结果并对当前 Call retry；只有 durable session 存在且 active worker 未处于原子提交/隔离边界时才允许 `continue` |
+| `no_worker_running` | 没有执行 worker，例如恰好在 worker 之间或 `waiting_input` | backend session continuation 没有当前执行对象可接续；若存在 pending intervention，`respond` 持久化回答并恢复同一 Run |
+
+workflow/Agent 可选择原子提交或隔离执行。若取消发生在原子/隔离 worker 内，框架必须拒绝 `continue`，因为本次 worker 的中间修改和 session continuation 不能共同构成可接受提交；此时 retry/replay 是唯一框架内恢复路径。若 workflow 未使用原子提交，取消后外部副作用的可靠恢复由 workflow 自己负责。
+
+停止 `waiting_input` Run 不需要进程存在，直接进入 `cancelled`，但不关闭未回答请求。pending request 仍可通过 `respond` 提交回答并恢复同一 Run；用户也可以选择 recover 重放到同一 pending intervention 边界。
 
 ### 7. State 从初始值参与重放
 
@@ -129,7 +142,7 @@ loopflow 仍不保证任意 Python 或外部系统副作用 exactly-once。需�
 
 ### 8. Legacy 兼容
 
-旧 `<seq>.jsonl` 没有 `input_digest/status` 时继续按 ADR 0004 只读识别，但只允许 legacy `retry`，并在 UI/CLI 标记为 unverified recovery。旧 `stopped` Run 保持可读且不可恢复。现有 CLI `resume` 命令在兼容期作为 failed Run 的 `recover --mode retry` deprecated alias；不再接受 stopped Run。Web API 不保留 `/resume`，调用方直接迁移到 `/recover`。新写入缓存一律使用本 ADR 契约，不原地迁移旧文件。
+旧 `<seq>.jsonl` 没有 `input_digest/status` 时继续按 ADR 0004 只读识别，但只允许 legacy `retry`，并在 UI/CLI 标记为 unverified recovery。旧 `stopped` Run 保持可读且不可恢复。现有 CLI `resume` 命令在兼容期作为 recover retry 的 deprecated alias；不再接受 stopped Run。Web API 不保留 `/resume`，调用方直接迁移到 `/recover`。新写入缓存一律使用本 ADR 契约，不原地迁移旧文件。
 
 ## Alternatives
 
@@ -145,19 +158,19 @@ loopflow 仍不保证任意 Python 或外部系统副作用 exactly-once。需�
 
 实现直观，但占用进程和资源锁，服务重启后仍丢失 Python 调用栈。持久化请求后退出并重放与现有恢复模型一致。
 
-### `stop` 继续允许 resume
+### `stop` 表示永久放弃 Run
 
-这会把永久终止和暂停混为一谈，使用户无法确信运行已结束。当前范围不提供 pause；未来如需要应新增独立状态和命令。
+早期设计把 `cancelled` 建模为不可恢复终态，并把未回答 Intervention 一并关闭。该方案过度表达了用户“放弃整个 Run”的意图：用户停止当前执行可能只是为了释放资源、稍后回答问题，或取消一个原子 worker attempt 后重试。用户放弃整个 Run 是操作决策，不是框架生命周期状态；若需要从原始输入创建新实例，使用 `rerun`。
 
 ## Consequences
 
 ### Positive
 
 - 继续复用现有 JSONL 和从头重放架构，新增概念受控。
-- `retry` 与 `continue` 行为可预测，能力不足时明确失败。
+- `retry`、`continue` 与 `respond` 行为可预测，能力不足时明确失败。
 - digest 防止位置相同但调用语义已变化时错误命中缓存。
 - 阻塞不长期占用进程，服务重启后仍可回答。
-- 取消意图和 execution epoch 防止停止状态被迟到 worker 覆盖。
+- 取消意图和 execution epoch 防止取消状态被迟到 worker 覆盖。
 
 ### Negative
 
@@ -165,6 +178,7 @@ loopflow 仍不保证任意 Python 或外部系统副作用 exactly-once。需�
 - 每次恢复需要重新执行 workflow 中的普通 Python 代码。
 - digest 规范、并行稳定 ID 和 legacy 路径增加测试矩阵。
 - 外部副作用仍要求 workflow/Agent 自己提供幂等性或隔离。
+- `cancelled` 不再是“只能 rerun”的简单终态，读模型需要根据取消点、pending request 和 durable session 能力派生动作。
 
 ## Architecture Boundary
 

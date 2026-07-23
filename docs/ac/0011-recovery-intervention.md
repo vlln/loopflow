@@ -1,6 +1,6 @@
 ---
 title: Reliable Recovery, Cancellation, and Intervention AC
-description: 验收可校验前序恢复、失败 Agent retry/continue、永久停止和阻塞人工回答
+description: 验收可校验前序恢复、失败/取消 Agent retry/continue、attempt 取消和阻塞人工回答
 type: ac
 status: active
 created: 2026-07-22T06:35:57Z
@@ -49,14 +49,15 @@ created: 2026-07-22T06:35:57Z
 
 # AC-021: 可靠停止
 
-验证 stop 永久结束 Run，并且并发退出不能覆盖取消状态。
+验证 stop 取消当前 execution attempt，并且并发退出不能覆盖取消状态。
 
 ## 正常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-021-N-1 | running Run A 的 workflow 和 backend 子进程均存活 | 对 A 执行 stop | 先持久化 cancelling；进程组收到 SIGTERM；最终 status=cancelled、finished_at 非空、pid 被清除 | 自动化 |
-| AC-021-N-2 | Run A 为 waiting_input 且没有存活 worker | 对 A 执行 stop | 不要求 PID；A 原子变为 cancelled；未回答 request 关闭 | 自动化 |
+| AC-021-N-2 | Run A 为 waiting_input 且没有存活 worker，request R 为 pending | 对 A 执行 stop | 不要求 PID；A 原子变为 cancelled；R 仍为 pending；allowed_actions 包含 respond，不把用户未回答解释为放弃 Run | 自动化 |
+| AC-021-N-3 | cancelled Run A 有前序 succeeded 缓存和取消点 Call 0002；两者 input_digest 与当前调用一致 | 对 A 执行 recover mode=retry | 沿用 A.run_id；前序缓存命中；0002 创建新 session 重新执行；Run 进入 running 并递增 execution_epoch | 自动化 |
 
 ## 边界场景
 
@@ -64,13 +65,15 @@ created: 2026-07-22T06:35:57Z
 |------|----------|----------|----------|----------|
 | AC-021-B-1 | backend 忽略 SIGTERM | 对 Run 执行 stop 并等待 grace period | grace period 后向进程组发送 SIGKILL；Run 最终 cancelled | 自动化 |
 | AC-021-B-2 | legacy Run status=stopped | 查询 Run 和 allowed_actions | Run 可读；不提供 recover；可提供 rerun | 自动化 |
+| AC-021-B-3 | running Run A 的 active worker 声明 atomic/isolated，且已持久化 durable session_id | 对 A 执行 stop 后再 recover mode=continue | 返回 409 continue_not_supported；不恢复原 session；recover mode=retry 仍可单独执行 | 自动化 |
+| AC-021-B-4 | running Run A 的 active worker 非 atomic，且 backend/session 均支持 durable continue | 对 A 执行 stop 后再 recover mode=continue | 目标 Call 使用原 session_id 调用 resume_session；不创建新 session | 自动化 |
 
 ## 异常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-021-E-1 | stop 已将 A 写为 cancelling，旧 worker 随后尝试写 done | 完成竞态 | worker 因 execution_epoch/terminal guard 被拒绝；A 最终 cancelled | 自动化 |
-| AC-021-E-2 | A 已 cancelled | 再次 stop 或 recover | 返回 409 invalid_run_transition；run.json 字节不变 | 自动化 |
+| AC-021-E-2 | A 已 cancelled 且没有可重放边界或 pending request | 对 A 执行 recover 或 respond | 返回 409 invalid_run_transition 或具体恢复错误；run.json 不被错误标记为 done | 自动化 |
 
 ## 失败场景
 
@@ -93,6 +96,7 @@ created: 2026-07-22T06:35:57Z
 | AC-022-N-2 | A 为 waiting_input，request R 未回答 | 对 R 提交 boolean `true` | response 持久化；追加 intervention_responded；A 自动恢复；重放到相同 key 时返回 true；A.run_id 不变 | 自动化 |
 | AC-022-N-3 | Agent 结构化请求人工输入且缓存含 durable session_id | 回答 request | 前序 Call 返回缓存；目标 Call 使用回答恢复原 backend session；自然语言文本不用于推断请求 | 自动化 |
 | AC-022-N-4 | Run A 为 waiting_input，request schema 为 boolean | 在 WebUI 选择 A | 展示 request prompt 和布尔输入控件；不展示自由文本 Resume；提交后按钮禁用直到响应完成 | 自动化 |
+| AC-022-N-5 | A 原为 waiting_input，随后被 stop 为 cancelled，request R 仍 pending | 对 R 提交 boolean `true` | response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回 true | 自动化 |
 
 ## 边界场景
 
@@ -100,6 +104,7 @@ created: 2026-07-22T06:35:57Z
 |------|----------|----------|----------|----------|
 | AC-022-B-1 | Web 服务在 Run waiting_input 期间重启 | 重启后查询 request 并回答 | request 仍可读取；回答后同一 Run 恢复，不依赖旧进程内存 | 自动化 |
 | AC-022-B-2 | request schema 为 null | 提交任意 JSON 值 | 值作为 immutable response 接受并在重放时原样返回 | 自动化 |
+| AC-022-B-3 | A 为 cancelled 且含 pending request R；用户不提交 response | 查询 Run 和 request | A 保持 cancelled；R 保持 pending；框架不自动关闭 request，也不把该状态建模为 abandon | 自动化 |
 
 ## 异常场景
 

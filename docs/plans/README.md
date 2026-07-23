@@ -18,7 +18,7 @@
 | [0047](0047-grok-acp/) | Grok ACP 接入 | done | 2026-07-22 |
 | [0048](0048-system-test-certification/) | SYSTEM_TEST 发布前认证 | done | 2026-07-23 |
 | [0049](0049-release-certification/) | RELEASE 发布认证 | pending | 2026-07-23 |
-| [0050](0050-cancel-recovery-semantics/) | 取消恢复语义设计修订 | pending | 2026-07-23 |
+| [0050](0050-cancel-recovery-semantics/) | 取消恢复语义设计修订 | done | 2026-07-23 |
 
 ## 状态说明
 

@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | RELEASE 前发现取消/恢复语义需要修订：`cancelled` 应表示当前 execution attempt 被取消，而非 Run identity 不可恢复；retry 是恢复默认路径，不单独建模；continue 与 respond 均恢复同一 Run 但动作语义不同。当前退回 DESIGN，需修订 ADR/Spec/Interface/AC 后再进入实现。 |
+| **当前阶段** | `TEST_INFRA` |
+| **设计评估** | 0050 已完成取消/恢复语义修订：`cancelled` 表示当前 execution attempt 被取消；retry 是恢复默认路径，不单独建模；continue 与 respond 均恢复同一 Run 但动作语义不同。下一步应先更新恢复/停止/介入测试契约，再进入产品代码实现。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

@@ -2,7 +2,7 @@
 title: Cancel Recovery Semantics Plan
 description: 修订 cancelled/recover/respond/rerun 的语义边界，解除 cancelled 不可恢复假设
 type: plan
-status: pending
+status: done
 created: 2026-07-23T00:00:00Z
 ---
 

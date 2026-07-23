@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [取消恢复语义](01-plan-cancel-recovery-semantics.md) | 待创建 | pending |
+| 01 | [取消恢复语义](01-plan-cancel-recovery-semantics.md) | [Report](01-report-cancel-recovery-semantics.md) | done |
 
 ## 背景
 

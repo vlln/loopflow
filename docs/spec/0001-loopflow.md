@@ -1,6 +1,6 @@
 ---
 title: loopflow Spec
-description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、停止与人工介入及本地 WebUI 控制台。
+description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入及本地 WebUI 控制台。
 type: spec
 status: active
 version: 13
@@ -26,7 +26,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-003 | 开发者 | 失败后以 retry 或 continue 恢复运行实例 | 校验并复用前序成功调用，选择重跑失败 Agent 或恢复其 session 上下文 | P0 |
 | US-004 | 开发者 | 查看运行实例状态（`loopflow status <run-id>`） | 了解当前进度、各 Agent 调用结果 | P0 |
 | US-005 | 开发者 | 列出所有 loop 定义和运行实例（`loopflow list`） | 管理本地 loop 和运行历史 | P1 |
-| US-006 | 开发者 | 永久停止运行中或等待输入的实例（`loopflow stop <run-id>`） | 结束不再需要的运行且不会被迟到 worker 覆盖或再次恢复 | P0 |
+| US-006 | 开发者 | 取消运行中或等待输入实例的当前 execution attempt（`loopflow stop <run-id>`） | 释放当前执行资源并防止迟到 worker 覆盖取消事实，后续是否恢复由恢复边界决定 | P0 |
 | US-007 | 开发者 | 在工作流中并行调用多个 Agent（parallel） | 同一轮迭代内并发审查，提高效率 | P0 |
 | US-008 | 开发者 | 在工作流中流水线处理多个 item（pipeline） | 每个 item 独立流经多个 stage，无屏障 | P1 |
 | US-009 | 开发者 | 嵌套调用子 workflow（workflow） | 复用已有 loop 定义 | P2 |
@@ -209,6 +209,9 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | error_summary | string | optional | failed 状态的短错误摘要，不替代完整事件 |
 | execution_epoch | integer | NOT NULL | 每次首次执行或恢复递增；worker 写状态时的 fencing token |
 | execution_options | object | NOT NULL | 首次执行冻结的有效 backend、model、mock、phase 范围等选项；recover 不接受覆盖 |
+| cancel_point | string | optional | 最近一次取消点：worker_running / no_worker_running；仅用于派生恢复动作，不表示用户放弃 Run |
+| active_call_id | string | optional | 最近一次执行中的 Agent Call；worker_running 取消或 failed 时用于定位 retry/continue 目标 |
+| active_worker_atomic | boolean | optional | active worker 是否处于原子提交/隔离边界；true 时 recover_continue 不可用 |
 
 ### Intervention
 
@@ -223,7 +226,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | call_id | string/null | required | 关联 Agent Call；workflow 直接请求时为 null |
 | session_id | string/null | required | 可继续的 backend session |
 | resume_mode | string | required | replay（workflow 请求）/ continue（Agent 请求） |
-| status | string | required | pending / answered / closed |
+| status | string | required | pending / answered / closed；stop waiting_input 不关闭 pending request，closed 仅用于显式废弃或 legacy 读取 |
 | response | any | optional | immutable 回答，仅 status=answered 时存在 |
 | created_at | ISO 8601 | required | 请求创建时间 |
 | answered_at | ISO 8601/null | required | 回答时间 |
@@ -373,19 +376,19 @@ Agent 隔离层级体系（递进）：
 | BR-024 | Runs 使用常驻主从工作台 | 用户进入 WebUI 或切换 Run | 左侧保留可筛选的 Runs 列表，右侧原地切换所选 Run，不设置独立的 Runs 列表页跳转流程 |
 | BR-025 | Phase、state、Run status 分层展示 | 构建 Run 读模型 | Phase 表示执行路径；state 表示 `state.json` 当前投影；Run status 表示 running/waiting_input/cancelling/cancelled/done/failed，三者不得混用 |
 | BR-026 | Phase occurrence 详情只展示有证据的数据 | 用户选择聚合 Phase 或一次 occurrence | occurrence 由 `phase_id` 区分，Agent Calls 和 events 由 `phase_id`/`call_id` 关联；首版不承诺 Phase input/output/state diff，不从日志文本推断 |
-| BR-027 | Run 操作受状态约束 | WebUI 请求 run/stop/recover/respond/reconcile | running 允许 stop；waiting_input 允许 respond 或 stop；failed 允许 recover 或 rerun；stale 只允许 reconcile；done/cancelled/legacy stopped 只允许 rerun；非法转换返回冲突错误且不修改文件 |
+| BR-027 | Run 操作受状态和恢复边界约束 | WebUI 请求 run/stop/recover/respond/reconcile | running 允许 stop；waiting_input 允许 respond 或 stop；failed 允许 recover；cancelled 在存在可重放边界时允许 recover，在存在 pending intervention 时允许 respond；done/legacy stopped 不允许 recover；stale 只允许 reconcile；rerun 是创建新 Run 的便利动作，不作为旧 Run 状态转换；非法转换返回冲突错误且不修改文件 |
 | BR-028 | Loop 文件预览限制在 Loop 根目录 | WebUI 请求 Loop 文件 | 解析后的真实路径必须位于所选 Loop 根目录内；拒绝路径穿越、符号链接逃逸和任意绝对路径 |
 | BR-029 | Run 事件流可断线恢复 | WebUI 订阅 Run | 客户端按 event_id 请求断点后的事件；服务端可重放已持久化事件并继续推送新增事件，重复连接不得重复执行 Run |
 | BR-030 | Backend 诊断基于真实能力 | WebUI 查询后端 | 仅展示 BackendManager 或诊断命令可观测的安装、版本、能力、transport 和日志；不得伪造 VRAM、延迟或健康分数 |
 | BR-031 | Run 与 state 文件原子更新 | 创建 Run、状态变化、Phase 变化、state 持久化或进程退出 | `run.json` 和 `state.json` 各自在同目录写临时文件，flush 后独立原子替换，不承诺跨文件事务；仅替换 run.json 时在同一份新 JSON 中更新其 updated_at，state.json 不增加保留字段 |
 | BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；进程不存在或启动标识不匹配时，读模型返回 stale 且不修改文件。显式 reconcile 再次校验后原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at，随后允许 recover |
-| BR-033 | 失败 Call 恢复模式显式选择 | failed Run 执行 recover | retry 创建新 session；continue 使用原 session_id；缺少 durable session 能力返回 continue_not_supported，不静默降级 |
-| BR-034 | stop 是永久终止 | running/waiting_input Run 执行 stop | 先持久化取消意图，再终止已验证身份的进程组；SIGTERM 超时后 SIGKILL；最终 cancelled 且不可 recover |
-| BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 intervention | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow 请求通过 replay 返回回答；Agent 请求仅在 durable session 已落盘时创建并通过 continue 返回回答 |
+| BR-033 | 恢复模式显式选择 | failed/cancelled Run 执行 recover | retry/replay 是默认恢复路径，创建新 session 或重放到 pending 边界；continue 使用原 session_id；缺少 durable session 能力、目标 Call 未落盘 session_id 或 active worker 为原子/隔离边界时返回 continue_not_supported，不静默降级 |
+| BR-034 | stop 取消当前 execution attempt | running/waiting_input Run 执行 stop | 先持久化取消意图，再终止已验证身份的进程组；SIGTERM 超时后 SIGKILL；最终 cancelled；cancelled 表示本次 execution epoch 被取消，不表示 Run identity 不可恢复 |
+| BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 intervention | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow 请求通过 replay 返回回答；Agent 请求仅在 durable session 已落盘时创建并通过 continue 返回回答；waiting_input 被 stop 后 pending request 保留，respond 可恢复同一 Run |
 | BR-036 | Intervention 不从自然语言推断 | Agent 输出问题文本 | 仅结构化 control request 触发 waiting_input；普通文本按 Agent 结果处理 |
 | BR-037 | 回答只提交一次 | pending intervention 接收 response | schema 校验通过后原子写 answered；后续提交返回 intervention_already_answered，不覆盖 response 或重复恢复 |
 | BR-038 | 首次执行冻结恢复选项 | 创建 Run | 将自动选择后的有效 backend/model 和其他执行选项写入 run.json；recover 沿用且不接受覆盖 |
-| BR-039 | CLI resume 是 deprecated retry 别名 | failed Run 调用旧 CLI resume | 执行 recover --mode retry 并输出弃用提示；Web API 不保留 resume 端点；其他状态仍按新状态机拒绝 |
+| BR-039 | CLI resume 是 deprecated recover retry 别名 | failed/cancelled Run 调用旧 CLI resume | 执行 recover --mode retry 并输出弃用提示；Web API 不保留 resume 端点；legacy stopped 仍拒绝 |
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
 | BR-041 | Recover 必须到达目标 | workflow 重放 | 到达预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束均报 replay_diverged，不得标记 done |
 
@@ -420,7 +423,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 3. 中间下方展示所选 Phase occurrence 的 Calls / Events；Run 当前 state 作为 Run 级 Inspector 信息展示，不伪装成 Phase state。Phase input/output/state diff 留待未来 observation 事件支持。
 4. 右栏展示所选 Phase 的运行过程，并可进一步选择 Agent Call 查看消息、工具调用、重试、错误、输出和原始事件。
 5. 切换 Run 或 Phase 时保留列表筛选和布局尺寸；实时事件不得引发布局跳动。
-6. failed Run 明确提供 Retry failed call 与 Continue failed session；Continue 不可用时展示后端能力原因，不静默执行 Retry。
+6. failed/cancelled Run 明确提供可用的 Recover/Retry 与 Continue 操作；Continue 不可用时展示后端能力、session 持久化或原子 worker 边界原因，不静默执行 Retry。
 7. waiting_input Run 展示结构化 prompt 和匹配 schema 的输入控件；回答只提交一次，提交期间禁用重复操作。
 
 ### Loops 工作台
@@ -504,9 +507,9 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | Resource Lock | 文件锁，防止同一资源（如 repo）被多个 loop 同时操作 |
 | Agent | 一个 Markdown 文件定义的 AI Agent，有名称、能力声明、系统提示词 |
 | Agent Call | workflow.py 中一次逻辑 `agent()` 调用，具有稳定 call_id、input_digest 和对应 `<call-id>.jsonl` 缓存 |
-| Recover | failed Run 的恢复机制：从头重放 workflow，校验并返回前序成功 Call，在目标失败 Call 执行 retry 或 continue |
-| Retry | 为目标失败 Call 创建新 backend session 重新执行 |
-| Continue | 使用目标失败 Call 的 durable session_id 恢复 backend 上下文 |
+| Recover | failed/cancelled Run 的恢复机制：从头重放 workflow，校验并返回前序成功 Call，在目标失败/取消边界执行 retry、continue 或重放到 pending intervention |
+| Retry | 为目标失败/取消 Call 创建新 backend session 重新执行；框架默认恢复路径，不单独作为能力字段建模 |
+| Continue | 使用目标失败/取消 Call 的 durable session_id 恢复 backend 上下文；原子/隔离 worker 取消边界禁止 continue |
 | Intervention | workflow 或 Agent 发出的结构化人工输入请求；持久化后 Run 等待回答且不保留 worker |
 | Backend | Agent 后端的抽象层，适配不同的 CLI Agent（kimi/claude/codex 等） |
 | Transport | 与 Backend 通信的方式：CLI（子进程）或 ACP（Agent Communication Protocol） |
