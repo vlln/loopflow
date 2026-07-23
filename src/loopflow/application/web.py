@@ -10,7 +10,15 @@ from typing import Any, Protocol
 
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
 from loopflow.infrastructure.web_events import project_events, replay_v2
-from loopflow.infrastructure.web_storage import RunRepository, now_iso, read_json
+from loopflow.infrastructure.intervention import (
+    InterventionAlreadyAnswered,
+    InterventionNotFound,
+    InterventionValidationError,
+    answer_request,
+    list_requests,
+    read_request,
+)
+from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json, now_iso, read_json
 
 
 class ApplicationError(Exception):
@@ -36,7 +44,17 @@ class WebApplication:
 
     def list_runs(self, *, statuses: list[str] | None = None, loop: str | None = None, q: str | None = None, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
         limit, offset = _page(limit, cursor)
-        valid_statuses = {"running", "done", "failed", "stopped", "stale", "unreadable"}
+        valid_statuses = {
+            "running",
+            "waiting_input",
+            "cancelling",
+            "cancelled",
+            "done",
+            "failed",
+            "stopped",
+            "stale",
+            "unreadable",
+        }
         if statuses and not set(statuses) <= valid_statuses:
             raise ApplicationError("validation_failed", "Unknown Run status")
         items = [self.runs.read_summary(path) for path in self.runs.list_dirs()]
@@ -77,30 +95,142 @@ class WebApplication:
     def stop_run(self, run_id: str) -> dict[str, Any]:
         run_dir = self._run_dir(run_id)
         metadata = read_json(run_dir / "run.json")
-        if self.runs.read_summary(run_dir)["status"] != "running":
+        status = self.runs.read_summary(run_dir)["status"]
+        if status not in {"running", "waiting_input"}:
             raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be stopped")
-        pid = metadata.get("pid")
-        if not isinstance(pid, int) or not self.runs.process_probe.terminate(pid):
-            raise ApplicationError("process_gone", f"Run '{run_id}' process is unavailable")
+        if status == "waiting_input":
+            metadata.update({
+                "status": "cancelled",
+                "finished_at": now_iso(),
+                "stop_summary": "waiting_input_cancelled",
+                "cancel_point": "no_worker_running",
+            })
+            self._clear_worker_identity(metadata)
+            self._write_metadata(run_dir, metadata)
+            return self.runs.read_summary(run_dir)
+
+        identity = self._worker_identity(metadata)
+        metadata.update({"status": "cancelling", "stop_requested_at": now_iso()})
+        self._write_metadata(run_dir, metadata)
+        stop_summary = "process_gone"
+        if identity is not None and self._identity_matches(identity):
+            stop_summary = self.runs.process_probe.terminate_group(identity["process_group_id"])
         finished = now_iso()
-        metadata.update({"status": "stopped", "finished_at": finished})
-        metadata.pop("pid", None)
-        metadata.pop("process_started_at", None)
-        self.runs.write_metadata(run_dir, metadata)
+        current = read_json(run_dir / "run.json")
+        if current.get("execution_epoch") != metadata.get("execution_epoch") or current.get("status") not in {"cancelling", "cancelled"}:
+            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be stopped")
+        current.update({
+            "status": "cancelled",
+            "finished_at": finished,
+            "error_summary": None,
+            "stop_summary": stop_summary,
+            "cancel_point": "worker_running",
+        })
+        if current.get("active_call_id") is None and current.get("failed_call_id") is not None:
+            current["active_call_id"] = current["failed_call_id"]
+        self._clear_worker_identity(current)
+        self._write_metadata(run_dir, current)
+        return self.runs.read_summary(run_dir)
+
+    def recover_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        run_dir = self._run_dir(run_id)
+        metadata = read_json(run_dir / "run.json")
+        status = self.runs.read_summary(run_dir)["status"]
+        if status not in {"failed", "cancelled"}:
+            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be recovered")
+        body = body or {}
+        _fields(body, {"mode"})
+        mode = body.get("mode", "retry")
+        if mode not in {"retry", "continue"}:
+            raise ApplicationError("validation_failed", "mode must be retry or continue")
+        if status == "cancelled" and not self._cancelled_has_recovery_boundary(run_dir, metadata):
+            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be recovered")
+        if mode == "continue" and (
+            not metadata.get("can_recover_continue") or metadata.get("active_worker_atomic")
+        ):
+            raise ApplicationError(
+                "continue_not_supported",
+                f"Run '{run_id}' has no durable failed session",
+            )
+        if self.executor is None:
+            raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
+        try:
+            returned = self.executor.start(
+                metadata["loop"],
+                metadata.get("args", {}),
+                {"recover": True, "recovery_mode": mode},
+                run_id=run_id,
+            )
+        except RuntimeError as error:
+            if str(error) in {
+                "invalid_run_transition",
+                "replay_diverged",
+                "continue_not_supported",
+            }:
+                if str(error) == "replay_diverged":
+                    raise ApplicationError("replay_diverged", f"Run '{run_id}' replay diverged") from error
+                if str(error) == "continue_not_supported":
+                    raise ApplicationError("continue_not_supported", f"Run '{run_id}' cannot continue its session") from error
+                raise ApplicationError("invalid_run_transition", f"Run '{run_id}' already has a worker") from error
+            raise
+        if returned != run_id:
+            raise ApplicationError("internal_error", "Executor changed run_id during recovery")
+        return self.runs.read_summary(run_dir)
+
+    def list_interventions(self, run_id: str) -> dict[str, Any]:
+        return {"items": list_requests(self._run_dir(run_id))}
+
+    def respond_intervention(self, run_id: str, request_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        run_dir = self._run_dir(run_id)
+        body = body or {}
+        _fields(body, {"response"})
+        if "response" not in body:
+            raise ApplicationError("validation_failed", "response is required")
+        try:
+            existing = read_request(run_dir, request_id)
+            if existing.get("status") == "answered" or "response" in existing:
+                raise InterventionAlreadyAnswered(request_id)
+            status = self.runs.read_summary(run_dir)["status"]
+            if status not in {"waiting_input", "cancelled"}:
+                raise ApplicationError("invalid_run_transition", f"Run '{run_id}' is not waiting for input")
+            request = answer_request(run_dir, run_id, request_id, body["response"])
+        except InterventionNotFound as error:
+            raise ApplicationError("intervention_not_found", f"Intervention '{request_id}' was not found") from error
+        except InterventionAlreadyAnswered as error:
+            raise ApplicationError("intervention_already_answered", f"Intervention '{request_id}' was already answered") from error
+        except InterventionValidationError as error:
+            raise ApplicationError("validation_failed", str(error)) from error
+        if self.executor is None:
+            raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
+        metadata = read_json(run_dir / "run.json")
+        mode = "continue" if request.get("resume_mode") == "continue" else "retry"
+        if mode == "continue":
+            metadata["failed_call_id"] = request.get("call_id")
+            metadata["failed_session_id"] = request.get("session_id")
+            metadata["can_recover_continue"] = True
+            self._write_metadata(run_dir, metadata)
+        try:
+            returned = self.executor.start(
+                metadata["loop"],
+                metadata.get("args", {}),
+                {"recover": True, "recovery_mode": mode},
+                run_id=run_id,
+            )
+        except RuntimeError as error:
+            if str(error) == "replay_diverged":
+                raise ApplicationError("replay_diverged", f"Run '{run_id}' replay diverged") from error
+            if str(error) == "continue_not_supported":
+                raise ApplicationError("continue_not_supported", f"Run '{run_id}' cannot continue its session") from error
+            if str(error) == "invalid_run_transition":
+                raise ApplicationError("invalid_run_transition", f"Run '{run_id}' already has a worker") from error
+            raise
+        if returned != run_id:
+            raise ApplicationError("internal_error", "Executor changed run_id during intervention response")
         return self.runs.read_summary(run_dir)
 
     def resume_run(self, run_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
-        run_dir = self._run_dir(run_id)
-        metadata = read_json(run_dir / "run.json")
-        if self.runs.read_summary(run_dir)["status"] not in {"failed", "stopped"}:
-            raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be resumed")
-        options = self._execution_options(body or {}, resume=True)
-        if self.executor is None:
-            raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
-        returned = self.executor.start(metadata["loop"], metadata.get("args", {}), {**options, "resume": True}, run_id=run_id)
-        if returned != run_id:
-            raise ApplicationError("internal_error", "Executor changed run_id during resume")
-        return self.runs.read_summary(run_dir)
+        """Deprecated application alias retained for non-Web CLI callers."""
+        return self.recover_run(run_id, {"mode": "retry"})
 
     def rerun(self, run_id: str) -> dict[str, Any]:
         source = self._run_dir(run_id)
@@ -204,6 +334,65 @@ class WebApplication:
         if path is None:
             raise ApplicationError("run_not_found", f"Run '{run_id}' was not found")
         return path
+
+    def _write_metadata(self, run_dir: Path, metadata: dict[str, Any]) -> None:
+        try:
+            self.runs.write_metadata(run_dir, metadata)
+        except OSError as error:
+            raise ApplicationError("atomic_write_failed", str(error)) from error
+
+    def _worker_identity(self, metadata: dict[str, Any]) -> dict[str, Any] | None:
+        pid = metadata.get("pid")
+        process_group_id = metadata.get("process_group_id")
+        process_started_at = metadata.get("process_started_at")
+        execution_epoch = metadata.get("execution_epoch")
+        if (
+            isinstance(pid, int)
+            and isinstance(process_group_id, int)
+            and isinstance(process_started_at, str)
+            and process_started_at
+            and isinstance(execution_epoch, int)
+        ):
+            return {
+                "pid": pid,
+                "process_group_id": process_group_id,
+                "process_started_at": process_started_at,
+                "execution_epoch": execution_epoch,
+            }
+        return None
+
+    def _identity_matches(self, identity: dict[str, Any]) -> bool:
+        pid = identity["pid"]
+        return (
+            self.runs.process_probe.identity(pid) == identity["process_started_at"]
+            and self.runs.process_probe.group_id(pid) == identity["process_group_id"]
+        )
+
+    def _cancelled_has_recovery_boundary(self, run_dir: Path, metadata: dict[str, Any]) -> bool:
+        return bool(
+            metadata.get("cancel_point")
+            or metadata.get("active_call_id")
+            or metadata.get("failed_call_id")
+            or self._has_pending_intervention(run_dir)
+        )
+
+    def _has_pending_intervention(self, run_dir: Path) -> bool:
+        interventions = run_dir / "interventions"
+        if not interventions.is_dir():
+            return False
+        for path in interventions.glob("*.json"):
+            try:
+                value = read_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(value, dict) and value.get("status") in {None, "pending"}:
+                return True
+        return False
+
+    def _clear_worker_identity(self, metadata: dict[str, Any]) -> None:
+        metadata.pop("pid", None)
+        metadata.pop("process_started_at", None)
+        metadata.pop("process_group_id", None)
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
         allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args"}

@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import signal
 import subprocess
 import tempfile
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Protocol
@@ -76,7 +78,11 @@ def read_run_index(runs_root: Path) -> dict[str, dict[str, str]]:
 class ProcessProbe(Protocol):
     def identity(self, pid: int) -> str | None: ...
 
+    def group_id(self, pid: int) -> int | None: ...
+
     def terminate(self, pid: int) -> bool: ...
+
+    def terminate_group(self, process_group_id: int, *, grace_seconds: float = 0.2) -> str: ...
 
 
 class SystemProcessProbe:
@@ -102,11 +108,48 @@ class SystemProcessProbe:
         value = result.stdout.strip()
         return f"ps:{value}" if result.returncode == 0 and value else None
 
+    def group_id(self, pid: int) -> int | None:
+        try:
+            return os.getpgid(pid)
+        except OSError:
+            return None
+
     def terminate(self, pid: int) -> bool:
         try:
             os.kill(pid, 15)
             return True
         except (OSError, ValueError):
+            return False
+
+    def terminate_group(self, process_group_id: int, *, grace_seconds: float = 0.2) -> str:
+        if process_group_id <= 0:
+            return "gone"
+        try:
+            os.killpg(process_group_id, signal.SIGTERM)
+        except ProcessLookupError:
+            return "gone"
+        except OSError:
+            return "gone"
+        deadline = time.monotonic() + grace_seconds
+        while time.monotonic() < deadline:
+            if not self._group_alive(process_group_id):
+                return "terminated"
+            time.sleep(0.01)
+        try:
+            os.killpg(process_group_id, signal.SIGKILL)
+        except ProcessLookupError:
+            return "terminated"
+        except OSError:
+            return "gone"
+        return "killed"
+
+    def _group_alive(self, process_group_id: int) -> bool:
+        try:
+            os.killpg(process_group_id, 0)
+            return True
+        except ProcessLookupError:
+            return False
+        except OSError:
             return False
 
 
@@ -131,12 +174,34 @@ def _duration_ms(metadata: dict[str, Any], now: str | None = None) -> int | None
     return max(0, int((finish_dt - start_dt).total_seconds() * 1000))
 
 
-def allowed_actions(status: str) -> list[str]:
+def allowed_actions(
+    status: str,
+    *,
+    can_recover_retry: bool = False,
+    can_recover_continue: bool = False,
+    can_respond: bool = False,
+) -> list[str]:
+    if status == "failed":
+        actions = ["recover_retry", "rerun"]
+        if can_recover_continue:
+            actions.insert(1, "recover_continue")
+        return actions
+    if status == "waiting_input":
+        return ["respond", "stop"]
+    if status == "cancelled":
+        actions = []
+        if can_recover_retry:
+            actions.append("recover_retry")
+        if can_recover_continue:
+            actions.append("recover_continue")
+        if can_respond:
+            actions.append("respond")
+        actions.append("rerun")
+        return actions
     return {
         "running": ["stop"],
         "stale": ["reconcile"],
-        "failed": ["resume", "rerun"],
-        "stopped": ["resume", "rerun"],
+        "stopped": ["rerun"],
         "done": ["rerun"],
     }.get(status, [])
 
@@ -197,6 +262,7 @@ class RunRepository:
                 "iteration_count": 0,
                 "error_summary": None,
                 "parse_error": parse_error_summary(error),
+                "execution_epoch": None,
                 "allowed_actions": [],
             }
         status = str(metadata.get("status", "unreadable"))
@@ -219,7 +285,13 @@ class RunRepository:
             "iteration_count": sum(edge["count"] for edge in projection.graph["edges"] if edge["is_backedge"]),
             "error_summary": metadata.get("error_summary"),
             "parse_error": None,
-            "allowed_actions": allowed_actions(status),
+            "execution_epoch": metadata.get("execution_epoch"),
+            "allowed_actions": allowed_actions(
+                status,
+                can_recover_retry=self._can_recover_retry(status, metadata, run_dir),
+                can_recover_continue=self._can_recover_continue(status, metadata),
+                can_respond=self._has_pending_intervention(run_dir),
+            ),
         }
 
     def read_detail(self, run_dir: Path) -> dict[str, Any]:
@@ -271,13 +343,49 @@ class RunRepository:
         )
         metadata.pop("pid", None)
         metadata.pop("process_started_at", None)
+        metadata.pop("process_group_id", None)
         atomic_write_json(run_dir / "run.json", metadata)
         return self.read_summary(run_dir)
 
     def _identity_matches(self, metadata: dict[str, Any]) -> bool:
         pid = metadata.get("pid")
         expected = metadata.get("process_started_at")
-        return isinstance(pid, int) and bool(expected) and self.process_probe.identity(pid) == expected
+        if not isinstance(pid, int) or not expected or self.process_probe.identity(pid) != expected:
+            return False
+        process_group_id = metadata.get("process_group_id")
+        if isinstance(process_group_id, int):
+            return self.process_probe.group_id(pid) == process_group_id
+        return True
+
+    def _can_recover_retry(self, status: str, metadata: dict[str, Any], run_dir: Path) -> bool:
+        if status == "failed":
+            return True
+        if status != "cancelled":
+            return False
+        return bool(
+            metadata.get("cancel_point")
+            or metadata.get("active_call_id")
+            or metadata.get("failed_call_id")
+            or self._has_pending_intervention(run_dir)
+        )
+
+    def _can_recover_continue(self, status: str, metadata: dict[str, Any]) -> bool:
+        if status not in {"failed", "cancelled"}:
+            return False
+        return bool(metadata.get("can_recover_continue")) and not bool(metadata.get("active_worker_atomic"))
+
+    def _has_pending_intervention(self, run_dir: Path) -> bool:
+        interventions = run_dir / "interventions"
+        if not interventions.is_dir():
+            return False
+        for path in interventions.glob("*.json"):
+            try:
+                value = read_json(path)
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(value, dict) and value.get("status") in {None, "pending"}:
+                return True
+        return False
 
     def _working_directory(self, run_dir: Path) -> str:
         record = self._index_records().get(run_dir.name)

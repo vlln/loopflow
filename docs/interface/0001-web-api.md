@@ -1,6 +1,6 @@
 ---
 title: loopflow Web API v1
-description: 本地 WebUI 的 REST 与 SSE 接口契约，覆盖 Runs、Loops、Queue、Backends、Run 命令和事件续传。
+description: 本地 WebUI 的 REST 与 SSE 接口契约，覆盖 Runs、恢复、停止、人工介入、Loops、Queue、Backends 和事件续传。
 type: interface
 status: active
 created: 2026-07-18T22:00:00Z
@@ -34,8 +34,8 @@ created: 2026-07-18T22:00:00Z
 |------|------|------|
 | 400 | `invalid_json` | 请求体不是合法 JSON |
 | 403 | `path_forbidden` | 文件路径越过允许根目录 |
-| 404 | `loop_not_found` / `run_not_found` / `file_not_found` / `backend_not_found` | 资源不存在 |
-| 409 | `invalid_run_transition` / `run_not_stale` / `process_alive` / `legacy_events_not_streamable` | 状态转换或事件协议冲突 |
+| 404 | `loop_not_found` / `run_not_found` / `intervention_not_found` / `file_not_found` / `backend_not_found` | 资源不存在 |
+| 409 | `invalid_run_transition` / `replay_diverged` / `continue_not_supported` / `intervention_already_answered` / `run_not_stale` / `process_alive` / `legacy_events_not_streamable` | 状态转换、恢复、人工介入或事件协议冲突 |
 | 410 | `process_gone` / `cursor_out_of_range` | 执行进程或事件游标已不可用 |
 | 413 | `request_too_large` | 请求体超过 1 MiB |
 | 422 | `validation_failed` / `file_not_previewable` | 字段、参数或文件类型不合约 |
@@ -51,7 +51,7 @@ created: 2026-07-18T22:00:00Z
 | run_id | string | 是 | 完整 Run ID |
 | working_directory | string | 是 | `runs_index.jsonl` 中记录的真实绝对工作目录；旧 Run 缺少有效映射时回退为 `lf_<pwd-path>` 分组名 |
 | loop | string/null | 是 | Loop 名；unreadable 时无法证明则为 null |
-| status | string | 是 | `running/done/failed/stopped/stale/unreadable` |
+| status | string | 是 | `running/waiting_input/cancelling/cancelled/done/failed/stopped/stale/unreadable`；stopped 仅 legacy |
 | current_phase | string/null | 是 | 最近聚合 Phase title |
 | created | string/null | 是 | 创建时间；unreadable 时无法证明则为 null |
 | started_at | string/null | 是 | 执行开始时间 |
@@ -61,7 +61,8 @@ created: 2026-07-18T22:00:00Z
 | iteration_count | integer | 是 | 聚合图最大回边次数 |
 | error_summary | string/null | 是 | 错误摘要 |
 | parse_error | string/null | 是 | status=unreadable 时为 JSON 解析异常摘要，格式 `line {line}, column {column}: {message}`；其他状态为 null |
-| allowed_actions | string[] | 是 | `stop/resume/rerun/reconcile` 的允许子集 |
+| execution_epoch | integer/null | 是 | 当前执行 fencing token；legacy/unreadable 无法证明时为 null |
+| allowed_actions | string[] | 是 | `stop/recover_retry/recover_continue/respond/rerun/reconcile` 的允许子集；`recover_retry` 是兼容 action 名，表示默认 recover/retry 入口，不对应单独能力字段 |
 
 ### RunDetail
 
@@ -74,6 +75,7 @@ created: 2026-07-18T22:00:00Z
 | graph | PhaseGraph | 是 | 聚合 Phase 图 |
 | occurrences | PhaseOccurrence[] | 是 | Phase 实际进入序列 |
 | calls | AgentCallSummary[] | 是 | 可明确关联的 Calls |
+| interventions | InterventionSummary[] | 是 | Run 的人工输入请求，按 created_at 升序 |
 | unattributed_count | integer | 是 | legacy 无法证明归属的事件数 |
 | malformed_count | integer | 是 | v2 不合约事件数 |
 
@@ -107,12 +109,29 @@ PhaseEdge：`from:string`、`to:string`、`count:integer >= 1`、`is_backedge:bo
 | call_id | string | 是 |
 | phase_id | string | 是 |
 | session | string/null | 是 |
-| status | string | 是 | `pending/running/done/failed/retrying/blocked` |
+| status | string | 是 | `pending/running/succeeded/failed/retrying/waiting_input/blocked` |
 | started_at | string/null | 是 |
 | finished_at | string/null | 是 |
 | exit_code | integer/null | 是 |
 | backend | string/null | 是 |
 | model | string/null | 是 |
+| input_digest | string/null | 是；legacy Call 为 null |
+
+### InterventionSummary
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| request_id | string | 是 | Run 内唯一请求 ID |
+| key | string | 是 | workflow 稳定请求键 |
+| prompt | string | 是 | 向用户展示的问题 |
+| schema | object/null | 是 | 回答 JSON Schema；null 表示任意 JSON 值 |
+| status | string | 是 | `pending/answered/closed` |
+| call_id | string/null | 是 | 关联 Agent Call |
+| resume_mode | string | 是 | `replay` 或 `continue` |
+| can_continue_session | boolean | 是 | session 和 backend capability 均满足 continue 条件 |
+| response | any | 条件必填 | status=answered 时必填；其他状态不返回该字段 |
+| created_at | string | 是 | 请求创建时间 |
+| answered_at | string/null | 是 | 回答时间 |
 
 ## 三、Runs
 
@@ -158,23 +177,39 @@ Query：
 
 ### `POST /runs/{run_id}/stop`
 
-无 body。200：更新后的 `RunSummary`。
+无 body。仅 `running` 或 `waiting_input` 可调用。200：status=`cancelled` 的 `RunSummary`。running Run 先持久化 cancelling，再终止已验证身份的进程组；waiting_input 不要求 PID，pending intervention request 保留，后续可通过 `respond` 恢复同一 Run。
 
-错误：404 `run_not_found`；409 `invalid_run_transition`；410 `process_gone`。
+错误：404 `run_not_found`；409 `invalid_run_transition`；500 `atomic_write_failed`。取消意图成功落盘后进程恰好消失，仍返回 200 cancelled，不返回半完成错误。
 
-### `POST /runs/{run_id}/resume`
+### `POST /runs/{run_id}/recover`
 
-Body 可选覆盖执行选项，不允许修改 loop/args：
+failed Run 或存在可重放取消边界的 cancelled Run 可调用。恢复沿用原 Run 的 loop、args、backend、model 和其他执行选项，不接受覆盖：
 
 | 字段 | 类型 | 必填 | 默认 | 约束 |
 |------|------|------|------|------|
-| backend | string/null | 否 | null | 已知 Backend 名或 null=auto |
-| model | string/null | 否 | null | 非空字符串或 null |
-| mock | string/null | 否 | null | `bash/auto/null` |
+| mode | string | 是 | — | `retry` 或 `continue`；retry 是默认恢复路径，continue 仅在 durable session 和取消/失败点都允许时可用 |
 
-200：相同 run_id、status=running 的 `RunSummary`。
+200：相同 run_id、status=running、execution_epoch 已递增的 `RunSummary`。
 
-错误：404 `run_not_found`；409 `invalid_run_transition`；422 `validation_failed`。
+错误：404 `run_not_found`；409 `invalid_run_transition`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。对 atomic/isolated worker 取消点执行 `mode=continue` 返回 `continue_not_supported`；不得静默降级为 retry。
+
+### `GET /runs/{run_id}/interventions`
+
+200：`{"items": InterventionSummary[]}`。错误：404 `run_not_found`。
+
+### `POST /runs/{run_id}/interventions/{request_id}/response`
+
+Body：
+
+```json
+{"response": true}
+```
+
+只允许字段 `response`，其值按请求 schema 校验。成功后 response 不可修改，服务自动恢复相同 run_id。Run 为 `waiting_input`，或 Run 已 `cancelled` 但 request 仍为 pending 时均可提交；后者表示用户取消了等待中的 execution attempt，但没有关闭该人工输入请求。
+
+200：status=running、execution_epoch 已递增的 `RunSummary`。
+
+错误：404 `run_not_found` 或 `intervention_not_found`；409 `invalid_run_transition`、`intervention_already_answered`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。
 
 ### `POST /runs/{run_id}/rerun`
 
@@ -334,7 +369,9 @@ Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queu
     "capabilities": {
       "native_goal": true,
       "structured_output": false,
-      "native_skills": true
+      "native_skills": true,
+      "resume_session": true,
+      "durable_session_id": true
     },
     "diagnosed_at": null
   }]
@@ -342,6 +379,8 @@ Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queu
 ```
 
 `version` 无法探测时必须为 null，UI 表示由前端规范决定。
+
+`resume_session` 表示 backend 接受已有 session ID；`durable_session_id` 表示该 ID 可在失败或进程退出后继续使用，并能在 loopflow 恢复所需时机获得。只有两者均为 true、目标 Call 已持久化 session_id，且失败/取消点未处于原子或隔离 worker 禁止边界时，Run 才允许 `recover_continue`。
 
 ### `POST /backends/{backend_name}/diagnostics`
 
@@ -367,4 +406,4 @@ stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感�
 
 ## 八、服务启动约束
 
-`loop web` 默认 `host=127.0.0.1`。非 loopback host 必须同时设置 `allow_remote=true`，否则 CLI 非零退出且不创建监听 socket。远程绑定成功时 stderr 必须输出远程暴露警告。该约束属于启动接口，不通过 HTTP 修改。
+`loopflow web` 默认 `host=127.0.0.1`。非 loopback host 必须同时设置 `allow_remote=true`，否则 CLI 非零退出且不创建监听 socket。远程绑定成功时 stderr 必须输出远程暴露警告。该约束属于启动接口，不通过 HTTP 修改。

@@ -38,6 +38,9 @@ ERROR_STATUS = {
     "file_not_found": 404,
     "backend_not_found": 404,
     "invalid_run_transition": 409,
+    "replay_diverged": 409,
+    "continue_not_supported": 409,
+    "intervention_already_answered": 409,
     "run_not_stale": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
@@ -46,6 +49,7 @@ ERROR_STATUS = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "intervention_not_found": 404,
     "atomic_write_failed": 500,
     "internal_error": 500,
     "diagnostic_start_failed": 503,
@@ -139,7 +143,18 @@ def handler_for(
                 self._json(200, self.app.list_backends())
                 return
 
-            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|resume|rerun|reconcile|events|legacy-events))?", path)
+            intervention = re.fullmatch(r"/runs/([^/]+)/interventions(?:/([^/]+)/response)?", path)
+            if intervention:
+                run_id, request_id = intervention.groups()
+                if method == "GET" and request_id is None:
+                    self._json(200, self.app.list_interventions(run_id))
+                elif method == "POST" and request_id is not None:
+                    self._json(200, self.app.respond_intervention(run_id, request_id, self._body()))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
+                return
+
+            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events))?", path)
             if match:
                 run_id, action = match.groups()
                 if method == "GET" and action is None:
@@ -147,8 +162,8 @@ def handler_for(
                 elif method == "POST" and action == "stop":
                     self._require_empty_body()
                     self._json(200, self.app.stop_run(run_id))
-                elif method == "POST" and action == "resume":
-                    self._json(200, self.app.resume_run(run_id, self._body(optional=True)))
+                elif method == "POST" and action == "recover":
+                    self._json(200, self.app.recover_run(run_id, self._body()))
                 elif method == "POST" and action == "rerun":
                     self._require_empty_body()
                     item = self.app.rerun(run_id)

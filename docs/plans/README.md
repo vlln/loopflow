@@ -10,6 +10,18 @@
 | [0038](0038-web-api/) | Web API 服务 | done | 2026-07-19 |
 | [0039](0039-web-frontend/) | Web Frontend 工作台 | done | 2026-07-19 |
 | [0040](0040-webui-system-test/) | WebUI 系统测试 | done | 2026-07-19 |
+| [0042](0042-recovery-controls-infra/) | 恢复控制测试基础设施 | done | 2026-07-22 |
+| [0043](0043-recovery-engine/) | 确定性恢复引擎 | done | 2026-07-22 |
+| [0044](0044-reliable-stop/) | 可靠停止 | done | 2026-07-22 |
+| [0045](0045-intervention-control/) | 阻塞人工介入 | done | 2026-07-22 |
+| [0046](0046-grok-backend/) | Grok 后端接入 | done | 2026-07-22 |
+| [0047](0047-grok-acp/) | Grok ACP 接入 | done | 2026-07-22 |
+| [0048](0048-system-test-certification/) | SYSTEM_TEST 发布前认证 | done | 2026-07-23 |
+| [0049](0049-release-certification/) | RELEASE 发布认证 | pending | 2026-07-23 |
+| [0050](0050-cancel-recovery-semantics/) | 取消恢复语义设计修订 | done | 2026-07-23 |
+| [0051](0051-cancel-recovery-test-infra/) | 取消恢复测试契约同步 | done | 2026-07-23 |
+| [0052](0052-cancel-recovery-implementation/) | 取消恢复语义实现 | done | 2026-07-23 |
+| [0053](0053-system-test-certification/) | 取消恢复后 SYSTEM_TEST 认证 | done | 2026-07-23 |
 
 ## 状态说明
 

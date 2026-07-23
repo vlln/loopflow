@@ -106,6 +106,8 @@ Merge 策略：squash merge（保持 develop 历史线性）。
 | `cd web && npm run test:browser` | Chromium 三视口系统/视觉测试 |
 | `python3 scripts/check-ac-manifest.py --allow-planned` | TEST_INFRA 检查 60 个计划场景 |
 | `python3 scripts/check-ac-manifest.py` | DEVELOP/SYSTEM_TEST 严格检查真实测试节点 |
+| `python3 scripts/check-ac-manifest.py --profile recovery --allow-planned` | TEST_INFRA 检查恢复/停止/介入的 32 个计划场景 |
+| `python3 scripts/check-ac-manifest.py --profile recovery` | DEVELOP/SYSTEM_TEST 严格检查恢复场景真实测试节点 |
 | `./scripts/verify-coverage.sh` | 已知 2 分支覆盖率准确性自证 |
 | `./scripts/wheel-smoke.sh` | 构建、隔离安装并读取 wheel 静态资产 |
 | `./scripts/mr-gate.sh` | 本地执行 MR 全门禁 |

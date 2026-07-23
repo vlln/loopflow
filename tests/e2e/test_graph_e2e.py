@@ -6,6 +6,7 @@ Uses mock mode (shell echo) so no real backend is needed.
 import json
 import os
 import tempfile
+import time
 from pathlib import Path
 
 import pytest
@@ -402,12 +403,21 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
         ]
         phase_count_before = sum(1 for e in before if e["type"] == "phase")
 
+        run_json = _find_run(runs) / "run.json"
+        metadata = json.loads(run_json.read_text())
+        metadata["status"] = "failed"
+        run_json.write_text(json.dumps(metadata))
+
         # Resume
         set_mock("bash")
         runner = CliRunner()
         with runner.isolated_filesystem():
             result = runner.invoke(main, ["resume", run_id])
             assert result.exit_code == 0
+
+        deadline = time.monotonic() + 2
+        while (_find_run(runs) / ".execution.lock").exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
 
         after = [
             json.loads(line)

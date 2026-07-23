@@ -1,4 +1,4 @@
-export type RunStatus = 'running' | 'done' | 'failed' | 'stopped' | 'stale' | 'unreadable';
+export type RunStatus = 'running' | 'waiting_input' | 'cancelling' | 'cancelled' | 'done' | 'failed' | 'stopped' | 'stale' | 'unreadable';
 
 export interface RunSummary {
   run_id: string;
@@ -14,13 +14,14 @@ export interface RunSummary {
   iteration_count: number;
   error_summary: string | null;
   parse_error: string | null;
+  execution_epoch?: number | null;
   allowed_actions: string[];
 }
 
 export interface PhaseNode { phase: string; occurrence_count: number; is_current: boolean }
 export interface PhaseEdge { from: string; to: string; count: number; is_backedge: boolean }
 export interface Occurrence { phase_id: string; phase: string; occurrence: number; started_at: string | null; ended_at: string | null; call_ids: string[] }
-export interface AgentCall { call_id: string; phase_id: string; session: string | null; status: string; started_at: string | null; finished_at: string | null; exit_code: number | null; backend: string | null; model: string | null }
+export interface AgentCall { call_id: string; phase_id: string; session: string | null; status: string; started_at: string | null; finished_at: string | null; exit_code: number | null; backend: string | null; model: string | null; input_digest?: string | null }
 export interface RunEvent { version?: number; event_id?: number; type: string; ts?: string; phase?: string; phase_id?: string; call_id?: string; payload?: Record<string, unknown>; [key: string]: unknown }
 
 export interface RunDetail extends RunSummary {
@@ -35,6 +36,8 @@ export interface RunDetail extends RunSummary {
   unattributed: RunEvent[];
   malformed: RunEvent[];
 }
+
+export interface InterventionSummary { request_id: string; key: string; prompt: string; schema: Record<string, unknown> | null; status: string; resume_mode: string; call_id: string | null; created_at: string | null; responded_at: string | null }
 
 export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null }
 export interface LoopFile { path: string; media_type: string | null; size: number; previewable: boolean }

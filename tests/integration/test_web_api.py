@@ -21,8 +21,14 @@ class Probe:
     def identity(self, pid):
         return "same" if pid == 7 else None
 
+    def group_id(self, pid):
+        return 70 if pid == 7 else None
+
     def terminate(self, pid):
         return pid == 7
+
+    def terminate_group(self, process_group_id, *, grace_seconds=0.2):
+        return "terminated" if process_group_id == 70 else "gone"
 
 
 class Executor:
@@ -35,7 +41,17 @@ class Executor:
         run_id = run_id or f"created-{self.count}"
         path = self.factory.runs / run_id
         path.mkdir(exist_ok=True)
-        self.factory.write_json(path / "run.json", {"run_id": run_id, "loop": loop, "args": args, "status": "running", "created": "2026-07-18T22:00:00Z", "pid": 7, "process_started_at": "same"})
+        self.factory.write_json(path / "run.json", {
+            "run_id": run_id,
+            "loop": loop,
+            "args": args,
+            "status": "running",
+            "created": "2026-07-18T22:00:00Z",
+            "execution_epoch": 1,
+            "pid": 7,
+            "process_group_id": 70,
+            "process_started_at": "same",
+        })
         return run_id
 
 
@@ -86,23 +102,90 @@ def test_run_rest_location_filters_and_errors(api):
 
 def test_run_lifecycle_commands_preserve_contract(api):
     client, factory, _ = api
-    running = factory.create_run("running", status="running", pid=7, process_started_at="same")
+    running = factory.create_run("running", status="running", pid=7, process_started_at="same", process_group_id=70)
     failed = factory.create_run("failed", status="failed", args={"attempt": 2})
     done = factory.create_run("done-source", status="done", args={"x": 1})
     stale = factory.create_run("stale", status="running", pid=9, process_started_at="gone")
 
     stopped = client.request("POST", "/api/v1/runs/running/stop")
-    assert stopped.status == 200 and stopped.json()["status"] == "stopped"
+    assert stopped.status == 200 and stopped.json()["status"] == "cancelled"
     metadata = json.loads((running / "run.json").read_text())
     assert metadata["finished_at"] and "pid" not in metadata
-    resumed = client.request("POST", "/api/v1/runs/failed/resume", {})
-    assert resumed.status == 200 and resumed.json()["run_id"] == "failed"
+    metadata["cancel_point"] = "worker_running"
+    metadata["active_call_id"] = "0001"
+    factory.write_json(running / "run.json", metadata)
+    cancelled_recovered = client.request("POST", "/api/v1/runs/running/recover", {"mode": "retry"})
+    assert cancelled_recovered.status == 200 and cancelled_recovered.json()["run_id"] == "running"
+    recovered = client.request("POST", "/api/v1/runs/failed/recover", {"mode": "retry"})
+    assert recovered.status == 200 and recovered.json()["run_id"] == "failed"
+    assert client.request("POST", "/api/v1/runs/failed/resume", {}).status == 404
+    unsupported = factory.create_run("no-session", status="failed")
+    unavailable = client.request("POST", f"/api/v1/runs/{unsupported.name}/recover", {"mode": "continue"})
+    assert unavailable.status == 409
+    assert unavailable.json()["error"]["code"] == "continue_not_supported"
     rerun = client.request("POST", "/api/v1/runs/done-source/rerun")
     assert rerun.status == 201 and rerun.json()["run_id"] != "done-source"
     reconciled = client.request("POST", "/api/v1/runs/stale/reconcile")
     assert reconciled.status == 200 and reconciled.json()["status"] == "failed"
     conflict = client.request("POST", "/api/v1/runs/done-source/stop")
     assert conflict.status == 409 and conflict.json()["error"]["code"] == "invalid_run_transition"
+
+
+def test_intervention_endpoints_list_validate_and_respond(api):
+    client, factory, _ = api
+    waiting = factory.create_run("waiting", status="waiting_input")
+    interventions = waiting / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve-1.json", {
+        "request_id": "approve-1",
+        "key": "approve",
+        "prompt": "Approve?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+
+    listed = client.request("GET", "/api/v1/runs/waiting/interventions")
+    invalid = client.request(
+        "POST",
+        "/api/v1/runs/waiting/interventions/approve-1/response",
+        {"response": "yes"},
+    )
+    answered = client.request(
+        "POST",
+        "/api/v1/runs/waiting/interventions/approve-1/response",
+        {"response": True},
+    )
+    duplicate = client.request(
+        "POST",
+        "/api/v1/runs/waiting/interventions/approve-1/response",
+        {"response": False},
+    )
+    cancelled = factory.create_run("cancelled-waiting", status="waiting_input")
+    cancelled_interventions = cancelled / "interventions"
+    cancelled_interventions.mkdir()
+    factory.write_json(cancelled_interventions / "approve-2.json", {
+        "request_id": "approve-2",
+        "key": "approve",
+        "prompt": "Approve later?",
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+    stopped = client.request("POST", "/api/v1/runs/cancelled-waiting/stop")
+    cancelled_answered = client.request(
+        "POST",
+        "/api/v1/runs/cancelled-waiting/interventions/approve-2/response",
+        {"response": True},
+    )
+
+    assert listed.status == 200 and listed.json()["items"][0]["prompt"] == "Approve?"
+    assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
+    assert answered.status == 200 and answered.json()["run_id"] == "waiting"
+    assert duplicate.status == 409
+    assert duplicate.json()["error"]["code"] == "intervention_already_answered"
+    assert stopped.status == 200 and stopped.json()["allowed_actions"] == ["recover_retry", "respond", "rerun"]
+    assert cancelled_answered.status == 200
 
 
 def test_queue_loops_and_backend_endpoints(api):

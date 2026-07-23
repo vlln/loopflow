@@ -16,3 +16,5 @@ class Capabilities:
     native_goal: bool = False
     structured_output: bool = False
     native_skills: bool = False
+    resume_session: bool = False
+    durable_session_id: bool = False

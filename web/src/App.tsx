@@ -6,11 +6,11 @@ import { Activity, ArrowLeft, Bot, Box, Braces, Check, ChevronRight, CircleStop,
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer, initialEventState } from './eventReducer';
-import type { AgentCall, Backend, Diagnostic, LoopDetail, LoopSummary, Occurrence, RunDetail, RunEvent, RunStatus, RunSummary } from './types';
+import type { AgentCall, Backend, Diagnostic, InterventionSummary, LoopDetail, LoopSummary, Occurrence, RunDetail, RunEvent, RunStatus, RunSummary } from './types';
 
 type View = 'runs' | 'loops' | 'backends';
 
-const statusIcon = { running: Zap, done: Check, failed: X, stopped: CircleStop, stale: RefreshCw, unreadable: Braces } as const;
+const statusIcon = { running: Zap, waiting_input: Activity, cancelling: CircleStop, cancelled: CircleStop, done: Check, failed: X, stopped: CircleStop, stale: RefreshCw, unreadable: Braces } as const;
 
 function Status({ value }: { value: string }) {
   const Icon = statusIcon[value as RunStatus] ?? Activity;
@@ -59,6 +59,7 @@ function RunsWorkspace() {
   const [showNew, setShowNew] = useState(false);
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'process'>('list');
   const [error, setError] = useState<string | null>(null);
+  const [interventions, setInterventions] = useState<InterventionSummary[]>([]);
 
   const loadRuns = async () => {
     try {
@@ -85,9 +86,10 @@ function RunsWorkspace() {
     window.history.replaceState(null, '', url);
   }, [selectedId]);
   useEffect(() => {
-    if (!selectedId) { setDetail(null); return; }
+    if (!selectedId) { setDetail(null); setInterventions([]); return; }
     void api.run(selectedId).then((value) => {
       setDetail(value);
+      if (value.status === 'waiting_input' || value.allowed_actions.includes('respond')) void api.interventions(value.run_id).then((page) => setInterventions(page.items)).catch((cause) => setError(messageOf(cause))); else setInterventions([]);
       dispatchEvent({ type: '__reset__', items: value.events });
       const phaseId = value.graph.current_phase_id ?? value.occurrences.at(-1)?.phase_id ?? null;
       setSelectedPhaseId(phaseId);
@@ -111,20 +113,28 @@ function RunsWorkspace() {
   const selectRun = (id: string) => { setSelectedId(id); setMobilePane('detail'); };
   const act = async (action: string) => {
     if (!selectedId) return;
-    try { await api.runAction(selectedId, action, action === 'resume' ? {} : undefined); await loadRuns(); setDetail(await api.run(selectedId)); }
+    const recoveryMode = action === 'recover_retry' ? 'retry' : action === 'recover_continue' ? 'continue' : null;
+    const endpoint = recoveryMode ? 'recover' : action;
+    try { await api.runAction(selectedId, endpoint, recoveryMode ? { mode: recoveryMode } : undefined); await loadRuns(); setDetail(await api.run(selectedId)); }
     catch (cause) { setError(messageOf(cause)); }
   };
+
+  const retryLabel = detail?.status === 'cancelled' ? 'Retry cancelled call' : 'Retry failed call';
+  const continueLabel = detail?.status === 'cancelled' ? 'Continue cancelled session' : 'Continue failed session';
+  const continueUnavailableLabel = `${continueLabel} unavailable`;
+  const showContinue = !!detail && ['failed', 'cancelled'].includes(detail.status) && (detail.allowed_actions.includes('recover_retry') || detail.allowed_actions.includes('recover_continue'));
 
   return <section className={`workspace runs-workspace ${selectedCall ? 'has-call' : 'no-call'}`} data-testid="runs-workspace" data-mobile-pane={mobilePane}>
     <aside className="panel run-list-panel">
       <header className="panel-header workspace-title"><div><span className="eyebrow">Workspace</span><h1>Runs</h1></div><button className="primary-button" onClick={() => setShowNew(true)}><Plus size={15} />New</button></header>
-      <div className="filter-bar"><label className="search"><Search size={14} /><input aria-label="Search runs" placeholder="Run or loop" value={query} onChange={(event) => setQuery(event.target.value)} /></label><label className="select-wrap"><ListFilter size={14} /><select aria-label="Filter status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All</option><option value="running">Running</option><option value="failed">Failed</option><option value="done">Done</option><option value="stopped">Stopped</option></select></label></div>
-      <div className="run-list" role="list">{runs.length ? runs.map((run) => <button role="listitem" key={run.run_id} className={`run-row ${selectedId === run.run_id ? 'is-selected' : ''}`} onClick={() => selectRun(run.run_id)}><span className="run-row-top"><strong>{run.loop ?? 'Unreadable run'}</strong><Status value={run.status} /></span><code title={run.working_directory}>{run.working_directory}</code><span className="row-meta"><span>{run.current_phase ?? 'No phase'}</span><span>{formatDuration(run.duration_ms)}</span></span>{run.parse_error && <span className="row-error">{run.parse_error}</span>}</button>) : <Empty title="No runs" detail="Start a Loop to create the first Run." />}</div>
+      <div className="filter-bar"><label className="search"><Search size={14} /><input aria-label="Search runs" placeholder="Run or loop" value={query} onChange={(event) => setQuery(event.target.value)} /></label><label className="select-wrap"><ListFilter size={14} /><select aria-label="Filter status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All</option><option value="running">Running</option><option value="waiting_input">Waiting input</option><option value="failed">Failed</option><option value="done">Done</option><option value="cancelled">Cancelled</option><option value="stopped">Stopped</option></select></label></div>
+      <div className="run-list" role="list">{runs.length ? runs.map((run) => <button role="listitem" key={run.run_id} className={`run-row ${selectedId === run.run_id ? 'is-selected' : ''}`} onClick={() => selectRun(run.run_id)}><span className="run-row-top"><strong>{run.loop ?? 'Unreadable run'}</strong><Status value={run.status} /></span><code title={run.working_directory}>{run.run_id}</code><span className="row-meta"><span title={run.working_directory}>{run.working_directory}</span><span>{run.current_phase ?? 'No phase'}</span><span>{formatDuration(run.duration_ms)}</span></span>{run.parse_error && <span className="row-error">{run.parse_error}</span>}</button>) : <Empty title="No runs" detail="Start a Loop to create the first Run." />}</div>
     </aside>
     <section className="panel run-detail-panel">
       {!detail ? <Empty title="Select a Run" detail="Phase execution and events appear here." /> : <>
-        <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="run-heading"><span className="eyebrow">{detail.loop}</span><h2>{detail.run_id}</h2></div><div className="toolbar-actions"><Status value={detail.status} />{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('resume') && <button aria-label="Resume run" className="primary-button" onClick={() => void act('resume')}><Play size={14} />Resume</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{selectedCall && <IconButton label="Open process inspector" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
+        <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="run-heading"><span className="eyebrow">{detail.loop}</span><h2>{detail.run_id}</h2></div><div className="toolbar-actions"><Status value={detail.status} />{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('recover_retry') && <button aria-label={retryLabel} className="primary-button" onClick={() => void act('recover_retry')}><RotateCcw size={14} />Retry</button>}{showContinue && <button aria-label={detail.allowed_actions.includes('recover_continue') ? continueLabel : continueUnavailableLabel} title={detail.allowed_actions.includes('recover_continue') ? continueLabel : 'Backend did not persist a durable session or this cancel boundary is atomic'} className="secondary-button" disabled={!detail.allowed_actions.includes('recover_continue')} onClick={() => void act('recover_continue')}><Play size={14} />Continue</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{selectedCall && <IconButton label="Open process inspector" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
         <div className="run-metrics"><Metric label="Duration" value={formatDuration(detail.duration_ms)} /><Metric label="Iterations" value={String(detail.iteration_count)} /><Metric label="Calls" value={String(detail.calls.length)} /><Metric label="Stream" value={detail.status === 'running' ? streamState : 'closed'} /></div>
+        {(detail.status === 'waiting_input' || detail.allowed_actions.includes('respond')) && <InterventionPanel runId={detail.run_id} items={interventions} onAnswered={async () => { await loadRuns(); setDetail(await api.run(detail.run_id)); setInterventions([]); }} onError={setError} />}
         <PhaseGraph key={`${selectedId}-${mobilePane === 'list' ? 'hidden' : 'visible'}`} detail={detail} selectedPhaseId={selectedPhaseId} onSelect={(phaseId) => { setSelectedPhaseId(phaseId); setSelectedCallId(detail.calls.find((call) => call.phase_id === phaseId)?.call_id ?? null); setEventView('phase'); }} />
         <section className="phase-detail"><div className="phase-detail-bar"><div className="phase-detail-title"><h3>{selectedOccurrence?.phase ?? 'Events'}</h3>{selectedOccurrence && <span>Occurrence {selectedOccurrence.occurrence}</span>}</div>
           <div className="event-scope-tabs" role="tablist" aria-label="Event scope"><button role="tab" aria-selected={eventView === 'phase'} onClick={() => setEventView('phase')}>Events <span>{visibleEvents.length}</span></button>{detail.unattributed_count > 0 && <button role="tab" aria-selected={eventView === 'unattributed'} onClick={() => setEventView('unattributed')}>Unattributed <span>{detail.unattributed_count}</span></button>}{detail.malformed_count > 0 && <button role="tab" aria-selected={eventView === 'malformed'} onClick={() => setEventView('malformed')}>Malformed <span>{detail.malformed_count}</span></button>}</div>
@@ -137,6 +147,25 @@ function RunsWorkspace() {
     {showNew && <NewRunDialog onClose={() => setShowNew(false)} onCreated={(run) => { setShowNew(false); void loadRuns(); selectRun(run.run_id); }} />}
     {error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}
   </section>;
+}
+
+function InterventionPanel({ runId, items, onAnswered, onError }: { runId: string; items: InterventionSummary[]; onAnswered: () => Promise<void>; onError: (message: string) => void }) {
+  const pending = items.find((item) => item.status === 'pending') ?? items[0] ?? null;
+  const [busy, setBusy] = useState(false);
+  const [jsonValue, setJsonValue] = useState('null');
+  if (!pending) return <section className="intervention-panel"><Empty title="Waiting for input" detail="No pending request is available." /></section>;
+  const schemaType = typeof pending.schema?.type === 'string' ? pending.schema.type : null;
+  const submit = async (value: unknown) => {
+    setBusy(true);
+    try { await api.respondIntervention(runId, pending.request_id, value); await onAnswered(); }
+    catch (cause) { onError(messageOf(cause)); }
+    finally { setBusy(false); }
+  };
+  const submitJson = async () => {
+    try { await submit(JSON.parse(jsonValue)); }
+    catch (cause) { onError(messageOf(cause)); }
+  };
+  return <section className="intervention-panel" aria-label="Intervention request"><div><span className="eyebrow">{pending.key}</span><h3>{pending.prompt}</h3></div>{schemaType === 'boolean' ? <div className="intervention-actions"><button className="primary-button" disabled={busy} onClick={() => void submit(true)}><Check size={14} />Approve</button><button className="secondary-button" disabled={busy} onClick={() => void submit(false)}><X size={14} />Reject</button></div> : <div className="intervention-json"><textarea aria-label="Intervention response" value={jsonValue} onChange={(event) => setJsonValue(event.target.value)} spellCheck={false} /><button className="primary-button" disabled={busy} onClick={() => void submitJson()}><Check size={14} />Submit</button></div>}</section>;
 }
 
 function PhaseNodeView({ data, selected }: NodeProps<Node<{ label: string; count: number; current: boolean }>>) {

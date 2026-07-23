@@ -45,11 +45,7 @@ class AcpBackend(BaseBackend):
     def _ensure_initialized(self) -> None:
         """Start transport and initialize, storing auth methods."""
         self._transport.start()
-        r = self._transport.call("initialize", {
-            "protocolVersion": 1,
-            "clientInfo": {"name": "subagents", "version": "0.1.0"},
-            "capabilities": {"prompt": {"text": True}, "terminal": False},
-        })
+        r = getattr(self._transport, "_initialize_result", None) or {}
         self._auth_methods = r.get("authMethods", [])
 
     def _authenticate(self) -> None:

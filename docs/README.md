@@ -5,8 +5,8 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | WebUI 收尾门禁全绿：Python 275 pass / 1 skip、coverage 83%、strict manifest 60/60、Vitest 8/8、Chromium 10 pass / 2 条按视口条件 skip、wheel 冒烟通过 |
-| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现；Run 工作目录索引与 WebUI 交互收尾完成，develop 为待发布状态，无阻塞级缺陷 |
+| **设计评估** | 0050/0051/0052 已完成取消恢复语义修订、测试契约同步和产品实现；0053 SYSTEM_TEST 通过。`cancelled` 可按恢复边界 recover/respond，waiting_input stop 保留 pending request，atomic worker 取消边界禁止 continue。下一步恢复 0049 release certification。 |
+| **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
 

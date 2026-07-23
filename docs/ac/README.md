@@ -20,3 +20,4 @@
 |------|------|------|---------|
 | [0004](0004-scheduling.md) | 调度 AC | active | dispatch, queue, loop.md, resource lock |
 | [0010](0010-webui.md) | 本地 WebUI 控制台 AC | active | Runs, Phase occurrence, SSE, Loops, Backends, WebUI |
+| [0011](0011-recovery-intervention.md) | 可靠恢复、永久停止与人工介入 AC | active | recover retry/continue, cancellation, intervention |

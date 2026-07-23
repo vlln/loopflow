@@ -17,7 +17,7 @@ function response(body: unknown, status = 200) {
   return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) } as Response);
 }
 
-function installFetch() {
+function installFetch(durable = true) {
   const calls: string[] = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
@@ -26,8 +26,14 @@ function installFetch() {
     if (path.startsWith('/api/v1/runs?')) return response({ items: runs.filter((run) => path.includes('status=failed') ? run.status === 'failed' : true), next_cursor: null });
     if (path === '/api/v1/runs') return options?.method === 'POST' ? response(runs[0], 201) : response({ items: runs, next_cursor: null });
     if (path === '/api/v1/runs/run-live') return response(detail);
-    if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[1], allowed_actions: ['resume', 'rerun', 'reconcile'] });
-    if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'stopped', allowed_actions: ['resume'] });
+    if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'] });
+    if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: [{ request_id: 'approve-1', key: 'approve', prompt: 'Approve?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, created_at: '2026-07-18T22:00:00Z', responded_at: null }] });
+    if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[2], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
+    if (path === '/api/v1/runs/run-cancelled') return response({ ...detail, ...runs[3], allowed_actions: ['recover_retry', 'respond', 'rerun'] });
+    if (path === '/api/v1/runs/run-cancelled/interventions') return response({ items: [{ request_id: 'approve-2', key: 'approve', prompt: 'Approve after cancel?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, created_at: '2026-07-18T20:00:00Z', responded_at: null }] });
+    if (path.includes('/api/v1/runs/run-waiting/interventions/approve-1/response')) return response({ ...runs[1], status: 'running', allowed_actions: ['stop'] });
+    if (path.includes('/api/v1/runs/run-cancelled/interventions/approve-2/response')) return response({ ...runs[3], status: 'running', allowed_actions: ['stop'] });
+    if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
@@ -95,9 +101,10 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   fireEvent.change(screen.getByLabelText('Filter status'), { target: { value: 'failed' } });
   await waitFor(() => expect(calls.some((call) => call.includes('status=failed'))).toBe(true));
   fireEvent.click(screen.getByRole('listitem'));
-  expect(await screen.findByRole('button', { name: 'Resume run' })).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Resume run' }));
-  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/resume'));
+  expect(await screen.findByRole('button', { name: 'Retry failed call' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Continue failed session' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry failed call' }));
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/recover'));
   fireEvent.click(screen.getByRole('button', { name: 'Rerun run' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reconcile run' }));
   fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
@@ -112,6 +119,46 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
   expect(await screen.findByText(/Unexpected token|JSON/)).toBeVisible();
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+});
+
+it('disables Continue when the failed backend has no durable session', async () => {
+  installFetch(false);
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.change(screen.getByLabelText('Filter status'), { target: { value: 'failed' } });
+  fireEvent.click(await screen.findByRole('listitem'));
+
+  expect(await screen.findByRole('button', { name: 'Retry failed call' })).toBeEnabled();
+  const unavailable = screen.getByRole('button', { name: 'Continue failed session unavailable' });
+  expect(unavailable).toBeDisabled();
+  expect(unavailable).toHaveAttribute('title', 'Backend did not persist a durable session or this cancel boundary is atomic');
+  expect(screen.queryByRole('button', { name: 'Resume run' })).not.toBeInTheDocument();
+});
+
+it('answers a waiting intervention with a boolean control', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+
+  expect(await screen.findByRole('heading', { name: 'Approve?' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Resume run' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-waiting/interventions/approve-1/response'));
+});
+
+it('answers a cancelled pending intervention and keeps recovery controls', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-cancelled'));
+
+  expect(await screen.findByRole('button', { name: 'Retry cancelled call' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Approve after cancel?' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-cancelled/interventions/approve-2/response'));
 });
 
 it('navigates Loop declarations and renders files', async () => {

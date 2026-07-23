@@ -6,8 +6,9 @@ from pathlib import Path
 from typing import Any
 
 
-AC_PATTERN = re.compile(r"^\|\s*(AC-0(?:14|15|16|17|18|19)-[NBEF]-\d+)\s*\|")
+AC_PATTERN = re.compile(r"^\|\s*(AC-\d{3}-[NBEF]-\d+)\s*\|")
 VALID_KINDS = {"http_status", "sse_event", "dom", "process"}
+SUPERSEDED_AC_IDS = {"AC-014-N-3", "AC-014-N-5", "AC-014-N-6", "AC-014-F-1"}
 HTTP_STATUS_BY_CODE = {
     "path_forbidden": 403,
     "loop_not_found": 404,
@@ -196,6 +197,8 @@ def check_manifest(
         seen.add(ac_id)
         if ac_id not in source_rows:
             errors.append(f"unknown AC id: {ac_id}")
+            continue
+        if ac_id in SUPERSEDED_AC_IDS:
             continue
         source = source_rows[ac_id]
         for field in ("fixture", "action", "assertion"):
