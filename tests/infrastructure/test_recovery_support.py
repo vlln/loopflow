@@ -20,6 +20,7 @@ from tests.recovery_support import (
     WorkflowFactory,
     parallel_call_id,
     read_segments,
+    recovery_boundary_metadata,
     select_replay_segment,
     stable_digest,
 )
@@ -193,6 +194,16 @@ def test_v13_contract_examples_and_negative_shapes():
     for name, value in examples.items():
         validate_contract(name, value)
 
+    cancelled = dict(examples["run_summary_v13"])
+    cancelled.update(
+        {
+            "status": "cancelled",
+            "finished_at": "2026-07-22T08:01:00Z",
+            "allowed_actions": ["recover_retry", "recover_continue", "respond", "rerun"],
+        }
+    )
+    validate_contract("run_summary_v13", cancelled)
+
     invalid = dict(examples["run_summary_v13"])
     invalid["allowed_actions"] = ["resume"]
     with pytest.raises(ValidationError):
@@ -202,6 +213,25 @@ def test_v13_contract_examples_and_negative_shapes():
     invalid_capabilities.pop("durable_session_id")
     with pytest.raises(ValidationError):
         validate_contract("backend_capabilities_v13", invalid_capabilities)
+
+
+def test_recovery_boundary_metadata_expresses_cancel_points():
+    resumable = recovery_boundary_metadata(can_recover_continue=True)
+    atomic = recovery_boundary_metadata(active_worker_atomic=True, can_recover_continue=False)
+    waiting = recovery_boundary_metadata(
+        cancel_point="no_worker_running",
+        active_call_id=None,
+        active_worker_atomic=False,
+        can_recover_continue=False,
+    )
+
+    assert resumable["cancel_point"] == "worker_running"
+    assert resumable["active_call_id"] == "0002"
+    assert resumable["can_recover_continue"] is True
+    assert atomic["active_worker_atomic"] is True
+    assert atomic["can_recover_continue"] is False
+    assert waiting["cancel_point"] == "no_worker_running"
+    assert waiting["active_call_id"] is None
 
 
 @pytest.mark.skipif(not hasattr(__import__("os"), "killpg"), reason="POSIX process groups required")

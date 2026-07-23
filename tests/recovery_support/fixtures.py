@@ -123,3 +123,27 @@ class WorkflowFactory:
 
 def stable_name(value: str) -> str:
     return "".join(character if character.isalnum() else "_" for character in value)
+
+
+def recovery_boundary_metadata(
+    *,
+    status: str = "cancelled",
+    cancel_point: str = "worker_running",
+    active_call_id: str | None = "0002",
+    active_worker_atomic: bool = False,
+    can_recover_continue: bool = False,
+) -> dict[str, Any]:
+    return {
+        "run_id": "run-cancelled",
+        "loop": "hello",
+        "status": status,
+        "args": {},
+        "created": "2026-07-22T08:00:00Z",
+        "started_at": "2026-07-22T08:00:00Z",
+        "finished_at": "2026-07-22T08:01:00Z",
+        "execution_epoch": 2,
+        "cancel_point": cancel_point,
+        "active_call_id": active_call_id,
+        "active_worker_atomic": active_worker_atomic,
+        "can_recover_continue": can_recover_continue,
+    }

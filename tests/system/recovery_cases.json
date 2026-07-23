@@ -233,12 +233,28 @@
     },
     {
       "ac_id": "AC-021-N-2",
-      "fixture": "Run A 为 waiting_input 且没有存活 worker",
+      "fixture": "Run A 为 waiting_input 且没有存活 worker，request R 为 pending",
       "action": "对 A 执行 stop",
-      "assertion": "不要求 PID；A 原子变为 cancelled；未回答 request 关闭",
-      "test_node": "tests/unit/test_web_application.py::test_stop_waiting_input_cancels_without_worker_and_closes_pending_request",
+      "assertion": "不要求 PID；A 原子变为 cancelled；R 仍为 pending；allowed_actions 包含 respond，不把用户未回答解释为放弃 Run",
+      "test_node": "planned::ac-021-n-2",
       "targets": [
         "POST /api/v1/runs/{run_id}/stop"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-N-3",
+      "fixture": "cancelled Run A 有前序 succeeded 缓存和取消点 Call 0002；两者 input_digest 与当前调用一致",
+      "action": "对 A 执行 recover mode=retry",
+      "assertion": "沿用 A.run_id；前序缓存命中；0002 创建新 session 重新执行；Run 进入 running 并递增 execution_epoch",
+      "test_node": "planned::ac-021-n-3",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
       ],
       "expectations": [
         {
@@ -280,6 +296,39 @@
       ]
     },
     {
+      "ac_id": "AC-021-B-3",
+      "fixture": "running Run A 的 active worker 声明 atomic/isolated，且已持久化 durable session_id",
+      "action": "对 A 执行 stop 后再 recover mode=continue",
+      "assertion": "返回 409 continue_not_supported；不恢复原 session；recover mode=retry 仍可单独执行",
+      "test_node": "planned::ac-021-b-3",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "continue_not_supported"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-4",
+      "fixture": "running Run A 的 active worker 非 atomic，且 backend/session 均支持 durable continue",
+      "action": "对 A 执行 stop 后再 recover mode=continue",
+      "assertion": "目标 Call 使用原 session_id 调用 resume_session；不创建新 session",
+      "test_node": "planned::ac-021-b-4",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
       "ac_id": "AC-021-E-1",
       "fixture": "stop 已将 A 写为 cancelling，旧 worker 随后尝试写 done",
       "action": "完成竞态",
@@ -297,12 +346,13 @@
     },
     {
       "ac_id": "AC-021-E-2",
-      "fixture": "A 已 cancelled",
-      "action": "再次 stop 或 recover",
-      "assertion": "返回 409 invalid_run_transition；run.json 字节不变",
-      "test_node": "tests/unit/test_web_application.py::test_stop_rejects_cancelled_without_modifying_run",
+      "fixture": "A 已 cancelled 且没有可重放边界或 pending request",
+      "action": "对 A 执行 recover 或 respond",
+      "assertion": "返回 409 invalid_run_transition 或具体恢复错误；run.json 不被错误标记为 done",
+      "test_node": "planned::ac-021-e-2",
       "targets": [
-        "POST /api/v1/runs/{run_id}/stop"
+        "POST /api/v1/runs/{run_id}/recover",
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
       ],
       "expectations": [
         {
@@ -410,6 +460,22 @@
       ]
     },
     {
+      "ac_id": "AC-022-N-5",
+      "fixture": "A 原为 waiting_input，随后被 stop 为 cancelled，request R 仍 pending",
+      "action": "对 R 提交 boolean `true`",
+      "assertion": "response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回 true",
+      "test_node": "planned::ac-022-n-5",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
       "ac_id": "AC-022-B-1",
       "fixture": "Web 服务在 Run waiting_input 期间重启",
       "action": "重启后查询 request 并回答",
@@ -438,6 +504,23 @@
         {
           "kind": "unit",
           "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-B-3",
+      "fixture": "A 为 cancelled 且含 pending request R；用户不提交 response",
+      "action": "查询 Run 和 request",
+      "assertion": "A 保持 cancelled；R 保持 pending；框架不自动关闭 request，也不把该状态建模为 abandon",
+      "test_node": "planned::ac-022-b-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/interventions"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
         }
       ]
     },

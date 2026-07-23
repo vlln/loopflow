@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `TEST_INFRA` |
-| **设计评估** | 0050 已完成取消/恢复语义修订：`cancelled` 表示当前 execution attempt 被取消；retry 是恢复默认路径，不单独建模；continue 与 respond 均恢复同一 Run 但动作语义不同。下一步应先更新恢复/停止/介入测试契约，再进入产品代码实现。 |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | 0050 已完成取消/恢复语义修订，0051 已同步测试契约。下一步实现 cancelled recover/respond、waiting_input stop 保留 pending request、atomic worker 禁止 continue，并将 recovery manifest 中 7 个 planned 节点替换为真实测试。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

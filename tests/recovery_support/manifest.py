@@ -41,10 +41,16 @@ def _targets() -> dict[str, list[str]]:
 
     assign("AC-021-N-1", "POST /api/v1/runs/{run_id}/stop", "process:group")
     assign("AC-021-N-2", "POST /api/v1/runs/{run_id}/stop")
+    assign("AC-021-N-3", "POST /api/v1/runs/{run_id}/recover")
     assign("AC-021-B-1", "process:group")
     assign("AC-021-B-2", "GET /api/v1/runs/{run_id}")
+    assign("AC-021-B-3 AC-021-B-4", "POST /api/v1/runs/{run_id}/recover")
     assign("AC-021-E-1", "unit:execution-epoch")
-    assign("AC-021-E-2", "POST /api/v1/runs/{run_id}/stop")
+    assign(
+        "AC-021-E-2",
+        "POST /api/v1/runs/{run_id}/recover",
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response",
+    )
     assign("AC-021-F-1", "POST /api/v1/runs/{run_id}/stop")
     assign("AC-021-F-2", "process:identity")
 
@@ -52,7 +58,9 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-022-N-2", "POST /api/v1/runs/{run_id}/interventions/{request_id}/response")
     assign("AC-022-N-3", "unit:session-intervention")
     assign("AC-022-N-4", "ui:intervention")
+    assign("AC-022-N-5", "POST /api/v1/runs/{run_id}/interventions/{request_id}/response")
     assign("AC-022-B-1 AC-022-B-2", "unit:intervention")
+    assign("AC-022-B-3", "GET /api/v1/runs/{run_id}", "GET /api/v1/runs/{run_id}/interventions")
     assign(
         "AC-022-E-1 AC-022-E-2",
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response",
@@ -80,11 +88,9 @@ TEST_NODES = {
     "AC-020-F-2": "tests/unit/test_web_execution.py::test_background_executor_rejects_second_worker_for_same_run",
     "AC-020-F-3": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
     "AC-021-N-1": "tests/unit/test_web_application.py::test_create_stop_recover_rerun_and_invalid_transition",
-    "AC-021-N-2": "tests/unit/test_web_application.py::test_stop_waiting_input_cancels_without_worker_and_closes_pending_request",
     "AC-021-B-1": "tests/unit/test_web_application.py::test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun",
     "AC-021-B-2": "tests/unit/test_web_application.py::test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun",
     "AC-021-E-1": "tests/unit/test_web_execution.py::test_execute_workflow_terminal_guard_does_not_overwrite_cancelled",
-    "AC-021-E-2": "tests/unit/test_web_application.py::test_stop_rejects_cancelled_without_modifying_run",
     "AC-021-F-1": "tests/unit/test_web_application.py::test_stop_does_not_signal_when_cancelling_write_fails",
     "AC-021-F-2": "tests/unit/test_web_application.py::test_stop_pid_reuse_does_not_signal_and_records_process_gone",
     "AC-022-N-1": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
@@ -114,6 +120,11 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     ],
     "AC-021-N-1": [{"kind": "http_status", "value": 200}],
     "AC-021-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-021-N-3": [{"kind": "http_status", "value": 200}],
+    "AC-021-B-3": [
+        {"kind": "http_status", "value": 409, "code": "continue_not_supported"}
+    ],
+    "AC-021-B-4": [{"kind": "http_status", "value": 200}],
     "AC-021-E-2": [
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
@@ -121,6 +132,8 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 500, "code": "atomic_write_failed"}
     ],
     "AC-022-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-022-N-5": [{"kind": "http_status", "value": 200}],
+    "AC-022-B-3": [{"kind": "http_status", "value": 200}],
     "AC-022-E-1": [
         {"kind": "http_status", "value": 422, "code": "validation_failed"}
     ],

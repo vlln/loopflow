@@ -17,7 +17,7 @@ from tests.recovery_support.fakes import (
     SessionBackendFake,
     SessionCapabilities,
 )
-from tests.recovery_support.fixtures import InterventionFactory, WorkflowFactory
+from tests.recovery_support.fixtures import InterventionFactory, WorkflowFactory, recovery_boundary_metadata
 
 __all__ = [
     "AtomicWriterFake",
@@ -33,6 +33,7 @@ __all__ = [
     "WorkflowFactory",
     "parallel_call_id",
     "read_segments",
+    "recovery_boundary_metadata",
     "select_replay_segment",
     "stable_digest",
 ]
