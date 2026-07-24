@@ -28,7 +28,7 @@ HTTP_STATUS_BY_CODE = {
     "internal_error": 500,
     "diagnostic_start_failed": 503,
 }
-VALID_SSE_EVENTS = {"run_event", "stream_end", "stream_error"}
+VALID_SSE_EVENTS = {"run_event", "stream_end", "stream_error", "file_changes"}
 
 
 def _targets() -> dict[str, list[str]]:
@@ -57,14 +57,18 @@ def _targets() -> dict[str, list[str]]:
 
     for ac_id in (
         "AC-015-N-1 AC-015-N-2 AC-015-N-3 AC-015-N-4 AC-015-N-5 "
-        "AC-015-B-1 AC-015-B-2 AC-015-E-2 AC-015-F-1 AC-015-F-2"
+        "AC-015-N-6 AC-015-N-7 AC-015-N-8 "
+        "AC-015-B-1 AC-015-B-2 AC-015-B-3 AC-015-B-4 "
+        "AC-015-E-2 AC-015-E-3 AC-015-F-1 AC-015-F-2 AC-015-F-3"
     ).split():
         targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:phase"]
     assign("AC-015-E-1", "GET /api/v1/runs/{run_id}/legacy-events", "ui:phase")
 
     for ac_id in (
-        "AC-016-N-1 AC-016-N-2 AC-016-B-1 AC-016-B-2 AC-016-E-1 "
-        "AC-016-F-1 AC-016-F-2"
+        "AC-016-N-1 AC-016-N-2 AC-016-N-3 AC-016-N-4 "
+        "AC-016-B-1 AC-016-B-2 AC-016-B-3 "
+        "AC-016-E-1 AC-016-E-3 "
+        "AC-016-F-1 AC-016-F-2 AC-016-F-3"
     ).split():
         targets[ac_id] = ["GET /api/v1/runs/{run_id}/events"]
     assign("AC-016-E-2", "ui:event-reducer")
@@ -108,14 +112,19 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-015-F-1": [{"kind": "http_status", "value": 200}],
     "AC-016-N-1": [{"kind": "sse_event", "value": "run_event"}],
     "AC-016-N-2": [{"kind": "sse_event", "value": "run_event"}],
+    "AC-016-N-3": [{"kind": "sse_event", "value": "run_event"}, {"kind": "sse_event", "value": "file_changes"}],
+    "AC-016-N-4": [{"kind": "sse_event", "value": "run_event"}, {"kind": "sse_event", "value": "file_changes"}],
     "AC-016-B-1": [{"kind": "sse_event", "value": "stream_end"}],
     "AC-016-B-2": [{"kind": "sse_event", "value": "run_event"}],
+    "AC-016-B-3": [{"kind": "sse_event", "value": "file_changes"}],
     "AC-016-E-1": [
         {"kind": "http_status", "value": 410, "code": "cursor_out_of_range"}
     ],
     "AC-016-E-2": [{"kind": "dom", "value": "deduplicated"}],
+    "AC-016-E-3": [{"kind": "sse_event", "value": "stream_error"}],
     "AC-016-F-1": [{"kind": "http_status", "value": 404, "code": "run_not_found"}],
     "AC-016-F-2": [{"kind": "sse_event", "value": "stream_error"}],
+    "AC-016-F-3": [{"kind": "sse_event", "value": "stream_error"}],
     "AC-017-B-2": [
         {"kind": "http_status", "value": 422, "code": "file_not_previewable"}
     ],

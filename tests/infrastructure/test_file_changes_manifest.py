@@ -3,17 +3,17 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
-from tests.web_support.ac_manifest import check_manifest, generate_manifest
+from tests.file_changes_support.manifest import check_manifest, generate_manifest
 
 
-AC_PATH = Path("docs/ac/0010-webui.md")
+AC_PATH = Path("docs/ac/0012-file-changes.md")
 
 
 def test_generated_manifest_covers_every_frozen_scenario():
     manifest = generate_manifest(AC_PATH)
 
     assert check_manifest(manifest, AC_PATH, allow_planned=True) == []
-    assert len(manifest["cases"]) == 72
+    assert len(manifest["cases"]) == 18
 
 
 def test_manifest_checker_rejects_missing_scenario():
@@ -27,14 +27,13 @@ def test_manifest_checker_rejects_missing_scenario():
 
 def test_manifest_checker_rejects_interface_drift_and_empty_assertion():
     manifest = deepcopy(generate_manifest(AC_PATH))
-    case = next(item for item in manifest["cases"] if item["ac_id"] == "AC-016-E-1")
-    case["expectations"][0]["value"] = 409
+    case = next(item for item in manifest["cases"] if item["ac_id"] == "AC-024-N-7")
+    case["expectations"][0]["value"] = "run_event"
     case["assertion"] = ""
 
     errors = check_manifest(manifest, AC_PATH, allow_planned=True)
 
-    assert "AC-016-E-1: assertion does not match AC source" in errors
-    assert "AC-016-E-1: cursor_out_of_range must use HTTP 410" in errors
+    assert "AC-024-N-7: assertion does not match AC source" in errors
 
 
 def test_strict_manifest_rejects_planned_nodes():
@@ -42,9 +41,5 @@ def test_strict_manifest_rejects_planned_nodes():
 
     errors = check_manifest(manifest, AC_PATH)
 
-    active = [
-        case for case in manifest["cases"]
-        if case["ac_id"] not in {"AC-014-N-3", "AC-014-N-5", "AC-014-N-6", "AC-014-F-1"}
-    ]
-    assert len(errors) == len(active)
+    assert len(errors) == len(manifest["cases"])
     assert all("planned test node is not allowed" in error for error in errors)
