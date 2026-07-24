@@ -90,7 +90,7 @@ it('operates the Runs master-detail workspace and stream', async () => {
 
   expect(await screen.findByText('run-live')).toBeVisible();
   expect(await screen.findByText('Phase graph')).toBeVisible();
-  expect(screen.getAllByText('wf-review-a').length).toBe(2);
+  expect(screen.getAllByText('wf-review-a').length).toBe(1);
   expect(screen.getByText('1 malformed')).toBeVisible();
   fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
   expect(screen.getByText(/legacy/)).toBeVisible();
@@ -100,7 +100,7 @@ it('operates the Runs master-detail workspace and stream', async () => {
   expect(screen.getAllByText('workflow output').length).toBeGreaterThan(0);
   expect(screen.queryByText(/"content":/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByText('wf-review-b'));
-  expect(screen.getByText('wf-review-b', { selector: 'h2' })).toBeVisible();
+  expect(screen.getByText(/Default · exit 0/)).toBeVisible();
   expect(EventSourceMock.instances[0].url).toContain('last_event_id=3');
   act(() => {
     EventSourceMock.instances[0].emit('run_event', JSON.stringify({ version: 2, event_id: 3, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: 'next' } }));
@@ -137,8 +137,8 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Reconcile run' }));
   fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
   fireEvent.click(screen.getByRole('button', { name: /wf-plan/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Open process inspector' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Close process inspector' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Open file changes panel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close file changes panel' }));
   fireEvent.click(screen.getByRole('button', { name: 'Back to Runs' }));
 
   fireEvent.click(screen.getByRole('button', { name: /New/ }));
@@ -306,26 +306,27 @@ const fileChangeRecords = [
   ] },
 ];
 
-it('AC-024-N-4: renders file changes panel with created action and size', async () => {
+it('AC-024-N-4: renders file changes tree with created action and size', async () => {
   installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
   const panel = await screen.findByTestId('file-changes-panel');
   expect(panel).toBeVisible();
-  expect(screen.getAllByText('data/raw.json').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('raw.json').length).toBeGreaterThan(0);
   expect(screen.getAllByText('created').length).toBeGreaterThan(0);
   expect(screen.getAllByText(/1024/).length).toBeGreaterThan(0);
 });
 
-it('AC-024-N-5: renders modified and created changes for all phases', async () => {
+it('AC-024-N-5: tree merges changes from all phases with latest action and size', async () => {
   installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
   await screen.findByTestId('file-changes-panel');
-  expect(screen.getAllByText('data/raw.json').length).toBe(2);
+  expect(screen.getByText('data')).toBeVisible();
+  expect(screen.getByText('raw.json')).toBeVisible();
   expect(screen.getByText('modified')).toBeVisible();
   expect(screen.getByText(/2048/)).toBeVisible();
-  expect(screen.getByText('data/clean.json')).toBeVisible();
+  expect(screen.getByText('clean.json')).toBeVisible();
 });
 
 it('AC-024-B-6: legacy run without file_changes shows empty state, no error', async () => {
@@ -346,7 +347,7 @@ it('AC-024-B-7: run with no changes shows empty state', async () => {
   expect(screen.getByText('No file changes observed')).toBeVisible();
 });
 
-it('AC-024-N-7: SSE file_changes push appends to panel in real-time', async () => {
+it('AC-024-N-7: SSE file_changes push appends to tree in real-time', async () => {
   installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
@@ -357,6 +358,18 @@ it('AC-024-N-7: SSE file_changes push appends to panel in real-time', async () =
       changes: [{ path: 'output/result.json', action: 'created', size: 256 }],
     }));
   });
-  await waitFor(() => expect(screen.getByText('output/result.json')).toBeVisible());
+  await waitFor(() => expect(screen.getByText('result.json')).toBeVisible());
+  expect(screen.getByText('output')).toBeVisible();
   expect(screen.getByText('created')).toBeVisible();
+});
+
+it('AC-024-N-8: tree markers follow the selected phase', async () => {
+  installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  expect(screen.getByText('1024 → 2048 B')).toBeVisible();
+  fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
+  expect(screen.getByText('1024 B')).toBeVisible();
+  expect(screen.queryByText('1024 → 2048 B')).not.toBeInTheDocument();
 });

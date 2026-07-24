@@ -42,6 +42,7 @@
 | [0071](0071-declared-phases-predisplay/) | Declared phases 预显示 | done | 2026-07-23 |
 | [0072](0072-file-change-observation/) | 工作目录文件变化观察 | done | 2026-07-23 |
 | [0073](0073-system-test-certification/) | SYSTEM_TEST 认证 | done | 2026-07-24 |
+| [0074](0074-webui-ia/) | WebUI 信息架构收敛 | done | 2026-07-24 |
 
 ## 状态说明
 
