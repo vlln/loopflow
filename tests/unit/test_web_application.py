@@ -34,10 +34,12 @@ class Executor:
     def __init__(self, factory):
         self.factory = factory
         self.calls = []
+        self.working_directories = []
 
-    def start(self, loop, args, options, run_id=None):
+    def start(self, loop, args, options, run_id=None, working_directory=None):
         run_id = run_id or f"new-{len(self.calls)}"
         self.calls.append((loop, args, options, run_id))
+        self.working_directories.append(working_directory)
         run = self.factory.runs / run_id
         run.mkdir(exist_ok=True)
         self.factory.write_json(run / "run.json", {

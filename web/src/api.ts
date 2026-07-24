@@ -1,4 +1,4 @@
-import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunSummary } from './types';
+import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunFileContent, RunSummary } from './types';
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public status: number, public details: Record<string, unknown> = {}) {
@@ -32,6 +32,7 @@ export const api = {
   backends: () => request<{ items: Backend[] }>('/backends'),
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),
   fileChanges: (id: string) => request<{ items: FileChangeRecord[]; count: number }>(`/runs/${encodeURIComponent(id)}/file-changes`),
+  runFile: (id: string, path: string) => request<RunFileContent>(`/runs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
 };
 
 export interface RunEventHandlers {

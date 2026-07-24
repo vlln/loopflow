@@ -6,7 +6,7 @@ import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, File
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer } from './eventReducer';
-import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, RunDetail, RunEvent, RunSummary } from './types';
+import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, RunDetail, RunEvent, RunFileContent, RunSummary } from './types';
 import { EmptyState, IconButton, PanelHeader, ScrollArea, SectionHeader, StatusBadge } from './ui';
 
 type View = 'runs' | 'loops' | 'backends';
@@ -137,7 +137,7 @@ function RunsWorkspace() {
         </section>
       </>}
     </section>
-    <div className="inspector-column">{selectedId && <FileChangesPanel records={fileChangeRecords} selectedPhaseId={selectedPhaseId} onClose={() => setMobilePane('detail')} />}</div>
+    <div className="inspector-column">{selectedId && <FileChangesPanel records={fileChangeRecords} selectedPhaseId={selectedPhaseId} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
     {showNew && <NewRunDialog onClose={() => setShowNew(false)} onCreated={(run) => { setShowNew(false); void loadRuns(); selectRun(run.run_id); }} />}
     {error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}
   </section>;
@@ -244,20 +244,32 @@ function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
   return convert(root, '');
 }
 
-function FileChangesPanel({ records, selectedPhaseId, onClose }: { records: FileChangeRecord[]; selectedPhaseId: string | null; onClose: () => void }) {
+function FileChangesPanel({ records, selectedPhaseId, runId, onClose }: { records: FileChangeRecord[]; selectedPhaseId: string | null; runId: string; onClose: () => void }) {
   const totalChanges = records.reduce((sum, record) => sum + record.changes.length, 0);
   const tree = useMemo(() => buildChangeTree(records), [records]);
-  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} change{totalChanges === 1 ? '' : 's'}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{records.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} selectedPhaseId={selectedPhaseId} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} selectedPhaseId={selectedPhaseId} />)}</ul></ScrollArea>}</section>;
+  const [previewPath, setPreviewPath] = useState<string | null>(null);
+  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} change{totalChanges === 1 ? '' : 's'}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{records.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} selectedPhaseId={selectedPhaseId} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} selectedPhaseId={selectedPhaseId} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
 }
 
-function ChangeTreeDirView({ dir, depth, selectedPhaseId }: { dir: ChangeTreeDir; depth: number; selectedPhaseId: string | null }) {
-  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }}><Folder size={12} /><span>{dir.label}</span></div><ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} selectedPhaseId={selectedPhaseId} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} selectedPhaseId={selectedPhaseId} />)}</ul></li>;
+function ChangeTreeDirView({ dir, depth, selectedPhaseId, onPreview }: { dir: ChangeTreeDir; depth: number; selectedPhaseId: string | null; onPreview: (path: string) => void }) {
+  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }}><Folder size={12} /><span>{dir.label}</span></div><ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} selectedPhaseId={selectedPhaseId} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} selectedPhaseId={selectedPhaseId} onPreview={onPreview} />)}</ul></li>;
 }
 
-function ChangeTreeFileView({ file, depth, selectedPhaseId }: { file: ChangeTreeFile; depth: number; selectedPhaseId: string | null }) {
+function ChangeTreeFileView({ file, depth, selectedPhaseId, onPreview }: { file: ChangeTreeFile; depth: number; selectedPhaseId: string | null; onPreview: (path: string) => void }) {
   const inPhase = selectedPhaseId ? file.byPhase[selectedPhaseId] : undefined;
   const shown = inPhase ?? file.latest;
-  return <li className={`change-tree-row is-file is-${shown.action}${inPhase ? ' is-in-phase' : ''}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</li>;
+  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}${inPhase ? ' is-in-phase' : ''}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
+}
+
+function RunFilePreviewDialog({ runId, path, onClose }: { runId: string; path: string; onClose: () => void }) {
+  const name = path.split('/').pop() ?? path;
+  const [state, setState] = useState<{ status: 'loading' } | { status: 'error'; message: string } | { status: 'done'; file: RunFileContent }>({ status: 'loading' });
+  useEffect(() => {
+    let active = true;
+    void api.runFile(runId, path).then((file) => { if (active) setState({ status: 'done', file }); }).catch((cause) => { if (active) setState({ status: 'error', message: previewErrorOf(cause) }); });
+    return () => { active = false; };
+  }, [runId, path]);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="file-preview-title"><header><div><span className="eyebrow">{state.status === 'done' ? `${state.file.media_type} · Read only` : 'File preview'}</span><h2 id="file-preview-title">{name}</h2></div><IconButton label="Close preview" onClick={onClose}><X /></IconButton></header>{state.status === 'loading' && <span className="file-preview-status">Loading preview…</span>}{state.status === 'error' && <span className="file-preview-status" role="alert">{state.message}</span>}{state.status === 'done' && <div className="file-preview-body"><pre className="code-preview scroll-area">{state.file.content}</pre></div>}</div></div>;
 }
 
 function EventContent({ event }: { event: RunEvent }) {
@@ -271,10 +283,11 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [loops, setLoops] = useState<LoopSummary[]>([]);
   const [loop, setLoop] = useState('');
   const [args, setArgs] = useState('{}');
+  const [workdir, setWorkdir] = useState('');
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setLoop(page.items[0]?.name ?? ''); }); }, []);
-  const submit = async () => { try { onCreated(await api.createRun({ loop, args: JSON.parse(args) })); } catch (cause) { setError(messageOf(cause)); } };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => setLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><label>Arguments<textarea value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /></label>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
+  const submit = async () => { try { const body: Record<string, unknown> = { loop, args: JSON.parse(args) }; if (workdir.trim()) body.working_directory = workdir.trim(); onCreated(await api.createRun(body)); } catch (cause) { setError(messageOf(cause)); } };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => setLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><label>Arguments<textarea value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /></label><label>Working directory<input value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} /></label>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
 }
 
 function LoopsWorkspace() {
@@ -378,5 +391,14 @@ function eventLabel(event: RunEvent) { return (({ phase: 'Phase entered', agent_
 function formatEventValue(value: unknown) { return typeof value === 'string' ? value : value === null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
 function stripFrontmatter(value: string) { return value.replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, ''); }
 function messageOf(cause: unknown) { return cause instanceof ApiError ? `${cause.code}: ${cause.message}` : cause instanceof Error ? cause.message : 'Unexpected error'; }
+function previewErrorOf(cause: unknown) {
+  if (cause instanceof ApiError) {
+    if (cause.code === 'file_not_found') return 'File no longer exists';
+    if (cause.code === 'run_not_found') return 'Run no longer exists';
+    if (cause.code === 'path_forbidden') return 'Path is outside the run working directory';
+    if (cause.code === 'file_not_previewable') return 'File is not previewable (binary or larger than 1 MiB)';
+  }
+  return messageOf(cause);
+}
 
 export default AppShell;

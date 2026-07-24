@@ -255,3 +255,110 @@ def test_background_executor_surfaces_replay_divergence_before_return(tmp_path, 
         executor.start(
             "hello", {}, {"recover": True, "recovery_mode": "retry"}, run_id="same"
         )
+
+
+def _wait_terminal(run_json, timeout=5.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        status = json.loads(run_json.read_text()).get("status")
+        if status != "running":
+            return status
+        time.sleep(0.01)
+    return json.loads(run_json.read_text()).get("status")
+
+
+def test_background_executor_honors_explicit_working_directory(tmp_path, monkeypatch):
+    """AC-025-N-1: run dir lands in the lf_<B> namespace and run.json
+    persists the explicit working directory."""
+    loops = tmp_path / "loops"
+    create_loop(loops)
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    executor = BackgroundRunExecutor(tmp_path / "runs")
+
+    run_id = executor.start("hello", {}, {}, working_directory=str(workdir))
+
+    encoded = str(workdir.resolve()).lstrip("/").replace("/", "-")
+    run_json = tmp_path / "runs" / f"lf_{encoded}" / run_id / "run.json"
+    assert run_json.is_file()
+    assert _wait_terminal(run_json) == "done"
+    metadata = json.loads(run_json.read_text())
+    assert metadata["working_directory"] == str(workdir.resolve())
+    index = [json.loads(line) for line in (tmp_path / "runs" / "runs_index.jsonl").read_text().splitlines()]
+    assert index == [{
+        "working_directory": str(workdir.resolve()),
+        "runs_directory": str(run_json.parent.parent),
+        "run_id": run_id,
+    }]
+
+
+def test_run_executes_and_observes_in_explicit_working_directory(tmp_path, monkeypatch):
+    """AC-025-N-2: the workflow runs inside /B and file_changes.jsonl records
+    /B changes only; pre-existing files are baseline, not created."""
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    (loop / "workflow.py").write_text(
+        "from pathlib import Path\n"
+        "def run(phase, **kwargs):\n"
+        "    phase('Work')\n"
+        "    Path('output.txt').write_text('made in working dir')\n"
+        "    phase('Done')\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    (workdir / "preexisting.txt").write_text("old")
+    executor = BackgroundRunExecutor(tmp_path / "runs")
+
+    run_id = executor.start("hello", {}, {}, working_directory=str(workdir))
+
+    encoded = str(workdir.resolve()).lstrip("/").replace("/", "-")
+    run_dir = tmp_path / "runs" / f"lf_{encoded}" / run_id
+    assert _wait_terminal(run_dir / "run.json") == "done"
+    assert (workdir / "output.txt").read_text() == "made in working dir"
+    records = [
+        json.loads(line)
+        for line in (run_dir / "file_changes.jsonl").read_text().splitlines()
+    ]
+    changes = [change for record in records for change in record["changes"]]
+    assert any(c["path"] == "output.txt" and c["action"] == "created" for c in changes)
+    assert all(c["path"] != "preexisting.txt" for c in changes)
+
+
+def test_recover_reuses_persisted_working_directory(tmp_path, monkeypatch):
+    """AC-025-B-3: recovery re-executes in the original directory; a new
+    working_directory value never overrides the persisted one."""
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    (loop / "workflow.py").write_text(
+        "from pathlib import Path\n"
+        "def run(phase, **kwargs):\n"
+        "    phase('Work')\n"
+        "    if not Path('attempt.marker').exists():\n"
+        "        Path('attempt.marker').write_text('first')\n"
+        "        raise RuntimeError('boom')\n"
+        "    Path('recovered.txt').write_text('ok')\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    executor = BackgroundRunExecutor(tmp_path / "runs")
+
+    run_id = executor.start("hello", {}, {}, working_directory=str(workdir))
+    encoded = str(workdir.resolve()).lstrip("/").replace("/", "-")
+    run_json = tmp_path / "runs" / f"lf_{encoded}" / run_id / "run.json"
+    assert _wait_terminal(run_json) == "failed"
+
+    executor.start(
+        "hello",
+        {},
+        {"recover": True, "recovery_mode": "retry"},
+        run_id=run_id,
+        working_directory=str(tmp_path / "nonexistent-override"),
+    )
+
+    assert _wait_terminal(run_json) == "done"
+    assert (workdir / "recovered.txt").read_text() == "ok"
+    metadata = json.loads(run_json.read_text())
+    assert metadata["working_directory"] == str(workdir.resolve())

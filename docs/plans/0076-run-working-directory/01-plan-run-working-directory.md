@@ -2,7 +2,7 @@
 title: Run 显式工作目录与观察语义 Plan
 description: 实现 ADR-0042 显式工作目录、ADR-0043 基线快照、BR-046 文件预览（AC-025 全场景 + AC-024-B-1/B-8/N-8）
 type: plan
-status: pending
+status: done
 created: 2026-07-24T05:45:00Z
 ---
 

@@ -30,7 +30,14 @@ class ApplicationError(Exception):
 
 
 class RunExecutor(Protocol):
-    def start(self, loop: str, args: dict[str, Any], options: dict[str, Any], run_id: str | None = None) -> str: ...
+    def start(
+        self,
+        loop: str,
+        args: dict[str, Any],
+        options: dict[str, Any],
+        run_id: str | None = None,
+        working_directory: str | Path | None = None,
+    ) -> str: ...
 
 
 @dataclass
@@ -72,7 +79,7 @@ class WebApplication:
         return self.runs.read_detail(self._run_dir(run_id))
 
     def create_run(self, body: dict[str, Any]) -> dict[str, Any]:
-        _fields(body, {"loop", "args", "backend", "model", "mock", "from_phase", "only_phase"})
+        _fields(body, {"loop", "args", "backend", "model", "mock", "from_phase", "only_phase", "working_directory"})
         loop = body.get("loop")
         if not isinstance(loop, str) or not loop:
             raise ApplicationError("validation_failed", "loop must be a non-empty string")
@@ -81,6 +88,29 @@ class WebApplication:
         args = body.get("args", {})
         if not isinstance(args, dict):
             raise ApplicationError("validation_failed", "args must be an object")
+        working_directory = body.get("working_directory")
+        if working_directory is not None:
+            if not isinstance(working_directory, str) or not working_directory:
+                raise ApplicationError("validation_failed", "working_directory must be a non-empty string or null")
+            candidate = Path(working_directory)
+            if not candidate.is_absolute():
+                raise ApplicationError(
+                    "validation_failed",
+                    "working_directory must be an absolute path",
+                    {"reason": "not_absolute"},
+                )
+            if not candidate.exists():
+                raise ApplicationError(
+                    "validation_failed",
+                    "working_directory does not exist",
+                    {"reason": "not_found"},
+                )
+            if not candidate.is_dir():
+                raise ApplicationError(
+                    "validation_failed",
+                    "working_directory is not a directory",
+                    {"reason": "not_a_directory"},
+                )
         options = self._execution_options(body)
         only_phase, from_phase = options.get("only_phase"), options.get("from_phase")
         if only_phase is not None and from_phase not in (None, only_phase):
@@ -89,7 +119,7 @@ class WebApplication:
             options["from_phase"] = only_phase
         if self.executor is None:
             raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
-        run_id = self.executor.start(loop, args, options)
+        run_id = self.executor.start(loop, args, options, working_directory=working_directory)
         return self.runs.read_summary(self._run_dir(run_id))
 
     def stop_run(self, run_id: str) -> dict[str, Any]:
@@ -265,7 +295,12 @@ class WebApplication:
             raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be rerun")
         if self.executor is None:
             raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
-        new_id = self.executor.start(metadata["loop"], metadata.get("args", {}), {})
+        new_id = self.executor.start(
+            metadata["loop"],
+            metadata.get("args", {}),
+            {},
+            working_directory=metadata.get("working_directory"),
+        )
         return self.runs.read_summary(self._run_dir(new_id))
 
     def reconcile(self, run_id: str) -> dict[str, Any]:
@@ -296,6 +331,18 @@ class WebApplication:
         if loop_dir is None:
             raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
         return self.loops.preview(loop_dir, relative)
+
+    def preview_run_file(self, run_id: str, relative: str) -> dict[str, Any]:
+        """Preview a single file inside a run's working directory (ADR-0042).
+
+        Shares the Loop preview rules: relative POSIX path, resolved inside
+        the run's working directory, UTF-8 text up to 1 MiB, read-only.
+        """
+        run_dir = self._run_dir(run_id)
+        root = self.runs.resolve_working_directory(run_dir)
+        if root is None:
+            raise ApplicationError("file_not_found", f"File '{relative}' was not found")
+        return self.loops.preview(root, relative)
 
     def list_queue(self, *, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
         limit, offset = _page(limit, cursor)
@@ -460,7 +507,8 @@ class WebApplication:
         metadata.pop("process_group_id", None)
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
-        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args"}
+        # working_directory is validated and consumed by create_run itself
+        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args", "working_directory"}
         _fields(body, allowed)
         backend = body.get("backend")
         if backend is not None and (not isinstance(backend, str) or self.allowed_backends and backend not in self.allowed_backends):

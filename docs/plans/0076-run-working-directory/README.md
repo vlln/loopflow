@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Run 显式工作目录与观察语义](01-plan-run-working-directory.md) | [Report](01-report-run-working-directory.md) | pending |
+| 01 | [Run 显式工作目录与观察语义](01-plan-run-working-directory.md) | [Report](01-report-run-working-directory.md) | done |
 
 ## 范围
 

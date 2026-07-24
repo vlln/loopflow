@@ -103,19 +103,25 @@ class FileChangeObserver:
         self._seq: int = 0
         self._file_changes_path = run_dir / "file_changes.jsonl"
 
+    def seed(self) -> None:
+        """Establish the baseline snapshot without producing a record (ADR-0043).
+
+        Called once at run startup, after observer initialization and before
+        workflow execution, so the first observe() diffs against this baseline
+        and "created" only means files created during the run.
+        """
+        self._previous = self._scan()
+
     def observe(self, phase: str, phase_id: str) -> dict[str, Any] | None:
         """Take a snapshot and diff against previous. Returns the record if there are changes, None otherwise."""
         if not self.config.enabled:
             return None
         current = self._scan()
         if self._previous is None:
-            # First snapshot: all files are "created"
-            changes = [
-                FileChange(path=path, action="created", size=size)
-                for path, size in sorted(current.files.items())
-            ]
-        else:
-            changes = self._diff(self._previous, current)
+            # No explicit seed(): the first snapshot is the baseline (ADR-0043)
+            self._previous = current
+            return None
+        changes = self._diff(self._previous, current)
         self._previous = current
         if not changes:
             return None

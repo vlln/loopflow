@@ -23,6 +23,7 @@ type FetchOptions = boolean | {
   responseStatus?: number;
   responseBody?: unknown;
   fileChanges?: Record<string, { seq: number; phase: string; phase_id: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
+  runFile?: { status?: number; body?: unknown };
 };
 
 function installFetch(config: FetchOptions = true) {
@@ -33,6 +34,8 @@ function installFetch(config: FetchOptions = true) {
   const responseStatus = typeof config === 'boolean' ? 200 : config.responseStatus ?? 200;
   const responseBody = typeof config === 'boolean' ? null : config.responseBody ?? null;
   const fileChangesMap = typeof config === 'boolean' ? {} : config.fileChanges ?? {};
+  const runFileStatus = typeof config === 'boolean' ? 200 : config.runFile?.status ?? 200;
+  const runFileBody = typeof config === 'boolean' ? null : config.runFile?.body ?? null;
   const calls = [] as unknown as string[] & { bodies: unknown[] };
   calls.bodies = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
@@ -40,7 +43,10 @@ function installFetch(config: FetchOptions = true) {
     const path = String(input);
     calls.push(`${options?.method ?? 'GET'} ${path}`);
     if (path.startsWith('/api/v1/runs?')) return response({ items: runs.filter((run) => path.includes('status=failed') ? run.status === 'failed' : true), next_cursor: null });
-    if (path === '/api/v1/runs') return options?.method === 'POST' ? response(runs[0], 201) : response({ items: runs, next_cursor: null });
+    if (path === '/api/v1/runs') {
+      if (options?.method === 'POST') { calls.bodies.push(JSON.parse(String(options.body))); return response(runs[0], 201); }
+      return response({ items: runs, next_cursor: null });
+    }
     if (path === '/api/v1/runs/run-live') return response(detail);
     if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'], interventions: waitingInterventions });
     if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: waitingInterventions });
@@ -59,6 +65,9 @@ function installFetch(config: FetchOptions = true) {
       const runId = path.match(/\/runs\/([^/]+)\/file-changes/)?.[1] ?? '';
       const items = fileChangesMap[runId] ?? [];
       return response({ items, count: items.length });
+    }
+    if (path.match(/\/api\/v1\/runs\/[^/]+\/file\?path=/)) {
+      return response(runFileBody ?? { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true }, runFileStatus);
     }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
@@ -372,4 +381,55 @@ it('AC-024-N-8: tree markers follow the selected phase', async () => {
   fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
   expect(screen.getByText('1024 B')).toBeVisible();
   expect(screen.queryByText('1024 → 2048 B')).not.toBeInTheDocument();
+});
+
+// --- AC-025: Run working directory + file preview ---
+
+it('AC-025-N-3: New Run submits working_directory only when filled', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Working directory' }), { target: { value: '/tmp/lf-work' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ working_directory: '/tmp/lf-work' })));
+
+  cleanup();
+  window.history.replaceState(null, '', '/');
+  EventSourceMock.instances = [];
+  vi.unstubAllGlobals();
+
+  const blankCalls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await screen.findByRole('dialog', { name: 'New Run' });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(blankCalls.bodies.length).toBe(1));
+  expect(blankCalls.bodies[0]).not.toHaveProperty('working_directory');
+});
+
+it('AC-025-N-5: clicking a file in the tree previews its content read-only', async () => {
+  installFetch({ fileChanges: { 'run-live': fileChangeRecords }, runFile: { body: { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true } } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview data/raw.json' }));
+  expect(await screen.findByRole('dialog', { name: 'raw.json' })).toBeVisible();
+  expect(await screen.findByText('{"ok": true}')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('AC-025-E-3: previewing a deleted file shows a friendly not-found message', async () => {
+  installFetch({
+    fileChanges: { 'run-live': [{ seq: 1, phase: 'Review', phase_id: 'review-2', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'tmp/scratch.txt', action: 'deleted', prev_size: 10 }] }] },
+    runFile: { status: 404, body: { error: { code: 'file_not_found', message: 'file not found', details: {} } } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview tmp/scratch.txt' }));
+  expect(await screen.findByRole('dialog', { name: 'scratch.txt' })).toBeVisible();
+  expect(await screen.findByRole('alert')).toHaveTextContent('File no longer exists');
 });

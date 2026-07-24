@@ -23,13 +23,13 @@ def _targets() -> dict[str, list[str]]:
         "file_jsonl:file_changes",
     )
     # Normal: WebUI rendering
-    assign("AC-024-N-4 AC-024-N-5", "GET /api/v1/runs/{run_id}", "ui:phase")
+    assign("AC-024-N-4 AC-024-N-5 AC-024-N-8", "GET /api/v1/runs/{run_id}", "ui:phase")
     # Normal: SSE file_changes topic
     assign("AC-024-N-7", "GET /api/v1/runs/{run_id}/events")
 
     # Boundary
     assign(
-        "AC-024-B-1 AC-024-B-2 AC-024-B-3 AC-024-B-4 AC-024-B-5 AC-024-B-6 AC-024-B-7",
+        "AC-024-B-1 AC-024-B-2 AC-024-B-3 AC-024-B-4 AC-024-B-5 AC-024-B-6 AC-024-B-7 AC-024-B-8",
         "file_jsonl:file_changes",
     )
 
@@ -91,13 +91,15 @@ _TEST_NODES: dict[str, str] = {
     "AC-024-N-5": "test_file_changes_rest_endpoint_returns_records",
     "AC-024-N-6": "test_file_changes_rest_endpoint_empty_for_no_file",
     "AC-024-N-7": "test_sse_multi_topic_pushes_run_event_and_file_changes",
-    "AC-024-B-1": "test_first_observe_marks_all_files_as_created",
+    "AC-024-N-8": "test_file_changes_rest_endpoint_returns_records",
+    "AC-024-B-1": "test_first_observe_establishes_baseline_no_record",
     "AC-024-B-2": "test_second_observe_detects_modified_and_created",
     "AC-024-B-3": "test_deleted_file_detected",
     "AC-024-B-4": "test_no_changes_returns_none",
     "AC-024-B-5": "test_exclude_patterns_skip_files",
     "AC-024-B-6": "test_disabled_config_returns_none",
     "AC-024-B-7": "test_seq_strictly_increasing",
+    "AC-024-B-8": "test_first_phase_modifies_preexisting_file_marks_modified_with_baseline_prev_size",
     "AC-024-E-1": "test_file_changes_rest_404_for_nonexistent_run",
     "AC-024-E-2": "test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
     "AC-024-F-1": "test_file_changes_rest_404_for_nonexistent_run",

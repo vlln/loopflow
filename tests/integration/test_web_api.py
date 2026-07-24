@@ -36,13 +36,15 @@ class Executor:
     def __init__(self, factory):
         self.factory = factory
         self.count = 0
+        self.working_directories = []
 
-    def start(self, loop, args, options, run_id=None):
+    def start(self, loop, args, options, run_id=None, working_directory=None):
         self.count += 1
+        self.working_directories.append(working_directory)
         run_id = run_id or f"created-{self.count}"
         path = self.factory.runs / run_id
         path.mkdir(exist_ok=True)
-        self.factory.write_json(path / "run.json", {
+        metadata = {
             "run_id": run_id,
             "loop": loop,
             "args": args,
@@ -52,7 +54,10 @@ class Executor:
             "pid": 7,
             "process_group_id": 70,
             "process_started_at": "same",
-        })
+        }
+        if working_directory is not None:
+            metadata["working_directory"] = working_directory
+        self.factory.write_json(path / "run.json", metadata)
         return run_id
 
 
@@ -593,3 +598,170 @@ def test_file_changes_rest_404_for_nonexistent_run(api):
     client = JsonHttpClient("127.0.0.1", port)
     response = client.request("GET", "/api/v1/runs/nonexistent/file-changes")
     assert response.status == 404
+
+
+def test_create_run_with_explicit_working_directory(api, tmp_path):
+    """AC-025-N-1: 201 and run.json persists the explicit working directory."""
+    client, factory, _ = api
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+
+    created = client.request("POST", "/api/v1/runs", {"loop": "hello", "working_directory": str(workdir)})
+
+    assert created.status == 201
+    run_id = created.json()["run_id"]
+    metadata = json.loads((factory.runs / run_id / "run.json").read_text())
+    assert metadata["working_directory"] == str(workdir)
+
+
+def test_create_run_without_working_directory_keeps_default(api):
+    """AC-025-B-1: omitting working_directory keeps the process-cwd default."""
+    client, factory, _ = api
+
+    created = client.request("POST", "/api/v1/runs", {"loop": "hello"})
+
+    assert created.status == 201
+    run_id = created.json()["run_id"]
+    metadata = json.loads((factory.runs / run_id / "run.json").read_text())
+    assert "working_directory" not in metadata
+
+
+def test_create_run_rejects_relative_working_directory(api):
+    """AC-025-B-2: a relative working_directory is 422 not_absolute."""
+    client, factory, _ = api
+    before = {path.name for path in factory.runs.iterdir()}
+
+    response = client.request("POST", "/api/v1/runs", {"loop": "hello", "working_directory": "B"})
+
+    assert response.status == 422
+    error = response.json()["error"]
+    assert error["code"] == "validation_failed"
+    assert error["details"]["reason"] == "not_absolute"
+    assert {path.name for path in factory.runs.iterdir()} == before
+
+
+def test_create_run_rejects_nonexistent_working_directory(api, tmp_path):
+    """AC-025-E-1: a missing working_directory is 422 not_found, no run dir."""
+    client, factory, _ = api
+    before = {path.name for path in factory.runs.iterdir()}
+
+    response = client.request(
+        "POST", "/api/v1/runs", {"loop": "hello", "working_directory": str(tmp_path / "nonexistent")}
+    )
+
+    assert response.status == 422
+    error = response.json()["error"]
+    assert error["code"] == "validation_failed"
+    assert error["details"]["reason"] == "not_found"
+    assert {path.name for path in factory.runs.iterdir()} == before
+
+
+def test_create_run_rejects_file_as_working_directory(api, tmp_path):
+    """AC-025-E-2: a non-directory working_directory is 422 not_a_directory."""
+    client, factory, _ = api
+    a_file = tmp_path / "a-file"
+    a_file.write_text("not a directory")
+    before = {path.name for path in factory.runs.iterdir()}
+
+    response = client.request("POST", "/api/v1/runs", {"loop": "hello", "working_directory": str(a_file)})
+
+    assert response.status == 422
+    error = response.json()["error"]
+    assert error["code"] == "validation_failed"
+    assert error["details"]["reason"] == "not_a_directory"
+    assert {path.name for path in factory.runs.iterdir()} == before
+
+
+def test_recover_rejects_working_directory_override(api, tmp_path):
+    """AC-025-B-3: recover reuses the original directory and rejects an
+    override field in the request body."""
+    client, factory, _ = api
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    factory.create_run("failed-wd", status="failed", working_directory=str(workdir))
+
+    override = client.request(
+        "POST",
+        "/api/v1/runs/failed-wd/recover",
+        {"mode": "retry", "working_directory": str(tmp_path)},
+    )
+    assert override.status == 422
+    assert override.json()["error"]["code"] == "validation_failed"
+
+    recovered = client.request("POST", "/api/v1/runs/failed-wd/recover", {"mode": "retry"})
+    assert recovered.status == 200
+    assert recovered.json()["run_id"] == "failed-wd"
+
+
+def test_run_file_preview_returns_text_content(api, tmp_path):
+    """AC-025-N-4: preview a text file inside the run's working directory."""
+    client, factory, _ = api
+    workdir = tmp_path / "B"
+    (workdir / "src").mkdir(parents=True)
+    (workdir / "src" / "main.py").write_text("print('hi')\n", encoding="utf-8")
+    factory.create_run("wd-run", working_directory=str(workdir))
+
+    response = client.request("GET", "/api/v1/runs/wd-run/file?path=src/main.py")
+
+    assert response.status == 200
+    body = response.json()
+    assert body["path"] == "src/main.py"
+    assert body["media_type"] == "text/x-python"
+    assert body["content"] == "print('hi')\n"
+    assert body["size"] == len("print('hi')\n")
+    assert body["read_only"] is True
+
+
+def test_run_file_preview_rejects_path_escape(api, tmp_path):
+    """AC-025-B-4: paths resolving outside the working directory are 403."""
+    client, factory, _ = api
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    outside = tmp_path / "A"
+    outside.mkdir()
+    (outside / "secret.txt").write_text("top secret", encoding="utf-8")
+    factory.create_run("wd-run", working_directory=str(workdir))
+
+    relative_escape = client.request("GET", "/api/v1/runs/wd-run/file?path=../A/secret.txt")
+    assert relative_escape.status == 403
+    assert relative_escape.json()["error"]["code"] == "path_forbidden"
+    assert "content" not in relative_escape.json()["error"]
+
+    absolute = client.request("GET", "/api/v1/runs/wd-run/file?path=/etc/hostname")
+    assert absolute.status == 403
+    assert absolute.json()["error"]["code"] == "path_forbidden"
+
+
+def test_run_file_preview_rejects_binary_and_oversized(api, tmp_path):
+    """AC-025-B-5: binary or >1 MiB files are 422 file_not_previewable."""
+    client, factory, _ = api
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    (workdir / "blob.bin").write_bytes(b"\x00\x01\x02binary")
+    (workdir / "huge.txt").write_bytes(b"x" * (1024 * 1024 + 1))
+    factory.create_run("wd-run", working_directory=str(workdir))
+
+    binary = client.request("GET", "/api/v1/runs/wd-run/file?path=blob.bin")
+    assert binary.status == 422
+    assert binary.json()["error"]["code"] == "file_not_previewable"
+
+    oversized = client.request("GET", "/api/v1/runs/wd-run/file?path=huge.txt")
+    assert oversized.status == 422
+    assert oversized.json()["error"]["code"] == "file_not_previewable"
+
+
+def test_run_file_preview_missing_file_and_unknown_run(api, tmp_path):
+    """AC-025-E-3: a missing preview file is 404 file_not_found; an unknown
+    run is 404 run_not_found."""
+    client, factory, _ = api
+    workdir = tmp_path / "B"
+    workdir.mkdir()
+    factory.create_run("wd-run", working_directory=str(workdir))
+
+    missing = client.request("GET", "/api/v1/runs/wd-run/file?path=missing.txt")
+    assert missing.status == 404
+    assert missing.json()["error"]["code"] == "file_not_found"
+
+    unknown = client.request("GET", "/api/v1/runs/no-such-run/file?path=missing.txt")
+    assert unknown.status == 404
+    assert unknown.json()["error"]["code"] == "run_not_found"

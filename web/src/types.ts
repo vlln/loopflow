@@ -71,6 +71,14 @@ export interface FileChange {
   prev_size?: number;
 }
 
+export interface RunFileContent {
+  path: string;
+  media_type: string;
+  content: string;
+  size: number;
+  read_only: boolean;
+}
+
 export interface FileChangeRecord {
   seq: number;
   phase: string;
