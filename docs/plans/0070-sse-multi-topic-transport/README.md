@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [SSE 多 topic transport 实现](01-plan-sse-multi-topic.md) | [Report](01-report-sse-multi-topic.md) | pending |
+| 01 | [SSE 多 topic transport 实现](01-plan-sse-multi-topic.md) | [Report](01-report-sse-multi-topic.md) | done |
 
 ## 背景
 

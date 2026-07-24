@@ -372,3 +372,106 @@ def test_bind_safety_is_checked_before_socket_creation(monkeypatch):
     with pytest.raises(ValueError, match="allow_remote"):
         create_server("0.0.0.0", 8765)
     assert called == []
+
+
+# --- Multi-topic SSE tests (ADR-0041) ---
+
+
+def test_sse_multi_topic_pushes_run_event_and_file_changes(api):
+    """AC-016-N-3: same connection receives run_event and file_changes with independent ids."""
+    _, factory, port = api
+    run = factory.create_run("multi", status="done")
+    factory.append_v2_event(run, 1, "log", payload={"message": "one"})
+    factory.append_v2_event(run, 2, "phase", phase="采集", phase_id="p1", payload={})
+    factory.append_file_changes(run, 1, "采集", "p1", [{"path": "data.json", "action": "created", "size": 100}])
+    factory.append_file_changes(run, 2, "处理", "p2", [{"path": "data.json", "action": "modified", "size": 200, "prev_size": 100}])
+
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("GET", "/api/v1/runs/multi/events")
+    response = connection.getresponse()
+    parsed = parse_sse(response.readlines())
+    connection.close()
+
+    assert response.status == 200
+    event_types = [item["event"] for item in parsed]
+    assert "run_event" in event_types
+    assert "file_changes" in event_types
+    assert event_types[-1] == "stream_end"
+
+    run_events = [item for item in parsed if item["event"] == "run_event"]
+    fc_events = [item for item in parsed if item["event"] == "file_changes"]
+    assert [item["id"] for item in run_events] == ["1", "2"]
+    assert [item["id"] for item in fc_events] == ["1", "2"]
+
+
+def test_sse_multi_topic_per_topic_cursor_reconnect(api):
+    """AC-016-N-4: per-topic independent cursors on reconnect."""
+    _, factory, port = api
+    run = factory.create_run("reconnect", status="done")
+    factory.append_v2_event(run, 1, "log", payload={})
+    factory.append_v2_event(run, 2, "log", payload={})
+    factory.append_v2_event(run, 3, "log", payload={})
+    factory.append_v2_event(run, 4, "log", payload={})
+    factory.append_v2_event(run, 5, "log", payload={})
+    factory.append_file_changes(run, 1, "采集", "p1", [{"path": "a", "action": "created", "size": 1}])
+    factory.append_file_changes(run, 2, "处理", "p2", [{"path": "b", "action": "created", "size": 2}])
+    factory.append_file_changes(run, 3, "归档", "p3", [{"path": "c", "action": "created", "size": 3}])
+
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("GET", "/api/v1/runs/reconnect/events?last_event_id=3&last_file_changes_id=1")
+    response = connection.getresponse()
+    parsed = parse_sse(response.readlines())
+    connection.close()
+
+    run_events = [item for item in parsed if item["event"] == "run_event"]
+    fc_events = [item for item in parsed if item["event"] == "file_changes"]
+    assert [item["id"] for item in run_events] == ["4", "5"]
+    assert [item["id"] for item in fc_events] == ["2", "3"]
+
+
+def test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event(api):
+    """AC-016-E-3: file_changes cursor out of range sends stream_error, run_event continues."""
+    _, factory, port = api
+    run = factory.create_run("fc-oob", status="done")
+    factory.append_v2_event(run, 1, "log", payload={"message": "ok"})
+    factory.append_file_changes(run, 1, "采集", "p1", [{"path": "a", "action": "created", "size": 1}])
+    factory.append_file_changes(run, 2, "处理", "p2", [{"path": "b", "action": "created", "size": 2}])
+
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("GET", "/api/v1/runs/fc-oob/events?last_file_changes_id=99")
+    response = connection.getresponse()
+    parsed = parse_sse(response.readlines())
+    connection.close()
+
+    assert response.status == 200
+    event_types = [item["event"] for item in parsed]
+    assert "run_event" in event_types
+    errors = [item for item in parsed if item["event"] == "stream_error"]
+    assert len(errors) == 1
+    error_data = json.loads(errors[0]["data"])
+    assert error_data["topic"] == "file_changes"
+    assert error_data["code"] == "cursor_out_of_range"
+    # run_event was still pushed
+    run_events = [item for item in parsed if item["event"] == "run_event"]
+    assert len(run_events) == 1
+    # stream_end was still sent
+    assert event_types[-1] == "stream_end"
+
+
+def test_sse_no_file_changes_jsonl_silently_empty(api):
+    """Legacy run without file_changes.jsonl: file_changes topic is silent, run_event works."""
+    _, factory, port = api
+    run = factory.create_run("no-fc", status="done")
+    factory.append_v2_event(run, 1, "log", payload={"message": "hello"})
+
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("GET", "/api/v1/runs/no-fc/events")
+    response = connection.getresponse()
+    parsed = parse_sse(response.readlines())
+    connection.close()
+
+    assert response.status == 200
+    event_types = [item["event"] for item in parsed]
+    assert "file_changes" not in event_types
+    assert "run_event" in event_types
+    assert event_types[-1] == "stream_end"

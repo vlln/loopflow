@@ -62,3 +62,18 @@ export interface Backend { name: string; status: string; reason: string | null; 
 export interface Diagnostic { name: string; status: string; reason: string | null; exit_code: number | null; stdout: string; stderr: string; diagnosed_at: string }
 
 export interface Page<T> { items: T[]; next_cursor: string | null }
+
+export interface FileChange {
+  path: string;
+  action: 'created' | 'modified' | 'deleted';
+  size?: number;
+  prev_size?: number;
+}
+
+export interface FileChangeRecord {
+  seq: number;
+  phase: string;
+  phase_id: string;
+  ts: string;
+  changes: FileChange[];
+}

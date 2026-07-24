@@ -86,7 +86,7 @@ function RunsWorkspace() {
 
   useEffect(() => {
     if (!selectedId || !detail || detail.status !== 'running') return;
-    return connectRunEvents(selectedId, eventState.lastEventId, dispatchEvent, setStreamState);
+    return connectRunEvents(selectedId, { lastEventId: eventState.lastEventId, lastFileChangesId: 0 }, { onEvent: dispatchEvent, onState: setStreamState });
   }, [selectedId, detail?.status]);
 
   const occurrences = detail?.occurrences ?? [];

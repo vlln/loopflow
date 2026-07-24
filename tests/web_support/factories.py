@@ -89,6 +89,25 @@ class WebFixtureFactory:
     def append_legacy_event(self, run_dir: Path, event: dict[str, Any]) -> None:
         self.append_jsonl(run_dir / "events.jsonl", event)
 
+    def append_file_changes(
+        self,
+        run_dir: Path,
+        seq: int,
+        phase: str,
+        phase_id: str,
+        changes: list[dict[str, Any]],
+        ts: str = FIXED_TIME,
+    ) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "seq": seq,
+            "phase": phase,
+            "phase_id": phase_id,
+            "ts": ts,
+            "changes": changes,
+        }
+        self.append_jsonl(run_dir / "file_changes.jsonl", record)
+        return record
+
     def append_malformed_line(self, run_dir: Path, content: str = '{"partial":') -> None:
         with (run_dir / "events.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(content)
