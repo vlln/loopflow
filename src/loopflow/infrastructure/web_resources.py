@@ -74,6 +74,32 @@ def _extract_declared_phases(metadata: dict[str, Any]) -> list[dict[str, str]]:
     return result
 
 
+def _extract_declared_args(metadata: dict[str, Any]) -> list[dict[str, Any]]:
+    """Extract declared args from loop.md frontmatter meta.args (BR-047).
+
+    Returns a list of {"name", "default", "description", "required"} dicts.
+    Entries missing a string name are silently skipped; a non-list meta.args
+    is treated as no declaration.
+    """
+    args = metadata.get("args")
+    if not isinstance(args, list):
+        return []
+    result: list[dict[str, Any]] = []
+    for entry in args:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or not name.strip():
+            continue
+        result.append({
+            "name": name.strip(),
+            "default": entry.get("default"),
+            "description": str(entry.get("description") or ""),
+            "required": entry.get("required") is True,
+        })
+    return result
+
+
 class LoopRepository:
     def __init__(self, loops_root: Path, runs: RunRepository | None = None) -> None:
         self.loops_root = loops_root
@@ -103,6 +129,7 @@ class LoopRepository:
             "agent_count": len([path for path in agents if not path.name.startswith("_")]),
             "triggers": metadata.get("triggers") if isinstance(metadata.get("triggers"), list) else [],
             "declared_phases": _extract_declared_phases(metadata),
+            "declared_args": _extract_declared_args(metadata),
             "valid": valid,
             "error_summary": error,
         }
@@ -136,6 +163,7 @@ class LoopRepository:
             "resources": metadata.get("resources") if isinstance(metadata.get("resources"), list) else [],
             "environment": metadata.get("environment") if isinstance(metadata.get("environment"), str) else None,
             "declared_phases": summary.get("declared_phases", []),
+            "declared_args": summary.get("declared_args", []),
             "files": files,
             "agents": agents,
             "runs": related[:20],

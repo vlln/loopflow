@@ -25,6 +25,8 @@ type FetchOptions = boolean | {
   fileChanges?: Record<string, { seq: number; phase: string; phase_id: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
   runFile?: { status?: number; body?: unknown };
   pickDirectory?: { status?: number; body?: unknown };
+  systemMeta?: { status?: number; body?: unknown };
+  declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
 };
 
 function installFetch(config: FetchOptions = true) {
@@ -39,6 +41,10 @@ function installFetch(config: FetchOptions = true) {
   const runFileBody = typeof config === 'boolean' ? null : config.runFile?.body ?? null;
   const pickStatus = typeof config === 'boolean' ? 200 : config.pickDirectory?.status ?? 200;
   const pickBody = typeof config === 'boolean' ? null : config.pickDirectory?.body ?? null;
+  const metaStatus = typeof config === 'boolean' ? 200 : config.systemMeta?.status ?? 200;
+  const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
+  const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
+  const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : loopSummary;
   const calls = [] as unknown as string[] & { bodies: unknown[] };
   calls.bodies = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
@@ -73,13 +79,14 @@ function installFetch(config: FetchOptions = true) {
       return response(runFileBody ?? { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true }, runFileStatus);
     }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
-    if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
-    if (path === '/api/v1/loops/review-loop') return response(loopDetail);
+    if (path === '/api/v1/loops') return response({ items: [declaredLoop, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
+    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : loopDetail);
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
     if (path.includes('/api/v1/loops/review-loop/file')) return response({ content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
     if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
     if (path === '/api/v1/backends') return response({ items: backends });
     if (path === '/api/v1/system/pick-directory') return response(pickBody ?? { path: '/tmp/lf-picked', cancelled: false }, pickStatus);
+    if (path === '/api/v1/system/meta') return response(metaBody ?? { version: '0.19.1' }, metaStatus);
     if (path.includes('/diagnostics')) return response({ name: 'codex', status: 'available', reason: null, exit_code: 0, stdout: 'codex 1.0.0', stderr: '', diagnosed_at: '2026-07-18T22:00:00Z' });
     return response({ error: { code: 'not_found', message: 'missing', details: {} } }, 404);
   }));
@@ -94,6 +101,8 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, '', '/');
+  localStorage.removeItem('lf-theme');
+  delete document.documentElement.dataset.theme;
   vi.unstubAllGlobals();
 });
 
@@ -532,4 +541,82 @@ it('AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing', asy
   fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
   expect(await screen.findByText(/Unexpected token|JSON/)).toBeVisible();
   expect(calls.bodies).toHaveLength(0);
+});
+
+// --- AC-014: rail version sync / declared arguments prefill / AC-019: theme toggle ---
+
+it('AC-014-N-11: rail shows the version from system meta', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('v0.19.1')).toBeVisible();
+});
+
+it('AC-014-N-11: rail keeps a neutral placeholder when system meta fails', async () => {
+  installFetch({ systemMeta: { status: 404, body: { error: { code: 'not_found', message: 'missing', details: {} } } } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  expect(screen.getByText('v—')).toBeVisible();
+});
+
+it('AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit', async () => {
+  const calls = installFetch({ declaredArgs: [{ name: 'review', default: 'main', required: true }, { name: 'count' }] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await screen.findByRole('dialog', { name: 'New Run' });
+  await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'Argument key' })).toHaveLength(2));
+  const keys = screen.getAllByRole('textbox', { name: 'Argument key' });
+  const values = screen.getAllByRole('textbox', { name: 'Argument value' });
+  expect(keys[0]).toHaveValue('review');
+  expect(values[0]).toHaveValue('main');
+  expect(keys[1]).toHaveValue('count');
+  expect(values[1]).toHaveValue('');
+  expect(screen.getByTitle('Required')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ args: { review: 'main' } })));
+});
+
+it('AC-014-N-10: switching loops resets the editor to that loop declarations', async () => {
+  installFetch({ declaredArgs: [{ name: 'review', default: 'main', required: true }, { name: 'count' }] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'Argument key' })).toHaveLength(2));
+  expect(screen.getAllByRole('textbox', { name: 'Argument key' })[0]).toHaveValue('review');
+  fireEvent.change(screen.getAllByRole('textbox', { name: 'Argument value' })[0], { target: { value: 'edited' } });
+  fireEvent.change(screen.getByLabelText('Loop'), { target: { value: 'empty-loop' } });
+  await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'Argument key' })).toHaveLength(1));
+  expect(screen.getByRole('textbox', { name: 'Argument key' })).toHaveValue('');
+  fireEvent.change(screen.getByLabelText('Loop'), { target: { value: 'review-loop' } });
+  await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'Argument key' })).toHaveLength(2));
+  expect(screen.getAllByRole('textbox', { name: 'Argument value' })[0]).toHaveValue('main');
+});
+
+it('AC-014-B-5: a loop without declared args starts with a blank editor', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await screen.findByRole('dialog', { name: 'New Run' });
+  const keys = await screen.findAllByRole('textbox', { name: 'Argument key' });
+  expect(keys).toHaveLength(1);
+  expect(keys[0]).toHaveValue('');
+  expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('');
+});
+
+it('AC-019-N-5: theme toggle switches data-theme and persists across renders', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to light theme' }));
+  expect(document.documentElement.dataset.theme).toBe('light');
+  expect(localStorage.getItem('lf-theme')).toBe('light');
+  cleanup();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  expect(document.documentElement.dataset.theme).toBe('light');
+  fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
+  expect(document.documentElement.dataset.theme).toBe('dark');
+  expect(localStorage.getItem('lf-theme')).toBe('dark');
 });

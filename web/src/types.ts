@@ -56,9 +56,11 @@ export interface InterventionSummary {
   responded_at: string | null;
 }
 
-export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null; declared_phases?: { title: string; detail: string }[] }
+export interface DeclaredArg { name: string; default?: unknown; description?: string; required?: boolean }
+export interface SystemMeta { version: string }
+export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[] }
 export interface LoopFile { path: string; media_type: string | null; size: number; previewable: boolean }
-export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; declared_phases?: { title: string; detail: string }[]; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }
+export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[]; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }
 export interface Backend { name: string; status: string; reason: string | null; cli_path: string | null; version: string | null; transport: string; capabilities: Record<string, boolean>; diagnosed_at: string | null }
 export interface Diagnostic { name: string; status: string; reason: string | null; exit_code: number | null; stdout: string; stderr: string; diagnosed_at: string }
 

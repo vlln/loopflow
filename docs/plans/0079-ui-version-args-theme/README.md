@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [版本同步、Args 声明预填、日夜主题](01-plan-ui-version-args-theme.md) | [Report](01-report-ui-version-args-theme.md) | pending |
+| 01 | [版本同步、Args 声明预填、日夜主题](01-plan-ui-version-args-theme.md) | [Report](01-report-ui-version-args-theme.md) | done |
 
 ## 范围
 

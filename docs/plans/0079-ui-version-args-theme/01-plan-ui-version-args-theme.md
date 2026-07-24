@@ -2,7 +2,7 @@
 title: UI 版本同步 / Args 声明预填 / 日夜主题 Plan
 description: system/meta 版本端点 + loop meta.args 声明预填 + light/dark 主题切换
 type: plan
-status: pending
+status: done
 created: 2026-07-24T07:00:00Z
 ---
 

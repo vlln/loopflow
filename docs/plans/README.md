@@ -47,6 +47,7 @@
 | [0076](0076-run-working-directory/) | Run 显式工作目录与观察语义 | done | 2026-07-24 |
 | [0077](0077-system-test-recertification/) | SYSTEM_TEST 认证（含 0076） | done | 2026-07-24 |
 | [0078](0078-new-run-dialog-ux/) | New Run 对话框 UX（目录选择器 + Arguments 编辑器） | done | 2026-07-24 |
+| [0079](0079-ui-version-args-theme/) | 版本同步 / Args 声明预填 / 日夜主题 | done | 2026-07-24 |
 
 ## 状态说明
 

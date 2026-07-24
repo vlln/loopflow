@@ -115,13 +115,16 @@ class WebFixtureFactory:
         with (run_dir / "events.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(content)
 
-    def create_loop(self, name: str, *, description: str = "Fixture loop", phases: list[dict[str, Any]] | None = None) -> Path:
+    def create_loop(self, name: str, *, description: str = "Fixture loop", phases: list[dict[str, Any]] | None = None, args: list[dict[str, Any]] | None = None) -> Path:
         loop_dir = self.loops / name
         (loop_dir / "agents").mkdir(parents=True)
         frontmatter = f"---\ndescription: {description}\n"
         if phases is not None:
             import yaml as _yaml
             frontmatter += f"phases:\n{_yaml.safe_dump(phases, default_flow_style=False, allow_unicode=True)}"
+        if args is not None:
+            import yaml as _yaml
+            frontmatter += f"args:\n{_yaml.safe_dump(args, default_flow_style=False, allow_unicode=True)}"
         frontmatter += f"---\n\n# {name}\n"
         (loop_dir / "loop.md").write_text(frontmatter, encoding="utf-8")
         (loop_dir / "workflow.py").write_text("def run():\n    return None\n", encoding="utf-8")

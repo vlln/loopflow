@@ -147,6 +147,9 @@ def handler_for(
                 self._require_empty_body()
                 self._json(200, self.app.pick_directory())
                 return
+            if method == "GET" and path == "/system/meta":
+                self._json(200, self.app.system_meta())
+                return
 
             batch_intervention = re.fullmatch(r"/runs/([^/]+)/interventions/responses", path)
             if batch_intervention:

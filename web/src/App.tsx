@@ -2,7 +2,7 @@ import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import ReactMarkdown from 'react-markdown';
-import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Terminal, X, Zap } from 'lucide-react';
+import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, Moon, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Sun, Terminal, X, Zap } from 'lucide-react';
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer } from './eventReducer';
@@ -10,9 +10,25 @@ import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSum
 import { EmptyState, IconButton, PanelHeader, ScrollArea, SectionHeader, StatusBadge } from './ui';
 
 type View = 'runs' | 'loops' | 'backends';
+type Theme = 'dark' | 'light';
+
+function initialTheme(): Theme {
+  const stored = localStorage.getItem('lf-theme');
+  if (stored === 'light' || stored === 'dark') return stored;
+  return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
 
 function AppShell() {
   const [view, setView] = useState<View>('runs');
+  const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [version, setVersion] = useState<string | null>(null);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('lf-theme', theme);
+  }, [theme]);
+  useEffect(() => {
+    void api.systemMeta().then((meta) => setVersion(meta.version)).catch(() => undefined);
+  }, []);
   return <div className="app-shell">
     <nav className="rail" aria-label="Primary">
       <div className="brand" aria-label="loopflow">lf</div>
@@ -21,7 +37,8 @@ function AppShell() {
         <IconButton label="Loops" active={view === 'loops'} onClick={() => setView('loops')}><GitBranch /></IconButton>
         <IconButton label="Backends" active={view === 'backends'} onClick={() => setView('backends')}><Server /></IconButton>
       </div>
-      <span className="rail-version">v0.17</span>
+      <IconButton label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>{theme === 'dark' ? <Sun /> : <Moon />}</IconButton>
+      <span className="rail-version">{version ? `v${version}` : 'v—'}</span>
     </nav>
     <main className="app-main">
       {view === 'runs' && <RunsWorkspace />}
@@ -279,10 +296,17 @@ function EventContent({ event }: { event: RunEvent }) {
   return <>{message && <div className="event-message markdown"><ReactMarkdown>{message}</ReactMarkdown></div>}{!message && event.type === 'phase' && <p className="event-message">Entered {event.phase ?? firstString(payload, 'title') ?? 'phase'}</p>}{!message && event.type === 'agent_start' && <p className="event-message">Agent started</p>}{!message && event.type === 'agent_done' && <p className="event-message">Agent completed</p>}{details.length > 0 && <dl className="event-details">{details.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{formatEventValue(value)}</dd></div>)}</dl>}{!message && details.length === 0 && !['phase', 'agent_start', 'agent_done'].includes(event.type) && <p className="event-message muted">Event recorded</p>}</>;
 }
 
-interface ArgEntry { key: string; value: string }
+interface ArgEntry { key: string; value: string; required?: boolean }
 
 function parseArgValue(raw: string): unknown {
   try { return JSON.parse(raw); } catch { return raw; }
+}
+
+function declaredEntries(items: LoopSummary[], name: string): ArgEntry[] {
+  const declared = items.find((item) => item.name === name)?.declared_args;
+  return declared?.length
+    ? declared.map((arg) => ({ key: arg.name, value: arg.default === undefined ? '' : typeof arg.default === 'string' ? arg.default : JSON.stringify(arg.default), required: !!arg.required }))
+    : [{ key: '', value: '' }];
 }
 
 function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (run: RunSummary) => void }) {
@@ -295,7 +319,15 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [browseSupported, setBrowseSupported] = useState(true);
   const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setLoop(page.items[0]?.name ?? ''); }); }, []);
+  useEffect(() => {
+    void api.loops().then((page) => {
+      setLoops(page.items);
+      const first = page.items[0]?.name ?? '';
+      setLoop(first);
+      setEntries((current) => current.length === 1 && !current[0].key && !current[0].value ? declaredEntries(page.items, first) : current);
+    });
+  }, []);
+  const selectLoop = (name: string) => { setLoop(name); setEntries(declaredEntries(loops, name)); };
   const browse = async () => {
     setBrowsing(true);
     setError(null);
@@ -326,7 +358,7 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
       onCreated(await api.createRun(body));
     } catch (cause) { setError(messageOf(cause)); }
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => setLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} /><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} />{browseSupported && <button type="button" className="secondary-button" disabled={browsing} onClick={() => void browse()}><Folder size={14} />{browsing ? 'Browsing…' : 'Browse…'}</button>}</div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} />{browseSupported && <button type="button" className="secondary-button" disabled={browsing} onClick={() => void browse()}><Folder size={14} />{browsing ? 'Browsing…' : 'Browse…'}</button>}</div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
 }
 
 function LoopsWorkspace() {

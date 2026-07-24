@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
+from loopflow import __version__
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
 from loopflow.infrastructure.web_events import project_events, replay_file_changes, replay_v2
 from loopflow.infrastructure.intervention import (
@@ -366,6 +367,10 @@ class WebApplication:
 
     def list_backends(self) -> dict[str, Any]:
         return {"items": self.backends.list()}
+
+    def system_meta(self) -> dict[str, Any]:
+        """Server metadata for the WebUI: running loopflow version."""
+        return {"version": __version__}
 
     def pick_directory(self) -> dict[str, Any]:
         """Launch the OS-native folder picker on the server machine (ADR-0042).

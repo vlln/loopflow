@@ -564,6 +564,85 @@ def test_run_detail_without_declared_phases_returns_none(api):
     assert detail.get("declared_phases") is None
 
 
+# --- Declared args pre-fill tests (BR-047) ---
+
+
+def test_system_meta_returns_version(api):
+    """GET /system/meta returns the running loopflow.__version__."""
+    import loopflow
+
+    _, _, port = api
+    client = JsonHttpClient("127.0.0.1", port)
+    response = client.request("GET", "/api/v1/system/meta")
+    assert response.status == 200
+    assert response.json() == {"version": loopflow.__version__}
+
+
+def test_loop_summary_and_detail_include_declared_args(api):
+    """declared_args from meta.args frontmatter appears on summary and detail."""
+    _, factory, port = api
+    factory.create_loop("argful", args=[
+        {"name": "goal", "description": "目标描述", "required": True},
+        {"name": "count", "default": 3},
+        {"name": "mode", "default": "fast", "description": "运行模式", "required": False},
+    ])
+
+    client = JsonHttpClient("127.0.0.1", port)
+    expected = [
+        {"name": "goal", "default": None, "description": "目标描述", "required": True},
+        {"name": "count", "default": 3, "description": "", "required": False},
+        {"name": "mode", "default": "fast", "description": "运行模式", "required": False},
+    ]
+    detail = client.request("GET", "/api/v1/loops/argful").json()
+    assert detail["declared_args"] == expected
+    summaries = client.request("GET", "/api/v1/loops").json()["items"]
+    summary = next(item for item in summaries if item["name"] == "argful")
+    assert summary["declared_args"] == expected
+
+
+def test_loop_without_args_returns_empty_declared_args(api):
+    """Loop without meta.args returns empty declared_args list (like declared_phases)."""
+    _, factory, port = api
+    factory.create_loop("simple")
+
+    client = JsonHttpClient("127.0.0.1", port)
+    detail = client.request("GET", "/api/v1/loops/simple").json()
+    assert detail["declared_args"] == []
+
+
+def test_loop_skips_invalid_arg_entries(api):
+    """Invalid arg entries (missing/non-string name, non-dict) are silently skipped."""
+    _, factory, port = api
+    factory.create_loop("mixed-args", args=[
+        {"name": "valid", "default": "ok"},
+        {"default": "missing name"},
+        {"name": 123},
+        {"name": ""},
+        "not-a-dict",
+    ])
+
+    client = JsonHttpClient("127.0.0.1", port)
+    detail = client.request("GET", "/api/v1/loops/mixed-args").json()
+    assert detail["valid"] is True
+    assert detail["declared_args"] == [
+        {"name": "valid", "default": "ok", "description": "", "required": False}
+    ]
+
+
+def test_loop_non_list_args_returns_empty_declared_args(api):
+    """A non-list meta.args is treated as no declaration; loop still loads."""
+    _, factory, port = api
+    loop_dir = factory.create_loop("scalar-args")
+    loop_md = loop_dir / "loop.md"
+    text = loop_md.read_text(encoding="utf-8")
+    loop_md.write_text(text.replace("---\n", "---\nargs: not-a-list\n", 1), encoding="utf-8")
+
+    client = JsonHttpClient("127.0.0.1", port)
+    detail = client.request("GET", "/api/v1/loops/scalar-args").json()
+    assert detail["valid"] is True
+    assert detail["declared_args"] == []
+
+
 # --- File change observation REST tests (ADR-0039) ---
 
 
