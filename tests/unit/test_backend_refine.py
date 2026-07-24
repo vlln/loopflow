@@ -38,7 +38,6 @@ class TestBaseBackend:
             pytest.param("codex", id="codex"),
             pytest.param("gemini", id="gemini"),
             pytest.param("grok", id="grok"),
-            pytest.param("gork", id="gork"),
             pytest.param("kimi", id="kimi"),
             pytest.param("kiro", id="kiro"),
             pytest.param("opencode", id="opencode"),
@@ -55,6 +54,20 @@ class TestBaseBackend:
             assert backend.capabilities.durable_session_id is True
         finally:
             backend.close()
+
+    def test_gork_typo_is_not_a_backend(self):
+        from loopflow.infrastructure.backends.manager import _make_backend
+
+        with pytest.raises(SystemExit):
+            _make_backend("gork")
+
+    def test_backend_install_guide_does_not_list_gork_typo(self):
+        from loopflow.infrastructure.backends.diagnostics import format_install_guide
+
+        guide = format_install_guide()
+        assert "grok" in guide
+        assert "gork" not in guide
+        assert format_install_guide("gork") == "Unknown backend 'gork'."
 
     def test_cli_backend_reports_session_as_soon_as_parser_sees_it(self):
         from loopflow.infrastructure.backends.codex import CodexBackend

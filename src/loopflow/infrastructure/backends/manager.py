@@ -96,7 +96,6 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         "qwen": QwenBackend,
         "gemini": GeminiBackend,
         "grok": GrokBackend,
-        "gork": GrokBackend,
     }
 
     if backend is None:
