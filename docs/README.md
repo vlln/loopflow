@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | SYSTEM_TEST 认证通过（0073）：385 Python tests + 15 frontend tests green，81.61% coverage，AC manifest strict 全通过，0 阻塞级缺陷。进入 RELEASE。 |
+| **设计评估** | 0075 正在执行 `0.20.0` release；SYSTEM_TEST 认证通过（0073），0074 WebUI 信息架构收敛已合并，待发布内容 0070-0072 + 0074。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
