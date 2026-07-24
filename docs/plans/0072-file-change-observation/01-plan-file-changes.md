@@ -2,7 +2,7 @@
 title: File Change Observation Implementation Plan
 description: 实现 phase 边界文件变化快照 diff、file_changes.jsonl 和 WebUI 展示
 type: plan
-status: pending
+status: done
 created: 2026-07-23T15:00:00Z
 ---
 

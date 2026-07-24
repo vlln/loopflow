@@ -162,7 +162,7 @@ def handler_for(
                     self._error(404, "file_not_found", "Resource was not found")
                 return
 
-            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events))?", path)
+            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events|file-changes))?", path)
             if match:
                 run_id, action = match.groups()
                 if method == "GET" and action is None:
@@ -181,6 +181,8 @@ def handler_for(
                     self._json(200, self.app.reconcile(run_id))
                 elif method == "GET" and action == "legacy-events":
                     self._json(200, self.app.legacy_events(run_id))
+                elif method == "GET" and action == "file-changes":
+                    self._json(200, self.app.list_file_changes(run_id))
                 elif method == "GET" and action == "events":
                     self._events(
                         run_id,

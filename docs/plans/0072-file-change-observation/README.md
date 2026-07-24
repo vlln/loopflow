@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [文件变化观察层实现](01-plan-file-changes.md) | [Report](01-report-file-changes.md) | pending |
+| 01 | [文件变化观察层实现](01-plan-file-changes.md) | [Report](01-report-file-changes.md) | done |
 
 ## 背景
 

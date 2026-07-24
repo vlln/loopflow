@@ -53,6 +53,7 @@ function installFetch(config: FetchOptions = true) {
       calls.bodies.push(JSON.parse(String(options?.body)).responses);
       return response({ ...runs[3], status: 'running', allowed_actions: ['stop'] });
     }
+    if (path.includes('/file-changes')) return response({ items: [], count: 0 });
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);

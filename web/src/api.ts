@@ -31,6 +31,7 @@ export const api = {
   loopFile: (name: string, path: string) => request<{ content: string; media_type: string; size: number }>(`/loops/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`),
   backends: () => request<{ items: Backend[] }>('/backends'),
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),
+  fileChanges: (id: string) => request<{ items: FileChangeRecord[]; count: number }>(`/runs/${encodeURIComponent(id)}/file-changes`),
 };
 
 export interface RunEventHandlers {

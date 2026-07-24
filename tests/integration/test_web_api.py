@@ -556,3 +556,40 @@ def test_run_detail_without_declared_phases_returns_none(api):
     client = JsonHttpClient("127.0.0.1", port)
     detail = client.request("GET", "/api/v1/runs/legacy-run").json()
     assert detail.get("declared_phases") is None
+
+
+# --- File change observation REST tests (ADR-0039) ---
+
+
+def test_file_changes_rest_endpoint_returns_records(api):
+    """GET /runs/{id}/file-changes returns all file_changes.jsonl records."""
+    _, factory, port = api
+    run = factory.create_run("fc-rest", status="done")
+    factory.append_file_changes(run, 1, "采集", "phase-1", [{"path": "a.txt", "action": "created", "size": 10}])
+    factory.append_file_changes(run, 2, "处理", "phase-2", [{"path": "a.txt", "action": "modified", "size": 20, "prev_size": 10}])
+
+    client = JsonHttpClient("127.0.0.1", port)
+    result = client.request("GET", "/api/v1/runs/fc-rest/file-changes").json()
+    assert result["count"] == 2
+    assert result["items"][0]["seq"] == 1
+    assert result["items"][1]["seq"] == 2
+    assert result["items"][0]["changes"][0]["action"] == "created"
+    assert result["items"][1]["changes"][0]["action"] == "modified"
+
+
+def test_file_changes_rest_endpoint_empty_for_no_file(api):
+    """GET /runs/{id}/file-changes returns empty list when file_changes.jsonl doesn't exist."""
+    _, factory, port = api
+    factory.create_run("no-fc-rest", status="done")
+
+    client = JsonHttpClient("127.0.0.1", port)
+    result = client.request("GET", "/api/v1/runs/no-fc-rest/file-changes").json()
+    assert result == {"items": [], "count": 0}
+
+
+def test_file_changes_rest_404_for_nonexistent_run(api):
+    """GET /runs/{id}/file-changes returns 404 for nonexistent run."""
+    _, factory, port = api
+    client = JsonHttpClient("127.0.0.1", port)
+    response = client.request("GET", "/api/v1/runs/nonexistent/file-changes")
+    assert response.status == 404
