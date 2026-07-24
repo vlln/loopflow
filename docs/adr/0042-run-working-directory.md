@@ -2,7 +2,7 @@
 title: ADR 0042 — Run 显式工作目录
 description: 将 run 的工作目录从隐式进程 cwd 提升为 run 的显式属性，create_run 接受 working_directory，executor 子进程 chdir 执行，修复 WebUI 模式下所有 run 落在 server 启动目录的架构缺口
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-24T05:30:00Z
 ---
 

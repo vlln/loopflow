@@ -2,7 +2,7 @@
 title: loopflow AC-0013 — Run 显式工作目录
 description: 验收 create_run 接受 working_directory、executor 子进程 chdir、文件观察目录正确、WebUI 创建入口与校验错误码
 type: ac
-status: proposed
+status: active
 created: 2026-07-24T05:30:00Z
 ---
 
