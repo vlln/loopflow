@@ -33,7 +33,7 @@
 | [0062](0062-system-test-certification/) | SYSTEM_TEST 发布前认证 | done | 2026-07-23 |
 | [0063](0063-system-test-fix/) | SYSTEM_TEST 局部修复 | done | 2026-07-23 |
 | [0064](0064-release-certification/) | RELEASE 认证 | done | 2026-07-23 |
-| [0065](0065-intervention-choice-compatibility/) | Intervention Choice 兼容修复 | pending | 2026-07-23 |
+| [0065](0065-intervention-choice-compatibility/) | Intervention Choice 兼容修复 | done | 2026-07-23 |
 
 ## 状态说明
 

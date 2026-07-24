@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DEVELOP` |
-| **设计评估** | 0.19.0 发布后手工验证发现旧 boolean schema intervention 未显示 choices；当前执行 0065 最小兼容修复。 |
+| **设计评估** | 0065 已修复旧 boolean schema intervention choices 兼容问题；`manual-approval` 应显示 `true/false` choices，后续可决定是否发布 `0.19.1` patch。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

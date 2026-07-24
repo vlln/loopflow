@@ -2,7 +2,7 @@
 title: Boolean Choice Compatibility Fix Plan
 description: 修复旧 boolean schema intervention 在 vNext WebUI 中不显示 choices 的兼容问题
 type: plan
-status: pending
+status: done
 created: 2026-07-23T20:45:00Z
 ---
 

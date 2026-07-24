@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Boolean schema choice 兼容修复](01-plan-boolean-choice-compatibility.md) | [Report](01-report-boolean-choice-compatibility.md) | pending |
+| 01 | [Boolean schema choice 兼容修复](01-plan-boolean-choice-compatibility.md) | [Report](01-report-boolean-choice-compatibility.md) | done |
 
 ## 背景
 
