@@ -203,8 +203,8 @@ function EventTimeline({ events, title }: { events: RunEvent[]; title: string })
 
 function FileChangesList({ records, phaseId }: { records: FileChangeRecord[]; phaseId: string | null }) {
   const phaseRecords = phaseId ? records.filter((r) => r.phase_id === phaseId) : records;
-  if (phaseRecords.length === 0) return null;
   const totalChanges = phaseRecords.reduce((sum, r) => sum + r.changes.length, 0);
+  if (phaseRecords.length === 0) return <div className="file-changes-list" data-testid="file-changes-list"><div className="file-changes-heading"><h4>File changes</h4></div><span className="muted file-changes-empty">No file changes in this phase</span></div>;
   return <div className="file-changes-list" data-testid="file-changes-list"><div className="file-changes-heading"><h4>File changes</h4><span>{totalChanges} change{totalChanges === 1 ? '' : 's'}</span></div><div className="file-changes-body">{phaseRecords.map((record) => <div key={record.seq} className="file-changes-record"><div className="file-changes-record-meta"><span className="file-changes-phase">{record.phase}</span><time>{formatTime(record.ts)}</time></div><ul className="file-changes-items">{record.changes.map((change, index) => <li key={`${change.path}-${index}`} className={`file-change-item is-${change.action}`}><span className="file-change-action">{change.action}</span><span className="file-change-path">{change.path}</span>{change.size !== undefined && <small>{change.size}{change.prev_size !== undefined ? ` ← ${change.prev_size}` : ''} B</small>}</li>)}</ul></div>)}</div></div>;
 }
 
