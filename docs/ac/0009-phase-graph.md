@@ -76,3 +76,16 @@ created: 2026-07-08T10:00:00Z
 | AC-009-B-4 | workflow.py 无 `meta.phases` 声明 | 执行 `loopflow run <name>` | 终端不预显示占位节点，从空白开始按 events 涌现（现有行为不变） | 自动化 |
 | AC-009-B-5 | workflow.py 含 `meta.phases = [{"title":"采集"},{"title":"归档"}]`，运行时只调用 phase("采集") 后 Run done | 观察终端最终渲染 | 采集为实际节点（`● ✓`），归档保持占位（`○`），不报错 | 自动化 |
 | AC-009-B-6 | workflow.py 含 `meta.phases` 声明，运行时同名 phase 循环 3 轮 | 观察终端渲染 | 占位节点被首次 occurrence 替换后，后续 occurrence 增加计数并画回边，与 ADR-0009 回边渲染一致 | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|---------|---------|---------|---------|
+| AC-009-E-3 | workflow.py 含 `meta.phases = [{"title":""}]`（title 为空字符串） | 执行 `loopflow run <name>` | 跳过无效声明，不渲染该占位节点，stderr 提示解析警告，其余有效声明正常预显示 | 自动化 |
+| AC-009-E-4 | workflow.py 含 `meta.phases = [{"detail":"无标题"}]`（缺 title） | 执行 `loopflow run <name>` | 跳过无效声明，不报错，不崩溃 | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|---------|---------|---------|---------|
+| AC-009-F-3 | workflow.py 语法错误，无法加载模块 | 执行 `loopflow run <name>` | 报错退出，不渲染任何占位节点 | 自动化 |

@@ -44,7 +44,7 @@ data: {"phase":"采集","phase_id":"phase-1","changes":[...]}
 | Topic | 数据源 | 游标类型 | 游标语义 | 参与重放 |
 |-------|--------|---------|---------|---------|
 | `run_event` | events.jsonl | event_id（整数，严格递增） | Run 内事件序号，断线后从 last_event_id 重放 | 是 |
-| `file_changes` | file_changes.jsonl | 序号（整数，严格递增） | Run 内文件变化记录序号，断线后从 last_file_changes_id 重放 | 否 |
+| `file_changes` | file_changes.jsonl | seq（整数，严格递增） | Run 内文件变化记录序号，断线后从 last_file_changes_id 重放 | 否 |
 
 未来新增实时数据源时，注册新 topic 并定义其数据源和游标语义。不需要修改 SSE 连接机制。
 

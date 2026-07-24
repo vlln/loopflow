@@ -104,6 +104,18 @@ created: 2026-07-18T21:00:00Z
 | AC-015-B-3 | Loop 无 `meta.phases` 声明 | 在 WebUI 启动 Run | phase graph 从空白开始，按 SSE 事件涌现（现有行为不变） | 自动化 |
 | AC-015-B-4 | declared ["采集","归档"], runtime 只执行采集后 done | 打开完成的 Run | 采集为 done 节点（✓），归档保持 pending 占位，不报错 | 自动化 |
 
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-E-3 | workflow.py 含 `meta.phases = [{"title":""}]`（title 为空） | 在 WebUI 启动 Run | 跳过无效声明，不渲染该占位节点，不报错 | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-F-3 | workflow.py 语法错误，无法提取 meta.phases | 在 WebUI 启动 Run | 报错退出或显示加载错误，不渲染占位节点，不崩溃 | 自动化 |
+
 ---
 
 # AC-016: Run 事件流
@@ -143,6 +155,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-F-1 | run_id 不存在 | 订阅 SSE | 返回 404，连接不进入重试循环 | 自动化 |
 | AC-016-F-2 | 注入 event reader，使订阅已发送 event_id=5 后下一次读取抛 `OSError("fixture-read-failed")` | 保持 SSE 连接并触发下一次读取 | 服务发送 `event: stream_error`，data.code=`event_read_failed`、data.last_event_id=5，随后关闭；不发送 event_id>5 | 自动化 |
+| AC-016-F-3 | file_changes.jsonl 读取抛 `OSError("fixture-read-failed")`，events.jsonl 正常 | 保持 SSE 连接 | file_changes topic 发送 `event: stream_error`（topic=file_changes）；run_event topic 不受影响，继续推送 | 自动化 |
 
 ---
 
