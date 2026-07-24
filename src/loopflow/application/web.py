@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
-from loopflow.infrastructure.web_events import project_events, replay_v2
+from loopflow.infrastructure.web_events import project_events, replay_file_changes, replay_v2
 from loopflow.infrastructure.intervention import (
     InterventionAlreadyAnswered,
     InterventionNotFound,
@@ -346,6 +346,26 @@ class WebApplication:
             ) from error
         terminal = self.runs.read_summary(run_dir)["status"] not in {"running", "stale"}
         return events, maximum, terminal
+
+    def replay_file_changes(self, run_id: str, last_seq: int) -> tuple[list[dict[str, Any]], int, bool]:
+        """Replay file_changes.jsonl records for SSE file_changes topic.
+
+        Returns (pending, max_seq, terminal). If file_changes.jsonl does not
+        exist, returns ([], 0, terminal) — the topic is silently empty.
+        Raises ApplicationError(cursor_out_of_range) if last_seq > max_seq.
+        """
+        run_dir = self._run_dir(run_id)
+        path = run_dir / "file_changes.jsonl"
+        try:
+            records, maximum = replay_file_changes(path, last_seq)
+        except IndexError as error:
+            raise ApplicationError(
+                "cursor_out_of_range",
+                "File changes cursor is beyond persisted history",
+                {"max_file_changes_id": error.args[0]},
+            ) from error
+        terminal = self.runs.read_summary(run_dir)["status"] not in {"running", "stale"}
+        return records, maximum, terminal
 
     def legacy_events(self, run_id: str) -> dict[str, Any]:
         detail = self.get_run(run_id)

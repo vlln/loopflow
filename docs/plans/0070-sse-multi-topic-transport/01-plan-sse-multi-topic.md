@@ -2,7 +2,7 @@
 title: SSE Multi-Topic Transport Implementation Plan
 description: 实现 SSE 多 topic transport，支持 run_event 和 file_changes 独立游标
 type: plan
-status: pending
+status: done
 created: 2026-07-23T15:00:00Z
 ---
 

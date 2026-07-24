@@ -1,4 +1,4 @@
-import type { Backend, Diagnostic, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunSummary } from './types';
+import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunSummary } from './types';
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public status: number, public details: Record<string, unknown> = {}) {
@@ -33,12 +33,26 @@ export const api = {
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),
 };
 
-export function connectRunEvents(runId: string, lastEventId: number, onEvent: (event: RunEvent) => void, onState: (state: 'live' | 'closed' | 'error') => void): () => void {
-  const source = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events?last_event_id=${lastEventId}`);
-  source.addEventListener('open', () => onState('live'));
-  source.addEventListener('run_event', (message) => onEvent(JSON.parse((message as MessageEvent).data)));
-  source.addEventListener('stream_end', () => { onState('closed'); source.close(); });
-  source.addEventListener('stream_error', () => { onState('error'); source.close(); });
-  source.onerror = () => onState('error');
+export interface RunEventHandlers {
+  onEvent: (event: RunEvent) => void;
+  onFileChanges?: (record: FileChangeRecord) => void;
+  onState: (state: 'live' | 'closed' | 'error') => void;
+}
+
+export function connectRunEvents(
+  runId: string,
+  cursors: { lastEventId: number; lastFileChangesId: number },
+  handlers: RunEventHandlers,
+): () => void {
+  const params = `last_event_id=${cursors.lastEventId}&last_file_changes_id=${cursors.lastFileChangesId}`;
+  const source = new EventSource(`/api/v1/runs/${encodeURIComponent(runId)}/events?${params}`);
+  source.addEventListener('open', () => handlers.onState('live'));
+  source.addEventListener('run_event', (message) => handlers.onEvent(JSON.parse((message as MessageEvent).data)));
+  if (handlers.onFileChanges) {
+    source.addEventListener('file_changes', (message) => handlers.onFileChanges!(JSON.parse((message as MessageEvent).data)));
+  }
+  source.addEventListener('stream_end', () => { handlers.onState('closed'); source.close(); });
+  source.addEventListener('stream_error', () => { handlers.onState('error'); source.close(); });
+  source.onerror = () => handlers.onState('error');
   return () => source.close();
 }
