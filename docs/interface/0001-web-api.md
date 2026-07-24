@@ -190,6 +190,7 @@ Query：
 | mock | string/null | 否 | null | `bash/auto/null` |
 | from_phase | string/null | 否 | null | 声明的 Phase title 或 null |
 | only_phase | string/null | 否 | null | 声明的 Phase title 或 null；非 null 时服务端令有效 from_phase 等于该值；请求同时传非同值 from_phase 返回 422 |
+| working_directory | string/null | 否 | null | run 的显式工作目录（ADR-0042）；非 null 时必须是已存在的目录的绝对路径，否则 422（details 指明 `not_absolute` / `not_found` / `not_a_directory`）；null 时为进程 cwd（向后兼容） |
 
 201：`RunSummary`，同时设置 `Location: /api/v1/runs/{run_id}`。
 

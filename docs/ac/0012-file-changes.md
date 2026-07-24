@@ -21,18 +21,20 @@ created: 2026-07-23T12:00:00Z
 | AC-024-N-5 | 同 AC-024-N-4 | 选择 Phase B occurrence | 显示 `data/raw.json` modified（~图标，1024→2048）和 `data/clean.json` created（+图标，512 bytes） | 自动化 |
 | AC-024-N-6 | `file_changes.jsonl` 中 phase_id 与 `events.jsonl` 中 phase 事件的 phase_id 一致 | 对比两个文件中相同 Phase 的 phase_id | phase_id 完全匹配，可建立关联 | 自动化 |
 | AC-024-N-7 | Run 有 `file_changes.jsonl`，WebUI 已建立 SSE 连接 | workflow 产生文件变化 | 通过 `event: file_changes` 收到推送，`id:` 为 seq，data 含 phase/phase_id/changes | 自动化 |
+| AC-024-N-8 | 同 AC-024-N-1，WebUI 已打开该 Run | 先选择 Phase A occurrence，再切换到 Phase B occurrence | 选中 Phase A 时仅 Phase A 变更的文件高亮显示动作标记（`data/raw.json` created）；切换到 Phase B 后 `data/raw.json` 高亮 modified（1024→2048）、`data/clean.json` 高亮 created，不属于 Phase B 的文件弱化为已存在态（无动作标记）（ADR-0043） | 自动化 |
 
 ## 边界场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-024-B-1 | workflow 只调用一次 phase()，无文件变化 | 检查 `file_changes.jsonl` | 首次 phase() 建立基线快照，不产生 diff 记录；文件为空或只有基线行 | 自动化 |
+| AC-024-B-1 | workflow 只调用一次 phase()，无文件变化 | 检查 `file_changes.jsonl` | 首次 phase() 建立基线快照，不产生 diff 记录；文件不存在或为空 | 自动化 |
 | AC-024-B-2 | workflow 不调用 phase() | 检查 Run 目录 | 无 `file_changes.jsonl` 或文件为空；Run 正常完成 | 自动化 |
 | AC-024-B-3 | `meta.file_observation.exclude = ["*.tmp", "build/"]`，workflow 在 Phase A 创建 `a.tmp` 和 `src/main.py` | 检查 `file_changes.jsonl` | `a.tmp` 不在 changes 中；`src/main.py` 在 changes 中；`build/` 下文件不被扫描 | 自动化 |
 | AC-024-B-4 | `meta.file_observation.enabled = false` | 执行 `loopflow run <name>` | 不创建 `file_changes.jsonl`；Run 正常完成 | 自动化 |
 | AC-024-B-5 | Agent 使用 `isolation="worktree"`，在 worktree 内创建文件 | 检查 `file_changes.jsonl` | pwd 快照不包含 worktree 内的文件变化 | 自动化 |
 | AC-024-B-6 | 无 `file_changes.jsonl` 的 legacy Run | 在 WebUI 打开该 Run | 文件变化区域显示空状态或禁用状态，不报错，不返回 500 | 自动化 |
 | AC-024-B-7 | Phase 期间无文件变化 | 在 WebUI 选择该 Phase | 文件变化区域显示空状态（"无文件变化"），不报错 | 自动化 |
+| AC-024-B-8 | Run 启动前工作目录已存在 `config.yaml`（100 bytes），workflow 在第一个 phase 将其改为 150 bytes | 检查 `file_changes.jsonl` 首条记录 | 首条记录含 `{"path":"config.yaml","action":"modified","size":150,"prev_size":100}`（prev_size 来自基线快照），不得标记 `created`；未变化的既有文件不出现在记录中（ADR-0043） | 自动化 |
 
 ## 异常场景
 

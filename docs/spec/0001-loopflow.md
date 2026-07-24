@@ -46,6 +46,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-023 | 开发者 | workflow 阻塞时查看并回答结构化问题 | 不依赖常驻进程介入运行，并在回答后继续同一 Run | P0 |
 | US-024 | 开发者 | 明确选择失败 Agent 的 retry 或 continue 恢复方式 | 根据任务副作用和上下文价值控制恢复行为 | P0 |
 | US-025 | 开发者 | 在 workflow 或 Agent 定义变化时阻止错误缓存命中 | 避免把旧调用结果或 session 注入语义不同的新调用 | P0 |
+| US-026 | 开发者 | 创建 Run 时显式指定工作目录 | WebUI 常驻 server 下让不同 run 在各自项目目录执行和观察，互不污染 | P0 |
 
 ---
 
@@ -415,7 +416,9 @@ Agent 隔离层级体系（递进）：
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
 | BR-041 | Recover 必须到达目标 | workflow 重放 | 到达预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束均报 replay_diverged，不得标记 done |
 | BR-042 | Declared phases 预显示 | Run 创建时 Loop 含 `meta.phases` 声明 | 从 declared phases 生成占位节点（pending 状态），运行时按 title 匹配合并 runtime events；无声明时退化为运行时涌现；详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md) |
-| BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 pwd 拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`（含 `seq` 序号）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
+| BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 run 的工作目录（BR-044）拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`（含 `seq` 序号）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
+| BR-044 | Run 显式工作目录 | `POST /runs` 携带 `working_directory` 时 | 必须是已存在目录的绝对路径（否则 422 `validation_failed`）；executor 子进程 chdir 到该目录执行 workflow 与文件观察；缺省为进程 cwd（向后兼容）；持久化到 run.json，recover/rerun 沿用；详见 [ADR-0042](../adr/0042-run-working-directory.md) |
+| BR-045 | 文件观察基线快照 | Run 启动时且观察启用 | 先建立基线快照（内存态，不产生记录），phase diff 针对基线或上一快照；`created` 仅表示 phase 期间新建，预先存在的文件首改标记 `modified`；详见 [ADR-0043](../adr/0043-file-observation-baseline.md) |
 
 Agent 结构化 intervention 控制结果固定为：
 
