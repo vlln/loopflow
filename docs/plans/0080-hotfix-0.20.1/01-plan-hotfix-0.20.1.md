@@ -2,7 +2,7 @@
 title: Hotfix 0.20.1 Plan
 description: 修复 v0.20.0 三个产品级缺陷：recover mock 失效、启动信号窗口过短、forkserver 环境陈旧
 type: plan
-status: pending
+status: done
 created: 2026-07-24T08:30:00Z
 ---
 
