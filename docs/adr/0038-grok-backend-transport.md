@@ -1,6 +1,6 @@
 ---
 title: Grok Backend Transport
-description: 记录 Grok Build 后端默认 CLI、显式 ACP、streaming-json 解析、gork 兼容别名和 ACP 初始化修正
+description: 记录 Grok Build 后端默认 CLI、显式 ACP、streaming-json 解析和 ACP 初始化修正
 type: adr
 status: accepted
 created: 2026-07-22T00:00:00Z
@@ -79,9 +79,9 @@ Grok ACP 监听标准 `session/update`，并兼容 Grok 文档提到的 `x.ai/se
 
 `session/new` 返回 `sessionId` 后立即调用 `session_handler`，保证 Run cache 能尽早持久化 durable session id。
 
-### 3. `grok` 是正式后端名，`gork` 是兼容别名
+### 3. `grok` 是唯一后端名
 
-`grok` 是公开文档和 README 中展示的正式名称。`gork` 仅作为用户误拼写兼容别名注册到 backend manager 和 diagnostics，不在公开后端列表中作为独立产品命名。
+`grok` 是公开文档、backend manager、diagnostics 和 WebUI 中唯一有效的 Grok 后端名称。`gork` 是错误拼写，不作为兼容别名保留；显式指定 `backend="gork"` 应按 unknown backend 处理。
 
 ### 4. ACP 初始化只发送一次
 
@@ -112,7 +112,7 @@ Grok ACP 监听标准 `session/update`，并兼容 Grok 文档提到的 `x.ai/se
 2. ACP 真实 `grok agent stdio` smoke 已验证 initialize、session/new、session/prompt、agent_message_chunk 和 end_turn。
 3. 默认 CLI 可避免 ACP tool call 授权处理不完整带来的死锁风险。
 4. 显式 ACP 保留未来更完整 session/update 和协议能力。
-5. `gork` 别名改善交互容错，但不污染正式产品命名。
+5. 错误拼写不注册为兼容别名，避免 diagnostics/WebUI 出现两个名称指向同一 binary。
 
 ## 后果
 
@@ -127,7 +127,7 @@ Grok ACP 监听标准 `session/update`，并兼容 Grok 文档提到的 `x.ai/se
 
 - `GrokBackend` 内部需要 CLI/ACP 双实现，维护成本高于单一路径。
 - ACP 仍没有完整 tool call 授权/响应处理，不适合默认启用。
-- `gork` 别名可能让内部列表出现两个名称指向同一 binary，需要 diagnostics 和 UI 解释保持克制。
+- 错误拼写不再被容错，旧配置中若写成 `gork` 会明确失败，需要修正为 `grok`。
 
 ## 验证
 
@@ -156,3 +156,7 @@ Grok ACP 监听标准 `session/update`，并兼容 Grok 文档提到的 `x.ai/se
 | AR-003 | Grok CLI 必须使用 `streaming-json` 并解析 `end.sessionId` | `grok.py` | 单元测试 |
 | AR-004 | Grok ACP system prompt 必须走 `_meta.rules` 或 `_meta.systemPromptOverride` | `grok.py` | 单元测试 |
 | AR-005 | ACP transport 初始化不得重复发送 `initialize` | `acp.py` / `acp_backend.py` | 单元测试 |
+
+## 修订记录
+
+- 2026-07-24：删除 `gork` 误拼写 backend 名称。它不再作为兼容别名注册到 backend manager 或 diagnostics，避免后端检测和 WebUI 显示重复 Grok 后端。
