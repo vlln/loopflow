@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.20.1] — 2026-07-24
+
+### Fixed
+- Recovery now applies the persisted mock option from `execution_options` before backend resolution; recovering a mock-executed run no longer exits on machines without an agent CLI.
+- Run start signal window raised from 2s to 15s, avoiding false `run_process_start_failed` on loaded or low-core machines.
+- Run subprocesses now spawn with a fresh interpreter by default, fixing stale-environment inheritance under Python 3.14's forkserver default on Linux.
+- `test_smoke` version check works on Python 3.10 (no `tomllib` dependency).
+
 ## [0.20.0] — 2026-07-24
 
 ### Added
