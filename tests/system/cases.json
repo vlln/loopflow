@@ -3,6 +3,160 @@
   "source": "docs/ac/0010-webui.md",
   "cases": [
     {
+      "ac_id": "AC-014-B-1",
+      "fixture": "fixture 有 1000 个 Run",
+      "action": "连续滚动列表并选择第 1000 个 Run",
+      "assertion": "列表可到达目标项；选择后显示正确 run_id；主工作区宽度不因条目内容变化",
+      "test_node": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+      "targets": [
+        "GET /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-B-2",
+      "fixture": "Runs 目录为空",
+      "action": "打开 Runs",
+      "assertion": "左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用",
+      "test_node": "web/src/App.test.tsx::shows API failures without replacing the workspace",
+      "targets": [
+        "GET /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-B-3",
+      "fixture": "Arguments 键值编辑器含空 key 行",
+      "action": "启动 Run",
+      "assertion": "空 key 行被忽略；args 仅含有效条目；无任何条目时 args 为 `{}`",
+      "test_node": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
+      "targets": [
+        "POST /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-B-4",
+      "fixture": "Arguments 切换到 JSON 高级模式",
+      "action": "输入非法 JSON 并启动",
+      "assertion": "显示 JSON 校验错误，不发送请求",
+      "test_node": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
+      "targets": [
+        "POST /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-B-5",
+      "fixture": "Loop 无 `meta.args` 声明",
+      "action": "打开 New Run 对话框",
+      "assertion": "键值编辑器为空白起始（无预填行），行为与声明前一致",
+      "test_node": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "POST /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-E-1",
+      "fixture": "一个 run.json 是非法 JSON，另一个合法",
+      "action": "查询 Runs",
+      "assertion": "合法 Run 正常返回；非法条目作为 status=unreadable 的摘要返回并包含 parse_error；请求不返回 500",
+      "test_node": "tests/unit/test_web_storage.py::test_unreadable_run_does_not_hide_valid_siblings",
+      "targets": [
+        "GET /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-E-2",
+      "fixture": "Run status=running，但进程不存在",
+      "action": "选择该 Run",
+      "assertion": "UI 显示 stale；Stop 禁用；显示 Reconcile；读取操作不修改 run.json",
+      "test_node": "tests/unit/test_web_storage.py::test_stale_is_derived_without_modifying_run_json",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-F-1",
+      "fixture": "Run 为 done",
+      "action": "请求 stop 或 resume",
+      "assertion": "API 返回 409；run.json 字节内容不变",
+      "test_node": "tests/integration/test_web_api.py::test_run_lifecycle_commands_preserve_contract",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop",
+        "POST /api/v1/runs/{run_id}/resume"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-F-2",
+      "fixture": "Run 为 stale，reconcile 二次校验仍为 stale",
+      "action": "请求 reconcile",
+      "assertion": "API 返回更新后 status=failed 的 Run；run.json 原子替换且 pid/process_started_at 已清除",
+      "test_node": "tests/unit/test_web_storage.py::test_reconcile_atomically_fails_stale_run_and_clears_identity",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/reconcile"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
       "ac_id": "AC-014-N-1",
       "fixture": "fixture 含 running、failed、done、stopped 各 1 个 Run",
       "action": "打开 WebUI，进入 Runs",
@@ -11,6 +165,41 @@
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-N-10",
+      "fixture": "Loop 声明 `meta.args`（`review` 默认 `main`，`count` 无默认）",
+      "action": "打开 New Run 对话框并选择该 Loop",
+      "assertion": "键值编辑器预填 `review=main` 与空值 `count` 行；直接启动时 POST body args 含 `{\"review\":\"main\"}`（空值行忽略）",
+      "test_node": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "POST /api/v1/runs",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-014-N-11",
+      "fixture": "server 运行中",
+      "action": "`GET /api/v1/system/meta` 并观察 WebUI rail",
+      "assertion": "端点返回 200 `{\"version\": \"...\"}`（与 `loopflow.__version__` 一致）；rail 显示该版本而非硬编码值",
+      "test_node": "web/src/App.test.tsx::AC-014-N-11: rail shows the version from system meta",
+      "targets": [
+        "GET /api/v1/system/meta",
+        "ui:layout"
       ],
       "expectations": [
         {
@@ -139,13 +328,13 @@
       ]
     },
     {
-      "ac_id": "AC-014-B-1",
-      "fixture": "fixture 有 1000 个 Run",
-      "action": "连续滚动列表并选择第 1000 个 Run",
-      "assertion": "列表可到达目标项；选择后显示正确 run_id；主工作区宽度不因条目内容变化",
-      "test_node": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+      "ac_id": "AC-014-N-9",
+      "fixture": "WebUI New Run 对话框",
+      "action": "用 Arguments 键值编辑器添加 `name=review`、`count=2`、`debug=true` 并启动",
+      "assertion": "POST body args 为 `{\"name\":\"review\",\"count\":2,\"debug\":true}`（值智能类型解析：数字/布尔不包字符串）",
+      "test_node": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
       "targets": [
-        "GET /api/v1/runs",
+        "POST /api/v1/runs",
         "ui:runs"
       ],
       "expectations": [
@@ -156,48 +345,14 @@
       ]
     },
     {
-      "ac_id": "AC-014-B-2",
-      "fixture": "Runs 目录为空",
-      "action": "打开 Runs",
-      "assertion": "左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用",
-      "test_node": "web/src/App.test.tsx::shows API failures without replacing the workspace",
-      "targets": [
-        "GET /api/v1/runs",
-        "ui:runs"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-014-E-1",
-      "fixture": "一个 run.json 是非法 JSON，另一个合法",
-      "action": "查询 Runs",
-      "assertion": "合法 Run 正常返回；非法条目作为 status=unreadable 的摘要返回并包含 parse_error；请求不返回 500",
-      "test_node": "tests/unit/test_web_storage.py::test_unreadable_run_does_not_hide_valid_siblings",
-      "targets": [
-        "GET /api/v1/runs",
-        "ui:runs"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-014-E-2",
-      "fixture": "Run status=running，但进程不存在",
-      "action": "选择该 Run",
-      "assertion": "UI 显示 stale；Stop 禁用；显示 Reconcile；读取操作不修改 run.json",
-      "test_node": "tests/unit/test_web_storage.py::test_stale_is_derived_without_modifying_run_json",
+      "ac_id": "AC-015-B-1",
+      "fixture": "Run 没有 phase 事件",
+      "action": "打开 Run",
+      "assertion": "Phase 区显示空状态；原始 Events 仍可查看；页面不崩溃",
+      "test_node": "tests/unit/test_web_storage.py::test_run_detail_missing_events_and_state_and_find_nested",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:runs"
+        "ui:phase"
       ],
       "expectations": [
         {
@@ -207,36 +362,155 @@
       ]
     },
     {
-      "ac_id": "AC-014-F-1",
-      "fixture": "Run 为 done",
-      "action": "请求 stop 或 resume",
-      "assertion": "API 返回 409；run.json 字节内容不变",
-      "test_node": "tests/integration/test_web_api.py::test_run_lifecycle_commands_preserve_contract",
+      "ac_id": "AC-015-B-2",
+      "fixture": "Phase 有 100 次 occurrence",
+      "action": "选择聚合节点并切换第 1、100 次",
+      "assertion": "occurrence 可选择且顺序稳定；右侧关联结果正确",
+      "test_node": "tests/unit/test_web_events.py::test_projects_repeated_phase_occurrences_and_parallel_calls",
       "targets": [
-        "POST /api/v1/runs/{run_id}/stop",
-        "POST /api/v1/runs/{run_id}/resume"
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
       ],
       "expectations": [
         {
-          "kind": "http_status",
-          "value": 409,
-          "code": "invalid_run_transition"
+          "kind": "dom",
+          "value": "matches-ac"
         }
       ]
     },
     {
-      "ac_id": "AC-014-F-2",
-      "fixture": "Run 为 stale，reconcile 二次校验仍为 stale",
-      "action": "请求 reconcile",
-      "assertion": "API 返回更新后 status=failed 的 Run；run.json 原子替换且 pid/process_started_at 已清除",
-      "test_node": "tests/unit/test_web_storage.py::test_reconcile_atomically_fails_stale_run_and_clears_identity",
+      "ac_id": "AC-015-B-3",
+      "fixture": "Loop 无 `meta.phases` 声明",
+      "action": "在 WebUI 启动 Run",
+      "assertion": "phase graph 从空白开始，按 SSE 事件涌现（现有行为不变）",
+      "test_node": "tests/integration/test_web_api.py::test_loop_summary_without_phases_returns_empty_list",
       "targets": [
-        "POST /api/v1/runs/{run_id}/reconcile"
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-B-4",
+      "fixture": "declared [\"采集\",\"归档\"], runtime 只执行采集后 done",
+      "action": "打开完成的 Run",
+      "assertion": "采集为 done 节点（✓），归档保持 pending 占位，不报错",
+      "test_node": "tests/integration/test_web_api.py::test_run_detail_includes_declared_phases_from_run_json",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-E-1",
+      "fixture": "legacy 并行事件缺少 call_id，无法唯一关联",
+      "action": "打开 Run",
+      "assertion": "原始时间线可见；歧义事件标记 unattributed；不归入任一虚构 Call",
+      "test_node": "tests/unit/test_web_events.py::test_legacy_ambiguous_events_remain_unattributed",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/legacy-events",
+        "ui:phase"
       ],
       "expectations": [
         {
           "kind": "http_status",
           "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-E-2",
+      "fixture": "v2 Agent 事件缺少 required phase_id",
+      "action": "打开 Run",
+      "assertion": "该事件进入 malformed 集合且不进入 unattributed；其余合法事件继续构图",
+      "test_node": "tests/unit/test_web_events.py::test_malformed_v2_is_not_treated_as_unattributed",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-E-3",
+      "fixture": "workflow.py 含 `meta.phases = [{\"title\":\"\"}]`（title 为空）",
+      "action": "在 WebUI 启动 Run",
+      "assertion": "跳过无效声明，不渲染该占位节点，不报错",
+      "test_node": "tests/integration/test_web_api.py::test_loop_summary_skips_invalid_phase_entries",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-F-1",
+      "fixture": "events.jsonl 不存在",
+      "action": "打开 Run",
+      "assertion": "API 返回 Run 摘要和空事件集合；UI 显示无执行记录，不返回 500",
+      "test_node": "tests/unit/test_web_storage.py::test_run_detail_missing_events_and_state_and_find_nested",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-F-2",
+      "fixture": "events.jsonl 最后一行仅写入一半",
+      "action": "运行期间读取事件",
+      "assertion": "完整行全部返回；半行暂不返回且后续补全后只返回一次",
+      "test_node": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-F-3",
+      "fixture": "workflow.py 语法错误，无法提取 meta.phases",
+      "action": "在 WebUI 启动 Run",
+      "assertion": "报错退出或显示加载错误，不渲染占位节点，不崩溃",
+      "test_node": "planned::ac-015-f-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:phase"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
         }
       ]
     },
@@ -326,11 +600,11 @@
       ]
     },
     {
-      "ac_id": "AC-015-B-1",
-      "fixture": "Run 没有 phase 事件",
-      "action": "打开 Run",
-      "assertion": "Phase 区显示空状态；原始 Events 仍可查看；页面不崩溃",
-      "test_node": "tests/unit/test_web_storage.py::test_run_detail_missing_events_and_state_and_find_nested",
+      "ac_id": "AC-015-N-6",
+      "fixture": "Loop 含 `meta.phases = [{\"title\":\"采集\",\"detail\":\"从数据源拉取\"},{\"title\":\"处理\",\"detail\":\"清洗转换\"}]`",
+      "action": "在 WebUI 启动该 Loop 的 Run",
+      "assertion": "Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件",
+      "test_node": "tests/integration/test_web_api.py::test_loop_summary_includes_declared_phases",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:phase"
@@ -343,11 +617,11 @@
       ]
     },
     {
-      "ac_id": "AC-015-B-2",
-      "fixture": "Phase 有 100 次 occurrence",
-      "action": "选择聚合节点并切换第 1、100 次",
-      "assertion": "occurrence 可选择且顺序稳定；右侧关联结果正确",
-      "test_node": "tests/unit/test_web_events.py::test_projects_repeated_phase_occurrences_and_parallel_calls",
+      "ac_id": "AC-015-N-7",
+      "fixture": "同 AC-015-N-6，SSE 推送 phase(\"采集\") 事件",
+      "action": "观察 phase graph",
+      "assertion": "采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位",
+      "test_node": "planned::ac-015-n-7",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:phase"
@@ -360,28 +634,11 @@
       ]
     },
     {
-      "ac_id": "AC-015-E-1",
-      "fixture": "legacy 并行事件缺少 call_id，无法唯一关联",
-      "action": "打开 Run",
-      "assertion": "原始时间线可见；歧义事件标记 unattributed；不归入任一虚构 Call",
-      "test_node": "tests/unit/test_web_events.py::test_legacy_ambiguous_events_remain_unattributed",
-      "targets": [
-        "GET /api/v1/runs/{run_id}/legacy-events",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "http_status",
-          "value": 200
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-E-2",
-      "fixture": "v2 Agent 事件缺少 required phase_id",
-      "action": "打开 Run",
-      "assertion": "该事件进入 malformed 集合且不进入 unattributed；其余合法事件继续构图",
-      "test_node": "tests/unit/test_web_events.py::test_malformed_v2_is_not_treated_as_unattributed",
+      "ac_id": "AC-015-N-8",
+      "fixture": "declared [\"采集\",\"处理\"], runtime 出现 phase(\"归档\")",
+      "action": "观察 phase graph",
+      "assertion": "归档作为 undeclared 节点出现，带 \"undeclared\" badge；采集、处理按实际状态显示",
+      "test_node": "planned::ac-015-n-8",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:phase"
@@ -390,72 +647,6 @@
         {
           "kind": "dom",
           "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-F-1",
-      "fixture": "events.jsonl 不存在",
-      "action": "打开 Run",
-      "assertion": "API 返回 Run 摘要和空事件集合；UI 显示无执行记录，不返回 500",
-      "test_node": "tests/unit/test_web_storage.py::test_run_detail_missing_events_and_state_and_find_nested",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "http_status",
-          "value": 200
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-F-2",
-      "fixture": "events.jsonl 最后一行仅写入一半",
-      "action": "运行期间读取事件",
-      "assertion": "完整行全部返回；半行暂不返回且后续补全后只返回一次",
-      "test_node": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-016-N-1",
-      "fixture": "Run 已有 event_id 1..10",
-      "action": "不带游标订阅 SSE",
-      "assertion": "按 1..10 重放，之后连接保持并推送新事件 11",
-      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
-      "targets": [
-        "GET /api/v1/runs/{run_id}/events"
-      ],
-      "expectations": [
-        {
-          "kind": "sse_event",
-          "value": "run_event"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-016-N-2",
-      "fixture": "客户端已收到 event_id=7 后断线",
-      "action": "以 last_event_id=7 重连",
-      "assertion": "只返回 8 及之后事件；客户端集合无重复 event_id",
-      "test_node": "tests/integration/test_web_api.py::test_sse_tails_new_persisted_event_then_ends",
-      "targets": [
-        "GET /api/v1/runs/{run_id}/events"
-      ],
-      "expectations": [
-        {
-          "kind": "sse_event",
-          "value": "run_event"
         }
       ]
     },
@@ -488,6 +679,22 @@
         {
           "kind": "sse_event",
           "value": "run_event"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-016-B-3",
+      "fixture": "Run 已结束（run_event terminal），file_changes.jsonl 仍有未推送数据",
+      "action": "订阅 SSE",
+      "assertion": "`stream_end` 不发送，直到 file_changes topic 也 terminal；file_changes 数据继续推送",
+      "test_node": "planned::ac-016-b-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/events"
+      ],
+      "expectations": [
+        {
+          "kind": "sse_event",
+          "value": "file_changes"
         }
       ]
     },
@@ -525,6 +732,22 @@
       ]
     },
     {
+      "ac_id": "AC-016-E-3",
+      "fixture": "file_changes.jsonl 最大 seq=2，客户端以 last_file_changes_id=99 订阅",
+      "action": "订阅 SSE",
+      "assertion": "file_changes topic 返回 `event: stream_error`（data 含 topic=file_changes, code=cursor_out_of_range）；run_event topic 不受影响，正常推送",
+      "test_node": "tests/integration/test_web_api.py::test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/events"
+      ],
+      "expectations": [
+        {
+          "kind": "sse_event",
+          "value": "stream_error"
+        }
+      ]
+    },
+    {
       "ac_id": "AC-016-F-1",
       "fixture": "run_id 不存在",
       "action": "订阅 SSE",
@@ -558,36 +781,90 @@
       ]
     },
     {
-      "ac_id": "AC-017-N-1",
-      "fixture": "有两个合法 Loop",
-      "action": "打开 Loops 并选择第二项",
-      "assertion": "左栏保留两个 Loop；右侧原地显示第二个 Loop 的 Overview",
-      "test_node": "web/tests/webui.spec.ts::navigates Loops and Backends responsively",
+      "ac_id": "AC-016-F-3",
+      "fixture": "file_changes.jsonl 读取抛 `OSError(\"fixture-read-failed\")`，events.jsonl 正常",
+      "action": "保持 SSE 连接",
+      "assertion": "file_changes topic 发送 `event: stream_error`（topic=file_changes）；run_event topic 不受影响，继续推送",
+      "test_node": "planned::ac-016-f-3",
       "targets": [
-        "GET /api/v1/loops",
-        "ui:loops"
+        "GET /api/v1/runs/{run_id}/events"
       ],
       "expectations": [
         {
-          "kind": "dom",
-          "value": "matches-ac"
+          "kind": "sse_event",
+          "value": "stream_error"
         }
       ]
     },
     {
-      "ac_id": "AC-017-N-2",
-      "fixture": "Loop 含 loop.md、workflow.py、agents/reviewer.md",
-      "action": "依次打开 Overview、Workflow、Agents",
-      "assertion": "Markdown 被渲染；Python 只读展示；Agent 列表和定义可查看",
-      "test_node": "web/src/App.test.tsx::navigates Loop declarations and renders files",
+      "ac_id": "AC-016-N-1",
+      "fixture": "Run 已有 event_id 1..10",
+      "action": "不带游标订阅 SSE",
+      "assertion": "按 1..10 重放 `event: run_event`，之后连接保持并推送新事件 11",
+      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
       "targets": [
-        "GET /api/v1/loops/{loop_name}",
-        "ui:loops"
+        "GET /api/v1/runs/{run_id}/events"
       ],
       "expectations": [
         {
-          "kind": "dom",
-          "value": "matches-ac"
+          "kind": "sse_event",
+          "value": "run_event"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-016-N-2",
+      "fixture": "客户端已收到 event_id=7 后断线",
+      "action": "以 last_event_id=7 重连",
+      "assertion": "只返回 8 及之后 `event: run_event`；客户端集合无重复 event_id",
+      "test_node": "tests/integration/test_web_api.py::test_sse_tails_new_persisted_event_then_ends",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/events"
+      ],
+      "expectations": [
+        {
+          "kind": "sse_event",
+          "value": "run_event"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-016-N-3",
+      "fixture": "events.jsonl 有 event_id 1..5，file_changes.jsonl 有 seq 1..3",
+      "action": "不带游标订阅 SSE",
+      "assertion": "同一连接收到 `event: run_event`（id 1..5）和 `event: file_changes`（id 1..3），各自 `id:` 独立递增",
+      "test_node": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/events"
+      ],
+      "expectations": [
+        {
+          "kind": "sse_event",
+          "value": "run_event"
+        },
+        {
+          "kind": "sse_event",
+          "value": "file_changes"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-016-N-4",
+      "fixture": "客户端已收到 run_event id=5、file_changes id=2 后断线",
+      "action": "以 last_event_id=5&last_file_changes_id=2 重连",
+      "assertion": "run_event 只推 id>5，file_changes 只推 id>2；两个 topic 独立游标",
+      "test_node": "tests/integration/test_web_api.py::test_sse_multi_topic_per_topic_cursor_reconnect",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/events"
+      ],
+      "expectations": [
+        {
+          "kind": "sse_event",
+          "value": "run_event"
+        },
+        {
+          "kind": "sse_event",
+          "value": "file_changes"
         }
       ]
     },
@@ -699,14 +976,14 @@
       ]
     },
     {
-      "ac_id": "AC-018-N-1",
-      "fixture": "mock BackendManager 返回 2 个可用、1 个缺失",
-      "action": "查询 Backends",
-      "assertion": "返回 3 项及真实 status、CLI path、version、capabilities、transport",
-      "test_node": "tests/unit/test_web_resources.py::test_backend_list_reports_missing_and_unknown_version",
+      "ac_id": "AC-017-N-1",
+      "fixture": "有两个合法 Loop",
+      "action": "打开 Loops 并选择第二项",
+      "assertion": "左栏保留两个 Loop；右侧原地显示第二个 Loop 的 Overview",
+      "test_node": "web/tests/webui.spec.ts::navigates Loops and Backends responsively",
       "targets": [
-        "GET /api/v1/backends",
-        "ui:backends"
+        "GET /api/v1/loops",
+        "ui:loops"
       ],
       "expectations": [
         {
@@ -716,19 +993,19 @@
       ]
     },
     {
-      "ac_id": "AC-018-N-2",
-      "fixture": "backend 诊断 stderr 为 `token=lf-secret-123; connection failed`，exit_code=1",
-      "action": "选择该 Backend",
-      "assertion": "详情显示诊断时间、exit_code 和 `token=[REDACTED]; connection failed`；API 和 DOM 均不含 `lf-secret-123`",
-      "test_node": "tests/unit/test_web_resources.py::test_backend_diagnostic_redacts_and_decodes_invalid_utf8",
+      "ac_id": "AC-017-N-2",
+      "fixture": "Loop 含 loop.md、workflow.py、agents/reviewer.md",
+      "action": "依次打开 Overview、Workflow、Agents",
+      "assertion": "Markdown 被渲染；Python 只读展示；Agent 列表和定义可查看",
+      "test_node": "web/src/App.test.tsx::navigates Loop declarations and renders files",
       "targets": [
-        "POST /api/v1/backends/{backend_name}/diagnostics",
-        "ui:backends"
+        "GET /api/v1/loops/{loop_name}",
+        "ui:loops"
       ],
       "expectations": [
         {
-          "kind": "http_status",
-          "value": 200
+          "kind": "dom",
+          "value": "matches-ac"
         }
       ]
     },
@@ -837,13 +1114,14 @@
       ]
     },
     {
-      "ac_id": "AC-019-N-1",
-      "fixture": "1440x900 视口，Runs fixture 已加载",
-      "action": "截图并检查布局",
-      "assertion": "Runs 列表、Phase 工作区和 Inspector 同时可见；无元素重叠或水平页面滚动",
-      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank phase graph",
+      "ac_id": "AC-018-N-1",
+      "fixture": "mock BackendManager 返回 2 个可用、1 个缺失",
+      "action": "查询 Backends",
+      "assertion": "返回 3 项及真实 status、CLI path、version、capabilities、transport",
+      "test_node": "tests/unit/test_web_resources.py::test_backend_list_reports_missing_and_unknown_version",
       "targets": [
-        "ui:layout"
+        "GET /api/v1/backends",
+        "ui:backends"
       ],
       "expectations": [
         {
@@ -853,50 +1131,19 @@
       ]
     },
     {
-      "ac_id": "AC-019-N-2",
-      "fixture": "Runs 工作区打开，焦点置于左栏第一个 failed Run A；A 含 Phase p1 和 Call c1；fixture DOM 的区域顺序为 Runs→Phase→Calls→Run actions",
-      "action": "按 Enter 选择 A；按 Tab 1 次进入 Phase 并按 ArrowRight 选择 p1；按 Tab 1 次进入 Calls 并按 ArrowDown 选择 c1；按 Tab 1 次聚焦 accessible name=`Resume run` 的按钮并按 Enter",
-      "assertion": "每步有可见 focus；详情依次显示 A、p1、c1；最后只发出一次 A 的 resume 请求",
-      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank phase graph",
+      "ac_id": "AC-018-N-2",
+      "fixture": "backend 诊断 stderr 为 `token=lf-secret-123; connection failed`，exit_code=1",
+      "action": "选择该 Backend",
+      "assertion": "详情显示诊断时间、exit_code 和 `token=[REDACTED]; connection failed`；API 和 DOM 均不含 `lf-secret-123`",
+      "test_node": "tests/unit/test_web_resources.py::test_backend_diagnostic_redacts_and_decodes_invalid_utf8",
       "targets": [
-        "ui:layout"
+        "POST /api/v1/backends/{backend_name}/diagnostics",
+        "ui:backends"
       ],
       "expectations": [
         {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-019-N-3",
-      "fixture": "启动 Web 服务时未传 host",
-      "action": "检查监听 socket",
-      "assertion": "仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口",
-      "test_node": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
-      "targets": [
-        "process:loop-web"
-      ],
-      "expectations": [
-        {
-          "kind": "process",
-          "value": "loopback-only"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-019-N-4",
-      "fixture": "本机测试接口地址为 `0.0.0.0`",
-      "action": "以 host=`0.0.0.0` 且 allow-remote=true 启动服务",
-      "assertion": "服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告",
-      "test_node": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
-      "targets": [
-        "process:loop-web"
-      ],
-      "expectations": [
-        {
-          "kind": "process",
-          "value": "remote-opt-in"
+          "kind": "http_status",
+          "value": 200
         }
       ]
     },
@@ -922,6 +1169,22 @@
       "action": "在 Runs、Phase、Process 间切换",
       "assertion": "一次只显示一个主区域；Stop/Resume 可到达；无水平页面滚动",
       "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank phase graph",
+      "targets": [
+        "ui:layout"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-019-B-3",
+      "fixture": "light 主题",
+      "action": "打开 Runs 工作区",
+      "assertion": "面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域",
+      "test_node": "planned::ac-019-b-3",
       "targets": [
         "ui:layout"
       ],
@@ -1009,6 +1272,86 @@
         {
           "kind": "process",
           "value": "exit-nonzero"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-019-N-1",
+      "fixture": "1440x900 视口，Runs fixture 已加载",
+      "action": "截图并检查布局",
+      "assertion": "Runs 列表、Phase 工作区和 Inspector 同时可见；无元素重叠或水平页面滚动",
+      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank phase graph",
+      "targets": [
+        "ui:layout"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-019-N-2",
+      "fixture": "Runs 工作区打开，焦点置于左栏第一个 failed Run A；A 含 Phase p1 和 Call c1；fixture DOM 的区域顺序为 Runs→Phase→Calls→Run actions",
+      "action": "按 Enter 选择 A；按 Tab 1 次进入 Phase 并按 ArrowRight 选择 p1；按 Tab 1 次进入 Calls 并按 ArrowDown 选择 c1；按 Tab 1 次聚焦 accessible name=`Resume run` 的按钮并按 Enter",
+      "assertion": "每步有可见 focus；详情依次显示 A、p1、c1；最后只发出一次 A 的 resume 请求",
+      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank phase graph",
+      "targets": [
+        "ui:layout"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-019-N-3",
+      "fixture": "启动 Web 服务时未传 host",
+      "action": "检查监听 socket",
+      "assertion": "仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
+      "targets": [
+        "process:loop-web"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "loopback-only"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-019-N-4",
+      "fixture": "本机测试接口地址为 `0.0.0.0`",
+      "action": "以 host=`0.0.0.0` 且 allow-remote=true 启动服务",
+      "assertion": "服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
+      "targets": [
+        "process:loop-web"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "remote-opt-in"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-019-N-5",
+      "fixture": "WebUI 已打开",
+      "action": "点击 rail 主题切换按钮，然后刷新页面",
+      "assertion": "日夜主题切换；选择持久化（刷新后保持）；未做过选择时默认跟随系统 `prefers-color-scheme`",
+      "test_node": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
+      "targets": [
+        "ui:layout"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
         }
       ]
     }
