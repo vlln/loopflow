@@ -28,8 +28,6 @@ def execute_workflow(
 
     recover = bool(options.get("recover") or options.get("resume"))
     module, metadata, loop_dir = load_loop(loop)
-    if options.get("mock"):
-        set_mock(options["mock"])
     started = now_iso()
     pid = os.getpid()
     run_metadata = {
@@ -79,6 +77,10 @@ def execute_workflow(
             "execution_options": frozen_options,
         })
         options = {**frozen_options, **{key: value for key, value in options.items() if key in {"recover", "resume", "recovery_mode"}}}
+    # Apply mock after the frozen execution_options merge so recovery of a
+    # mock-executed run does not resolve a real backend (sys.exit when absent)
+    if options.get("mock"):
+        set_mock(options["mock"])
     atomic_write_json(run_dir / "run.json", run_metadata)
 
     defaults = metadata.get("state", {})
@@ -197,7 +199,12 @@ class BackgroundRunExecutor:
 
     def __init__(self, runs_root: Path, start_method: str | None = None) -> None:
         self.runs_root = runs_root
-        self.context = multiprocessing.get_context(start_method) if start_method else multiprocessing.get_context()
+        # Default to spawn for cross-platform determinism: every child gets a
+        # fresh interpreter with the parent's *current* environment. The
+        # platform defaults (fork / forkserver) leak stale state — forkserver
+        # children inherit the forkserver process's env from its creation
+        # time, not the parent's env at start() time.
+        self.context = multiprocessing.get_context(start_method or "spawn")
 
     def start(
         self,
@@ -245,7 +252,10 @@ class BackgroundRunExecutor:
             except OSError:
                 pass
             raise
-        deadline = time.monotonic() + 2
+        # The child must signal a started run within this window. Keep it
+        # generous: on loaded or low-core machines (CI), interpreter boot plus
+        # coverage tracing can take several seconds before run.json appears.
+        deadline = time.monotonic() + 15
         def started() -> bool:
             if not (run_dir / "run.json").is_file():
                 return False
