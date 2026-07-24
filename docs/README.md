@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DEVELOP` |
-| **设计评估** | 0065 已修复旧 boolean schema intervention choices 兼容问题；`manual-approval` 应显示 `true/false` choices，后续可决定是否发布 `0.19.1` patch。 |
+| **设计评估** | 0066 正在整理 WebUI 基础组件与滚动区域样式；本轮限定为前端内部重构，不改变后端接口与业务行为。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
