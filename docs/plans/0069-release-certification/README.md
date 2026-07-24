@@ -1,14 +1,14 @@
-# 0064 RELEASE 认证
+# 0069 RELEASE 认证
 
 对应阶段：`RELEASE`。
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [0.19.0 Release 认证](01-plan-release-certification.md) | [Report](01-report-release-certification.md) | done |
+| 01 | [0.19.1 Release 认证](01-plan-release-certification.md) | [Report](01-report-release-certification.md) | pending |
 
 ## 范围
 
-- 确认 0.19.0 版本策略。
+- 确认 `0.19.1` patch 版本策略。
 - 更新版本文件与 CHANGELOG。
 - 在 release 分支运行 release gate。
 - 构建并安装 wheel，确认 Web static assets 可用。

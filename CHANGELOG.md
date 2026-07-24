@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.19.1] — 2026-07-24
+
+### Changed
+- WebUI shared primitives now centralize status badges, icon buttons, empty states, metrics, facts, and scroll areas.
+- Runs, Loops, Backends, event timelines, process logs, and intervention questions now share a single scrollbar treatment.
+
+### Fixed
+- Legacy `intervene(schema={"type": "boolean"})` requests now expose `true`/`false` choices in the WebUI while preserving boolean replay semantics.
+- Removed the misspelled `gork` backend registration; `grok` is the only valid Grok backend name.
+- `test:browser:smoke` now points at the existing Playwright `webui.spec.ts` suite.
+
 ## [0.19.0] — 2026-07-23
 
 ### Added

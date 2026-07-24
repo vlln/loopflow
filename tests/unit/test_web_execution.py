@@ -153,6 +153,26 @@ def test_workflow_intervention_waits_and_replays_answer(tmp_path, monkeypatch):
     assert json.loads((run / "state.json").read_text())["count"] is True
 
 
+def test_workflow_boolean_intervention_summary_exposes_choices(tmp_path, monkeypatch):
+    from loopflow.infrastructure.intervention import list_requests
+
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    loop.joinpath("workflow.py").write_text(
+        "def run(intervene, **kwargs):\n"
+        "    intervene('approve', 'Approve?', {'type': 'boolean'})\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    run = tmp_path / "run"
+    run.mkdir()
+
+    execute_workflow("hello", {}, {}, "run-1", run)
+
+    request = list_requests(run)[0]
+    assert request["options"] == ["true", "false"]
+    assert request["allow_custom"] is False
+
+
 def test_workflow_intervention_replay_diverges_on_prompt_change(tmp_path, monkeypatch):
     loops = tmp_path / "loops"
     loop = create_loop(loops)

@@ -180,7 +180,7 @@ def answer_requests(run_dir: Path, run_id: str, responses: list[dict[str, Any]])
         if request.get("status") != "pending":
             raise InterventionNotFound(request_id)
         validate_response(request, response)
-        prepared.append((request_id, request, response))
+        prepared.append((request_id, request, _normalize_response(request, response)))
 
     answered_items: list[dict[str, Any]] = []
     answered_at = now_iso()
@@ -209,13 +209,20 @@ def validate_response(request_or_schema: Any, response: Any) -> None:
         "options" in request_or_schema or "allow_custom" in request_or_schema or "schema" in request_or_schema
     ):
         request = request_or_schema
+        if _is_legacy_boolean_request(request):
+            if isinstance(response, bool):
+                return
+            if isinstance(response, str) and response in {"true", "false"}:
+                return
+            raise InterventionValidationError("response must match one of the request options")
         if request.get("source") == "agent" or "options" in request or "allow_custom" in request:
+            raw_options = request.get("options", [])
+            if not isinstance(raw_options, list) or any(not isinstance(item, str) for item in raw_options):
+                raise InterventionValidationError("options must be a string array")
             if not isinstance(response, str) or not response:
                 raise InterventionValidationError("response must be a non-empty string")
-            options = request.get("options")
-            if not isinstance(options, list) or any(not isinstance(item, str) for item in options):
-                raise InterventionValidationError("options must be a string array")
-            allow_custom = bool(request.get("allow_custom", True))
+            options = _effective_options(request)
+            allow_custom = _effective_allow_custom(request)
             if not allow_custom and response not in options:
                 raise InterventionValidationError("response must match one of the request options")
             return
@@ -249,8 +256,8 @@ def _summary(request: dict[str, Any]) -> dict[str, Any]:
         "source": request.get("source", "workflow" if request.get("resume_mode") == "replay" else "agent"),
         "key": request.get("key"),
         "prompt": request.get("prompt"),
-        "options": request.get("options") if isinstance(request.get("options"), list) else _options_from_schema(request.get("schema")),
-        "allow_custom": bool(request.get("allow_custom", request.get("schema") is None)),
+        "options": _effective_options(request),
+        "allow_custom": _effective_allow_custom(request),
         "status": request.get("status"),
         "resume_mode": request.get("resume_mode"),
         "call_id": request.get("call_id"),
@@ -267,6 +274,35 @@ def _options_from_schema(schema: Any) -> list[str]:
     if isinstance(schema, dict) and schema.get("type") == "boolean":
         return ["true", "false"]
     return []
+
+
+def _effective_options(request: dict[str, Any]) -> list[str]:
+    options = request.get("options")
+    if isinstance(options, list) and options:
+        return options
+    return _options_from_schema(request.get("schema"))
+
+
+def _effective_allow_custom(request: dict[str, Any]) -> bool:
+    options = request.get("options")
+    if isinstance(options, list) and options:
+        return bool(request.get("allow_custom", True))
+    if _options_from_schema(request.get("schema")):
+        return False
+    return bool(request.get("allow_custom", request.get("schema") is None))
+
+
+def _is_legacy_boolean_request(request: dict[str, Any]) -> bool:
+    return request.get("source", "workflow") == "workflow" and isinstance(request.get("schema"), dict) and request["schema"].get("type") == "boolean" and not (isinstance(request.get("options"), list) and request.get("options"))
+
+
+def _normalize_response(request: dict[str, Any], response: Any) -> Any:
+    if _is_legacy_boolean_request(request) and isinstance(response, str):
+        if response == "true":
+            return True
+        if response == "false":
+            return False
+    return response
 
 
 def _response_to_string(value: Any) -> str:
