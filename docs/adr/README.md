@@ -10,6 +10,11 @@
 | [0036](0036-recovery-intervention.md) | 可校验恢复、可靠取消与人工介入 | accepted | Spec v13 / AC-0011 / Interface 0001 |
 | [0037](0037-recovery-test-infrastructure.md) | 恢复控制测试基础设施 | accepted | ADR 0036 / AC-0011 / Interface 0001 |
 | [0038](0038-grok-backend-transport.md) | Grok 后端传输策略 | accepted | AC-0001 AC-008 / ADR 0018 / ADR 0023 |
+| [0039](0039-file-change-observation.md) | 工作目录文件变化观察层 | accepted | Spec v14 / AC-0012 / ADR-0041 |
+| [0040](0040-declared-phases-predisplay.md) | Declared Phases 预显示与合并语义 | accepted | Spec v14 / AC-0009 / AC-0010 |
+| [0041](0041-sse-multi-topic-transport.md) | SSE 多 topic 传输层 | accepted | Spec v14 / ADR-0034 §5 / ADR-0039 |
+| [0042](0042-run-working-directory.md) | Run 显式工作目录 | accepted | Spec / AC-0013 / ADR-0039 |
+| [0043](0043-file-observation-baseline.md) | 文件观察基线快照语义 | accepted | Spec / AC-0012 / ADR-0039 |
 
 ## 状态说明
 

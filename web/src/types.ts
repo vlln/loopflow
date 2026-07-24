@@ -18,7 +18,7 @@ export interface RunSummary {
   allowed_actions: string[];
 }
 
-export interface PhaseNode { phase: string; occurrence_count: number; is_current: boolean }
+export interface PhaseNode { phase: string; occurrence_count: number; is_current: boolean; is_declared?: boolean; is_undeclared?: boolean }
 export interface PhaseEdge { from: string; to: string; count: number; is_backedge: boolean }
 export interface Occurrence { phase_id: string; phase: string; occurrence: number; started_at: string | null; ended_at: string | null; call_ids: string[] }
 export interface AgentCall { call_id: string; phase_id: string; session: string | null; status: string; started_at: string | null; finished_at: string | null; exit_code: number | null; backend: string | null; model: string | null; input_digest?: string | null }
@@ -36,6 +36,7 @@ export interface RunDetail extends RunSummary {
   unattributed: RunEvent[];
   malformed: RunEvent[];
   interventions: InterventionSummary[];
+  declared_phases?: { title: string; detail: string }[];
 }
 
 export interface InterventionSummary {
@@ -55,10 +56,35 @@ export interface InterventionSummary {
   responded_at: string | null;
 }
 
-export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null }
+export interface DeclaredArg { name: string; default?: unknown; description?: string; required?: boolean }
+export interface SystemMeta { version: string }
+export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[] }
 export interface LoopFile { path: string; media_type: string | null; size: number; previewable: boolean }
-export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }
+export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[]; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }
 export interface Backend { name: string; status: string; reason: string | null; cli_path: string | null; version: string | null; transport: string; capabilities: Record<string, boolean>; diagnosed_at: string | null }
 export interface Diagnostic { name: string; status: string; reason: string | null; exit_code: number | null; stdout: string; stderr: string; diagnosed_at: string }
 
 export interface Page<T> { items: T[]; next_cursor: string | null }
+
+export interface FileChange {
+  path: string;
+  action: 'created' | 'modified' | 'deleted';
+  size?: number;
+  prev_size?: number;
+}
+
+export interface RunFileContent {
+  path: string;
+  media_type: string;
+  content: string;
+  size: number;
+  read_only: boolean;
+}
+
+export interface FileChangeRecord {
+  seq: number;
+  phase: string;
+  phase_id: string;
+  ts: string;
+  changes: FileChange[];
+}

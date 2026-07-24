@@ -37,7 +37,17 @@
 | [0066](0066-webui-primitives-refactor/) | WebUI 基础组件整理 | done | 2026-07-24 |
 | [0067](0067-hide-gork-backend-alias/) | 隐藏 gork backend 别名 | done | 2026-07-24 |
 | [0068](0068-system-test-certification/) | SYSTEM_TEST 认证 | done | 2026-07-24 |
-| [0069](0069-release-certification/) | RELEASE 认证 | pending | 2026-07-24 |
+| [0069](0069-release-certification/) | RELEASE 认证 | done | 2026-07-24 |
+| [0070](0070-sse-multi-topic-transport/) | SSE 多 topic 传输层 | done | 2026-07-23 |
+| [0071](0071-declared-phases-predisplay/) | Declared phases 预显示 | done | 2026-07-23 |
+| [0072](0072-file-change-observation/) | 工作目录文件变化观察 | done | 2026-07-23 |
+| [0073](0073-system-test-certification/) | SYSTEM_TEST 认证 | done | 2026-07-24 |
+| [0074](0074-webui-ia/) | WebUI 信息架构收敛 | done | 2026-07-24 |
+| [0075](0075-release-certification/) | RELEASE 认证（0.20.0） | pending | 2026-07-24 |
+| [0076](0076-run-working-directory/) | Run 显式工作目录与观察语义 | done | 2026-07-24 |
+| [0077](0077-system-test-recertification/) | SYSTEM_TEST 认证（含 0076） | done | 2026-07-24 |
+| [0078](0078-new-run-dialog-ux/) | New Run 对话框 UX（目录选择器 + Arguments 编辑器） | done | 2026-07-24 |
+| [0079](0079-ui-version-args-theme/) | 版本同步 / Args 声明预填 / 日夜主题 | done | 2026-07-24 |
 
 ## 状态说明
 

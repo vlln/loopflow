@@ -3,7 +3,7 @@ title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入及本地 WebUI 控制台。
 type: spec
 status: active
-version: 13
+version: 14
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -46,6 +46,10 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-023 | 开发者 | workflow 阻塞时查看并回答结构化问题 | 不依赖常驻进程介入运行，并在回答后继续同一 Run | P0 |
 | US-024 | 开发者 | 明确选择失败 Agent 的 retry 或 continue 恢复方式 | 根据任务副作用和上下文价值控制恢复行为 | P0 |
 | US-025 | 开发者 | 在 workflow 或 Agent 定义变化时阻止错误缓存命中 | 避免把旧调用结果或 session 注入语义不同的新调用 | P0 |
+| US-026 | 开发者 | 创建 Run 时显式指定工作目录 | WebUI 常驻 server 下让不同 run 在各自项目目录执行和观察，互不污染 | P0 |
+| US-027 | 开发者 | 在 WebUI 查看 run 工作目录内文件的内容 | 不离开控制台即可确认 agent 新建或修改的文件内容 | P1 |
+| US-028 | 开发者 | 创建 Run 时按 loop 声明预填 Arguments 键和默认值 | 不用记忆每个 loop 的参数字面量，降低输入错误 | P1 |
+| US-029 | 开发者 | 在白天和夜晚主题间切换 WebUI 外观 | 在不同光照环境下舒适使用 | P2 |
 
 ---
 
@@ -60,12 +64,13 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
 | PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
 | Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |
-| Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义，读取 `loop.md` 获取元数据 | `src/loopflow/discovery.py` | P0 |
+| Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义，读取 `loop.md` 获取元数据，提取 `workflow.py` 的 `meta.phases` 声明 | `src/loopflow/discovery.py` | P0 |
 | Dispatch | 扫描队列、按优先级排序、资源锁检查、执行 loopflow run | `src/loopflow/dispatch.py` | P1 |
 | Queue | 队列读写（enqueue、dequeue、list），文件持久化在 `~/.loopflow/queue/` | `src/loopflow/queue.py` | P1 |
 | Web Application | 提供 Loop、Run、Phase、Agent Call、Intervention、Backend 的查询模型及 run/stop/recover/respond 应用命令，供 CLI 与 Web 复用 | `src/loopflow/application/` | P0 |
 | Web API | 提供本机 HTTP 查询、命令接口和 Run 事件流，不直接实现领域逻辑 | `src/loopflow/presentation/web/` | P0 |
 | Web Frontend | 提供 Runs、Loops、Backends 三个主从工作区，消费 Web API 与事件流 | `web/` | P0 |
+| File Observation | phase 边界快照 diff，记录工作目录文件变化到 `file_changes.jsonl`，不参与业务事件流和重放 | `src/loopflow/file_observation.py` | P2 |
 
 ---
 
@@ -332,6 +337,28 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 
 没有 `version` 信封的历史 `events.jsonl` 视为 `legacy`。Legacy reader 保证原始事件时间线可读，并尽力恢复聚合 Phase 图；只有具备明确 session/phase 证据时才建立 Call 或 Phase occurrence 关联。并行交错或证据不足的事件标记为 `unattributed`，不得按文件位置虚构归属。
 
+### file_changes.jsonl
+
+工作目录文件变化观察数据，按 Phase 边界快照 diff 采集。与 `events.jsonl` 严格分离——不参与业务事件流、不参与确定性重放。通过 SSE `file_changes` topic 实时推送（详见 [ADR-0039](../adr/0039-file-change-observation.md) 和 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)）。
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| seq | integer | required | Run 内从 1 开始严格递增的序号，作为 SSE `file_changes` topic 的游标（详见 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)） |
+| phase | string | required | 产生这些变化的 Phase title |
+| phase_id | string | required | 对应的 Phase occurrence 标识，与 events.jsonl 中的 phase_id 一致 |
+| ts | ISO 8601 | required | 快照拍摄时间 |
+| changes | object[] | required | 文件变化列表 |
+| changes[].path | string | required | 相对 pwd 的文件路径 |
+| changes[].action | string | required | `created` / `modified` / `deleted` |
+| changes[].size | integer | created/modified 时必填 | 变化后的文件大小（bytes） |
+| changes[].prev_size | integer | modified/deleted 时必填 | 变化前的文件大小（bytes） |
+
+采集时机：每次 `phase()` 调用时对 pwd 拍摄快照，与上一个快照 diff，记录该 Phase 期间的文件变化。首次 `phase()` 调用和 Run 启动时建立基线快照，不产生 diff。
+
+扫描范围：pwd 下所有文件，排除 `.agents/worktrees/`、`.git/`、`__pycache__/`、`.pyc`。`meta.file_observation.exclude` 可声明额外排除路径（glob 模式）。`meta.file_observation.enabled` 设为 `false` 可禁用观察（默认 `true`）。
+
+无 `file_changes.jsonl` 的 Run（legacy 或禁用）在 WebUI 显示空状态，不报错。
+
 ---
 
 ## 五、业务规则
@@ -391,6 +418,13 @@ Agent 隔离层级体系（递进）：
 | BR-039 | CLI resume 是 deprecated recover retry 别名 | failed/cancelled Run 调用旧 CLI resume | 执行 recover --mode retry 并输出弃用提示；Web API 不保留 resume 端点；legacy stopped 仍拒绝 |
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
 | BR-041 | Recover 必须到达目标 | workflow 重放 | 到达预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束均报 replay_diverged，不得标记 done |
+| BR-042 | Declared phases 预显示 | Run 创建时 Loop 含 `meta.phases` 声明 | 从 declared phases 生成占位节点（pending 状态），运行时按 title 匹配合并 runtime events；无声明时退化为运行时涌现；详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md) |
+| BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 run 的工作目录（BR-044）拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`（含 `seq` 序号）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
+| BR-044 | Run 显式工作目录 | `POST /runs` 携带 `working_directory` 时 | 必须是已存在目录的绝对路径（否则 422 `validation_failed`）；executor 子进程 chdir 到该目录执行 workflow 与文件观察；缺省为进程 cwd（向后兼容）；持久化到 run.json，recover/rerun 沿用；详见 [ADR-0042](../adr/0042-run-working-directory.md) |
+| BR-045 | 文件观察基线快照 | Run 启动时且观察启用 | 先建立基线快照（内存态，不产生记录），phase diff 针对基线或上一快照；`created` 仅表示 phase 期间新建，预先存在的文件首改标记 `modified`；详见 [ADR-0043](../adr/0043-file-observation-baseline.md) |
+| BR-046 | Run 工作目录文件预览 | WebUI 点击文件 / `GET /runs/{run_id}/file` | 仅限 run 工作目录内的相对 POSIX 路径，resolve 越界拒绝（403 `path_forbidden`）；文本预览上限 1 MiB；只读；WebUI 在文件变化目录树中点击文件弹出只读预览 |
+| BR-047 | Loop args 声明预填 | loop.md `meta.args` 声明 `[{name, default, description, required}]` 时 | Loop summary/detail API 返回 `declared_args`（非法声明静默忽略）；New Run 对话框按声明预填键值行（default 填入，required 仅提示）；无声明时为空白起始 |
+| BR-048 | WebUI 主题 | 用户点击 rail 主题切换按钮 | 日夜主题切换（CSS 变量调色板）；选择持久化于 localStorage；未选择时跟随系统 `prefers-color-scheme` |
 
 Agent 结构化 intervention 控制结果固定为：
 
@@ -431,12 +465,13 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 ### Runs 工作台
 
 1. 左栏是常驻 Runs 列表，不使用独立列表页作为进入详情的前置步骤。
-2. 中间上方展示 Phase 执行路径；必须表达回边次数、分支、当前路径和并行调用，不得退化为固定线性步骤条。
+2. 中间上方展示 Phase 执行路径；必须表达回边次数、分支、当前路径和并行调用，不得退化为固定线性步骤条。Run 创建后若 Loop 含 `meta.phases` 声明，立即显示占位 phase 节点（pending 状态），运行时按 title 匹配合并实际 events；无声明时从空白开始按 events 涌现。占位节点、实际节点和 undeclared 节点有明确视觉区分。
 3. 中间下方展示所选 Phase occurrence 的 Calls / Events；Run 当前 state 作为 Run 级 Inspector 信息展示，不伪装成 Phase state。Phase input/output/state diff 留待未来 observation 事件支持。
 4. 右栏展示所选 Phase 的运行过程，并可进一步选择 Agent Call 查看消息、工具调用、重试、错误、输出和原始事件。
 5. 切换 Run 或 Phase 时保留列表筛选和布局尺寸；实时事件不得引发布局跳动。
 6. failed/cancelled Run 明确提供可用的 Recover/Retry 与 Continue 操作；Continue 不可用时展示后端能力、session 持久化或原子 worker 边界原因，不静默执行 Retry。
 7. waiting_input Run 展示结构化 prompt 和匹配 schema 的输入控件；回答只提交一次，提交期间禁用重复操作。
+8. Phase 详情下方展示该 Phase 期间工作目录的文件变化列表（created/modified/deleted），按 SSE `file_changes` topic 推送的数据渲染。无文件变化的 Phase 显示空状态；无 `file_changes.jsonl` 的 Run 不显示该区域或显示禁用状态，不报错。文件变化区域有独立滚动，不影响 Phase 图和 Calls/Events 布局。
 
 ### Loops 工作台
 
@@ -465,7 +500,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 |------|------|----------|----------|
 | 查询 Loops / Loop 文件 | 可选筛选；loop 名和相对路径 | Loop 摘要列表；受限文件内容 | 404 loop/file 不存在；403 路径越界；422 文件不可预览 |
 | 查询 Runs / Run 详情 | 可选状态、Loop、搜索和 cursor；run_id | 分页 Run 摘要；Run/Phase/Call 读模型 | 404 run 不存在；422 筛选无效 |
-| 订阅 Run 事件 | run_id、last_event_id | SSE 事件及重连游标 | 404 run 不存在；410 游标已不可恢复 |
+| 订阅 Run 事件 | run_id、last_event_id、last_file_changes_id | SSE 多 topic 事件（run_event + file_changes）及 per-topic 重连游标 | 404 run 不存在；410 游标已不可恢复 |
 | 启动 / 重跑 Run | loop、args、运行选项；重跑时含源 run_id | 新 Run 摘要和 Location | 404 loop/run 不存在；409 状态冲突；422 参数无效 |
 | 停止 / 恢复 Run | run_id；恢复 mode=retry/continue | 更新后的 Run 摘要 | 404 run 不存在；409 状态冲突、重放分歧或 continue 不支持 |
 | 查询 / 回答 Intervention | run_id、request_id、JSON response | 请求详情；回答后 running Run 摘要 | 404 请求不存在；409 已回答或状态冲突；422 schema 不匹配 |

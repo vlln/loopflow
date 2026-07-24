@@ -51,7 +51,7 @@ test.beforeEach(async ({ page }) => {
 test('operates Runs without overflow and renders a nonblank phase graph', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'chromium-390';
   const tablet = testInfo.project.name === 'chromium-1024';
-  const liveRun = page.getByRole('listitem').filter({ hasText: 'lf_tmp-review-workspace' }).first();
+  const liveRun = page.getByRole('listitem').filter({ hasText: 'run-live' }).first();
   await expect(liveRun).toBeVisible();
   if (mobile) await liveRun.click();
   await expect(page.getByRole('heading', { name: 'Phase graph' })).toBeVisible();
@@ -78,17 +78,21 @@ test('operates Runs without overflow and renders a nonblank phase graph', async 
   }
   expect((await flow.screenshot()).byteLength).toBeGreaterThan(1000);
 
-  await page.getByRole('button', { name: 'Open process inspector' }).click();
-  if (mobile || tablet) await expect(page.getByRole('button', { name: 'Close process inspector' })).toBeVisible();
+  if (mobile || tablet) {
+    await page.getByRole('button', { name: 'Open file changes panel' }).click();
+    await expect(page.getByRole('button', { name: 'Close file changes panel' })).toBeVisible();
+  } else {
+    await expect(page.getByRole('button', { name: 'Open file changes panel' })).toBeHidden();
+  }
   await expectNoPageOverflow(page);
-  const log = page.locator('.process-log');
+  const log = page.locator('.event-list');
   await expect(log).toContainText(longOutput);
   expect(await log.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 
-  if (mobile || tablet) await page.getByRole('button', { name: 'Close process inspector' }).click();
+  if (mobile || tablet) await page.getByRole('button', { name: 'Close file changes panel' }).click();
   if (!mobile) {
     await page.getByLabel('Filter status').selectOption('failed');
-    const failedRun = page.getByRole('listitem').filter({ hasText: 'lf_tmp-review-workspace' }).first();
+    const failedRun = page.getByRole('listitem').filter({ hasText: 'run-failed' }).first();
     await expect(failedRun).toBeVisible();
     await failedRun.click();
     await expect(page).toHaveURL(/run=run-failed/);
@@ -137,7 +141,7 @@ test('keeps a thousand Runs reachable without resizing the workspace', async ({ 
   await page.getByLabel('Search runs').fill('bulk');
   const list = page.locator('.run-list');
   const width = await list.evaluate((element) => element.getBoundingClientRect().width);
-  const last = page.getByRole('listitem').filter({ hasText: 'lf_tmp-bulk-1000' });
+  const last = page.getByRole('listitem').filter({ hasText: 'bulk-1000' });
   await last.scrollIntoViewIfNeeded();
   await last.click();
   await expect(page.getByRole('heading', { name: 'bulk-1000' })).toBeVisible();

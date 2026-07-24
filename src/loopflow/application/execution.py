@@ -50,7 +50,19 @@ def execute_workflow(
         "pid": pid,
         "process_group_id": os.getpgrp(),
         "process_started_at": SystemProcessProbe().identity(pid),
+        # Explicit run working directory (ADR-0042): the child process has
+        # already chdir'd, so cwd is the authoritative value
+        "working_directory": str(Path.cwd()),
     }
+    declared_phases = metadata.get("phases")
+    if isinstance(declared_phases, list):
+        valid_phases = [
+            {"title": str(p.get("title", "")).strip(), "detail": str(p.get("detail") or "")}
+            for p in declared_phases
+            if isinstance(p, dict) and isinstance(p.get("title"), str) and p["title"].strip()
+        ]
+        if valid_phases:
+            run_metadata["declared_phases"] = valid_phases
     if recover and (run_dir / "run.json").is_file():
         previous = read_json(run_dir / "run.json")
         run_metadata.update(previous)
@@ -86,6 +98,17 @@ def execute_workflow(
     context.only_phase = options.get("only_phase")
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
+    # File change observation (ADR-0039): initialize observer from loop meta
+    from loopflow.infrastructure.file_observation import FileChangeObserver, FileObservationConfig
+    obs_config = FileObservationConfig.from_meta(metadata)
+    if obs_config.enabled:
+        context.file_observer = FileChangeObserver(
+            run_dir=run_dir,
+            working_dir=Path.cwd(),
+            config=obs_config,
+        )
+        # Baseline snapshot (ADR-0043): pre-existing files are not "created"
+        context.file_observer.seed()
     set_context(context)
     kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
     kwargs["state"] = state
@@ -148,8 +171,13 @@ def _execute_workflow_process(
     run_id: str,
     run_dir: Path,
     execution_lock: Path,
+    working_directory: str,
 ) -> None:
     try:
+        # Explicit run working directory (ADR-0042): chdir first so every
+        # downstream Path.cwd() consumer (observer, backends, workflow)
+        # resolves inside the run's directory
+        os.chdir(working_directory)
         if hasattr(os, "setsid"):
             try:
                 os.setsid()
@@ -171,11 +199,23 @@ class BackgroundRunExecutor:
         self.runs_root = runs_root
         self.context = multiprocessing.get_context(start_method) if start_method else multiprocessing.get_context()
 
-    def start(self, loop: str, args: dict[str, Any], options: dict[str, Any], run_id: str | None = None) -> str:
+    def start(
+        self,
+        loop: str,
+        args: dict[str, Any],
+        options: dict[str, Any],
+        run_id: str | None = None,
+        working_directory: str | Path | None = None,
+    ) -> str:
         run_id = run_id or uuid.uuid4().hex
         recover = bool(options.get("recover") or options.get("resume"))
         run_dir = self._existing(run_id) if recover else None
-        working_directory = Path.cwd()
+        if recover and run_dir is not None:
+            # Recover/rerun reuse the persisted working directory (ADR-0042);
+            # a new value never overrides it
+            persisted = read_json(run_dir / "run.json").get("working_directory")
+            working_directory = persisted if isinstance(persisted, str) and persisted else None
+        working_directory = Path(working_directory) if working_directory is not None else Path.cwd()
         encoded = str(working_directory.resolve()).lstrip("/").replace("/", "-")
         run_dir = run_dir or self.runs_root / f"lf_{encoded}" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -196,7 +236,7 @@ class BackgroundRunExecutor:
             os.close(descriptor)
         except FileExistsError as error:
             raise RuntimeError("invalid_run_transition") from error
-        process = self.context.Process(target=_execute_workflow_process, args=(loop, args, options, run_id, run_dir, lock_path), daemon=False)
+        process = self.context.Process(target=_execute_workflow_process, args=(loop, args, options, run_id, run_dir, lock_path, str(working_directory)), daemon=False)
         try:
             process.start()
         except BaseException:

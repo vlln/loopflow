@@ -33,6 +33,7 @@ class WebFixtureFactory:
         pid: int | None = None,
         process_started_at: str | None = None,
         process_group_id: int | None = None,
+        working_directory: str | None = None,
     ) -> Path:
         run_dir = self.runs / run_id
         run_dir.mkdir()
@@ -50,6 +51,8 @@ class WebFixtureFactory:
             "process_started_at": process_started_at,
             "process_group_id": process_group_id,
         }
+        if working_directory is not None:
+            metadata["working_directory"] = working_directory
         self.write_json(run_dir / "run.json", metadata)
         if state is not None:
             self.write_json(run_dir / "state.json", state)
@@ -89,17 +92,41 @@ class WebFixtureFactory:
     def append_legacy_event(self, run_dir: Path, event: dict[str, Any]) -> None:
         self.append_jsonl(run_dir / "events.jsonl", event)
 
+    def append_file_changes(
+        self,
+        run_dir: Path,
+        seq: int,
+        phase: str,
+        phase_id: str,
+        changes: list[dict[str, Any]],
+        ts: str = FIXED_TIME,
+    ) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "seq": seq,
+            "phase": phase,
+            "phase_id": phase_id,
+            "ts": ts,
+            "changes": changes,
+        }
+        self.append_jsonl(run_dir / "file_changes.jsonl", record)
+        return record
+
     def append_malformed_line(self, run_dir: Path, content: str = '{"partial":') -> None:
         with (run_dir / "events.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(content)
 
-    def create_loop(self, name: str, *, description: str = "Fixture loop") -> Path:
+    def create_loop(self, name: str, *, description: str = "Fixture loop", phases: list[dict[str, Any]] | None = None, args: list[dict[str, Any]] | None = None) -> Path:
         loop_dir = self.loops / name
         (loop_dir / "agents").mkdir(parents=True)
-        (loop_dir / "loop.md").write_text(
-            f"---\ndescription: {description}\n---\n\n# {name}\n",
-            encoding="utf-8",
-        )
+        frontmatter = f"---\ndescription: {description}\n"
+        if phases is not None:
+            import yaml as _yaml
+            frontmatter += f"phases:\n{_yaml.safe_dump(phases, default_flow_style=False, allow_unicode=True)}"
+        if args is not None:
+            import yaml as _yaml
+            frontmatter += f"args:\n{_yaml.safe_dump(args, default_flow_style=False, allow_unicode=True)}"
+        frontmatter += f"---\n\n# {name}\n"
+        (loop_dir / "loop.md").write_text(frontmatter, encoding="utf-8")
         (loop_dir / "workflow.py").write_text("def run():\n    return None\n", encoding="utf-8")
         return loop_dir
 

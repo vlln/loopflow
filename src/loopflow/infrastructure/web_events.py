@@ -272,3 +272,23 @@ def replay_v2(path: Path, last_event_id: int) -> tuple[list[dict[str, Any]], int
     if last_event_id > maximum:
         raise IndexError(maximum)
     return [event for event in valid if event["event_id"] > last_event_id], maximum
+
+
+def replay_file_changes(path: Path, last_seq: int) -> tuple[list[dict[str, Any]], int]:
+    """Replay file_changes.jsonl records with seq > last_seq.
+
+    Returns (pending_records, max_seq). If the file does not exist,
+    returns ([], 0) — the topic is silently empty, not an error.
+    Raises IndexError(max_seq) if last_seq > max_seq.
+    """
+    if not path.is_file():
+        return [], 0
+    records = read_complete_jsonl(path)
+    valid = [
+        rec for rec in records
+        if isinstance(rec, dict) and isinstance(rec.get("seq"), int) and rec["seq"] >= 1
+    ]
+    maximum = max((rec["seq"] for rec in valid), default=0)
+    if last_seq > maximum:
+        raise IndexError(maximum)
+    return [rec for rec in valid if rec["seq"] > last_seq], maximum

@@ -24,6 +24,9 @@ created: 2026-07-18T21:00:00Z
 | AC-014-N-6 | failed Run A 有 1 个已完成缓存和 1 个未完成调用 | 对 A 执行 Resume | API 返回 status=running；已完成调用不执行，未完成调用执行；最终沿用 A 的 run_id | 自动化 |
 | AC-014-N-7 | done Run A | 对 A 执行 Rerun | API 返回 201 和新 Run B；B.run_id != A.run_id，B.loop/args 与 A 相同，A 文件不变 | 自动化 |
 | AC-014-N-8 | fixture 含 Loop 名和 run_id 可区分的 Runs | 分别应用 Loop 筛选和文本搜索 | 每次结果只包含匹配项；清除筛选后恢复完整列表 | 自动化 |
+| AC-014-N-9 | WebUI New Run 对话框 | 用 Arguments 键值编辑器添加 `name=review`、`count=2`、`debug=true` 并启动 | POST body args 为 `{"name":"review","count":2,"debug":true}`（值智能类型解析：数字/布尔不包字符串） | 自动化 |
+| AC-014-N-10 | Loop 声明 `meta.args`（`review` 默认 `main`，`count` 无默认） | 打开 New Run 对话框并选择该 Loop | 键值编辑器预填 `review=main` 与空值 `count` 行；直接启动时 POST body args 含 `{"review":"main"}`（空值行忽略） | 自动化 |
+| AC-014-N-11 | server 运行中 | `GET /api/v1/system/meta` 并观察 WebUI rail | 端点返回 200 `{"version": "..."}`（与 `loopflow.__version__` 一致）；rail 显示该版本而非硬编码值 | 自动化 |
 
 ## 边界场景
 
@@ -31,6 +34,9 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-014-B-1 | fixture 有 1000 个 Run | 连续滚动列表并选择第 1000 个 Run | 列表可到达目标项；选择后显示正确 run_id；主工作区宽度不因条目内容变化 | 自动化 |
 | AC-014-B-2 | Runs 目录为空 | 打开 Runs | 左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用 | 自动化 |
+| AC-014-B-3 | Arguments 键值编辑器含空 key 行 | 启动 Run | 空 key 行被忽略；args 仅含有效条目；无任何条目时 args 为 `{}` | 自动化 |
+| AC-014-B-4 | Arguments 切换到 JSON 高级模式 | 输入非法 JSON 并启动 | 显示 JSON 校验错误，不发送请求 | 自动化 |
+| AC-014-B-5 | Loop 无 `meta.args` 声明 | 打开 New Run 对话框 | 键值编辑器为空白起始（无预填行），行为与声明前一致 | 自动化 |
 
 ## 异常场景
 
@@ -85,16 +91,53 @@ created: 2026-07-18T21:00:00Z
 
 ---
 
-# AC-016: Run 事件流
+## Declared Phases 预显示（BR-042）
 
-验证 SSE 初次订阅、增量推送、断线续传和去重。
+> 2026-07-23 追加。验证 WebUI 中 `meta.phases` 声明的预显示和合并语义，详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md)。
 
 ## 正常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-016-N-1 | Run 已有 event_id 1..10 | 不带游标订阅 SSE | 按 1..10 重放，之后连接保持并推送新事件 11 | 自动化 |
-| AC-016-N-2 | 客户端已收到 event_id=7 后断线 | 以 last_event_id=7 重连 | 只返回 8 及之后事件；客户端集合无重复 event_id | 自动化 |
+| AC-015-N-6 | Loop 含 `meta.phases = [{"title":"采集","detail":"从数据源拉取"},{"title":"处理","detail":"清洗转换"}]` | 在 WebUI 启动该 Loop 的 Run | Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件 | 自动化 |
+| AC-015-N-7 | 同 AC-015-N-6，SSE 推送 phase("采集") 事件 | 观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
+| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | 观察 phase graph | 归档作为 undeclared 节点出现，带 "undeclared" badge；采集、处理按实际状态显示 | 自动化 + 截图 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-B-3 | Loop 无 `meta.phases` 声明 | 在 WebUI 启动 Run | phase graph 从空白开始，按 SSE 事件涌现（现有行为不变） | 自动化 |
+| AC-015-B-4 | declared ["采集","归档"], runtime 只执行采集后 done | 打开完成的 Run | 采集为 done 节点（✓），归档保持 pending 占位，不报错 | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-E-3 | workflow.py 含 `meta.phases = [{"title":""}]`（title 为空） | 在 WebUI 启动 Run | 跳过无效声明，不渲染该占位节点，不报错 | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-F-3 | workflow.py 语法错误，无法提取 meta.phases | 在 WebUI 启动 Run | 报错退出或显示加载错误，不渲染占位节点，不崩溃 | 自动化 |
+
+---
+
+# AC-016: Run 事件流
+
+验证 SSE 初次订阅、增量推送、断线续传和去重。
+
+> 2026-07-23 追加：SSE 从单 topic（run_event）重构为多 topic transport（ADR-0041），新增 `file_changes` topic。AC-016-N-3/N-4、AC-016-B-3、AC-016-E-3 验证多 topic 场景。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-016-N-1 | Run 已有 event_id 1..10 | 不带游标订阅 SSE | 按 1..10 重放 `event: run_event`，之后连接保持并推送新事件 11 | 自动化 |
+| AC-016-N-2 | 客户端已收到 event_id=7 后断线 | 以 last_event_id=7 重连 | 只返回 8 及之后 `event: run_event`；客户端集合无重复 event_id | 自动化 |
+| AC-016-N-3 | events.jsonl 有 event_id 1..5，file_changes.jsonl 有 seq 1..3 | 不带游标订阅 SSE | 同一连接收到 `event: run_event`（id 1..5）和 `event: file_changes`（id 1..3），各自 `id:` 独立递增 | 自动化 |
+| AC-016-N-4 | 客户端已收到 run_event id=5、file_changes id=2 后断线 | 以 last_event_id=5&last_file_changes_id=2 重连 | run_event 只推 id>5，file_changes 只推 id>2；两个 topic 独立游标 | 自动化 |
 
 ## 边界场景
 
@@ -102,6 +145,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-B-1 | Run 已结束，最后 event_id=10 | 以 last_event_id=10 订阅 | 不重放旧事件；服务发送 `event: stream_end`（data 含 last_event_id=10）后关闭连接 | 自动化 |
 | AC-016-B-2 | 100 条 1KB 事件连续落盘，单客户端订阅 | 记录落盘到 SSE 可读延迟 | p95 < 500ms，event_id 顺序严格递增 | 自动化 |
+| AC-016-B-3 | Run 已结束（run_event terminal），file_changes.jsonl 仍有未推送数据 | 订阅 SSE | `stream_end` 不发送，直到 file_changes topic 也 terminal；file_changes 数据继续推送 | 自动化 |
 
 ## 异常场景
 
@@ -109,6 +153,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-E-1 | 服务端最大 event_id=10，客户端以 last_event_id=11 订阅 | 订阅 SSE | 返回 410 JSON；body.error.code=`cursor_out_of_range`、body.error.details.max_event_id=10 | 自动化 |
 | AC-016-E-2 | 客户端重复收到同一 event_id | 应用前端事件 reducer | 状态只应用一次，不重复增加 Call 消息或边计数 | 自动化 |
+| AC-016-E-3 | file_changes.jsonl 最大 seq=2，客户端以 last_file_changes_id=99 订阅 | 订阅 SSE | file_changes topic 返回 `event: stream_error`（data 含 topic=file_changes, code=cursor_out_of_range）；run_event topic 不受影响，正常推送 | 自动化 |
 
 ## 失败场景
 
@@ -116,6 +161,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-F-1 | run_id 不存在 | 订阅 SSE | 返回 404，连接不进入重试循环 | 自动化 |
 | AC-016-F-2 | 注入 event reader，使订阅已发送 event_id=5 后下一次读取抛 `OSError("fixture-read-failed")` | 保持 SSE 连接并触发下一次读取 | 服务发送 `event: stream_error`，data.code=`event_read_failed`、data.last_event_id=5，随后关闭；不发送 event_id>5 | 自动化 |
+| AC-016-F-3 | file_changes.jsonl 读取抛 `OSError("fixture-read-failed")`，events.jsonl 正常 | 保持 SSE 连接 | file_changes topic 发送 `event: stream_error`（topic=file_changes）；run_event topic 不受影响，继续推送 | 自动化 |
 
 ---
 
@@ -199,6 +245,7 @@ created: 2026-07-18T21:00:00Z
 | AC-019-N-2 | Runs 工作区打开，焦点置于左栏第一个 failed Run A；A 含 Phase p1 和 Call c1；fixture DOM 的区域顺序为 Runs→Phase→Calls→Run actions | 按 Enter 选择 A；按 Tab 1 次进入 Phase 并按 ArrowRight 选择 p1；按 Tab 1 次进入 Calls 并按 ArrowDown 选择 c1；按 Tab 1 次聚焦 accessible name=`Resume run` 的按钮并按 Enter | 每步有可见 focus；详情依次显示 A、p1、c1；最后只发出一次 A 的 resume 请求 | 自动化 |
 | AC-019-N-3 | 启动 Web 服务时未传 host | 检查监听 socket | 仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口 | 自动化 |
 | AC-019-N-4 | 本机测试接口地址为 `0.0.0.0` | 以 host=`0.0.0.0` 且 allow-remote=true 启动服务 | 服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告 | 自动化 |
+| AC-019-N-5 | WebUI 已打开 | 点击 rail 主题切换按钮，然后刷新页面 | 日夜主题切换；选择持久化（刷新后保持）；未做过选择时默认跟随系统 `prefers-color-scheme` | 自动化 |
 
 ## 边界场景
 
@@ -206,6 +253,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-019-B-1 | 1024x768 视口 | 打开 Run | 主列表和 Phase 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠 | 自动化 + 截图 |
 | AC-019-B-2 | 390x844 视口 | 在 Runs、Phase、Process 间切换 | 一次只显示一个主区域；Stop/Resume 可到达；无水平页面滚动 | 自动化 + 截图 |
+| AC-019-B-3 | light 主题 | 打开 Runs 工作区 | 面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域 | 自动化 + 截图 |
 
 ## 异常场景
 

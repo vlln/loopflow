@@ -311,6 +311,7 @@ class RunRepository:
             "args": metadata.get("args") if isinstance(metadata, dict) else None,
             "state": state,
             "working_directory": self._working_directory(run_dir),
+            "declared_phases": metadata.get("declared_phases") if isinstance(metadata, dict) else None,
             "graph": projection.graph,
             "occurrences": projection.occurrences,
             "calls": calls,
@@ -386,6 +387,29 @@ class RunRepository:
             if isinstance(value, dict) and value.get("status") in {None, "pending"}:
                 return True
         return False
+
+    def resolve_working_directory(self, run_dir: Path) -> Path | None:
+        """Return the run's real working directory for file preview (ADR-0042).
+
+        Prefers the explicit working_directory persisted in run.json, then the
+        run index record. Returns None when no absolute, still-existing
+        directory can be proven (e.g. legacy Runs or deleted directories).
+        """
+        candidates: list[str] = []
+        try:
+            metadata = read_json(run_dir / "run.json")
+        except (OSError, json.JSONDecodeError):
+            metadata = {}
+        if isinstance(metadata, dict) and isinstance(metadata.get("working_directory"), str):
+            candidates.append(metadata["working_directory"])
+        record = self._index_records().get(run_dir.name)
+        if record:
+            candidates.append(record["working_directory"])
+        for value in candidates:
+            path = Path(value)
+            if path.is_absolute() and path.is_dir():
+                return path
+        return None
 
     def _working_directory(self, run_dir: Path) -> str:
         record = self._index_records().get(run_dir.name)

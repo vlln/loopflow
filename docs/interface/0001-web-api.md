@@ -190,6 +190,7 @@ Query：
 | mock | string/null | 否 | null | `bash/auto/null` |
 | from_phase | string/null | 否 | null | 声明的 Phase title 或 null |
 | only_phase | string/null | 否 | null | 声明的 Phase title 或 null；非 null 时服务端令有效 from_phase 等于该值；请求同时传非同值 from_phase 返回 422 |
+| working_directory | string/null | 否 | null | run 的显式工作目录（ADR-0042）；非 null 时必须是已存在的目录的绝对路径，否则 422（details 指明 `not_absolute` / `not_found` / `not_a_directory`）；null 时为进程 cwd（向后兼容） |
 
 201：`RunSummary`，同时设置 `Location: /api/v1/runs/{run_id}`。
 
@@ -336,6 +337,38 @@ Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`e
 
 错误：404 `run_not_found`。
 
+### `GET /runs/{run_id}/file-changes`
+
+200：
+
+```json
+{"items": [{"seq": 1, "phase": "Plan", "phase_id": "plan-1", "ts": "...", "changes": [{"path": "data/raw.json", "action": "created", "size": 1024}]}], "count": 1}
+```
+
+按 seq 升序返回 run 的全部文件变化记录；无 `file_changes.jsonl` 的 legacy Run 返回空列表。
+
+错误：404 `run_not_found`。
+
+### `GET /runs/{run_id}/file?path={relative_path}`
+
+读取 run 工作目录（ADR-0042）内单个文件的内容，供 WebUI 文件预览。
+
+200：
+
+```json
+{
+  "path": "src/main.py",
+  "media_type": "text/x-python",
+  "content": "...",
+  "size": 1200,
+  "read_only": true
+}
+```
+
+限制：path 必须是相对 POSIX 路径；resolve 后仍在 run 的 working_directory 内；文本预览上限 1 MiB；只读。
+
+错误：403 `path_forbidden`；404 `run_not_found`/`file_not_found`；422 `file_not_previewable`。
+
 ## 五、Loops 与文件
 
 ### `GET /loops`
@@ -374,6 +407,10 @@ Query：可选 `q`、`limit`、`cursor`。200：
 | files | LoopFileSummary[] | 是 | 允许预览的目录树平铺列表 |
 | agents | AgentDefinitionSummary[] | 是 | Agent 摘要 |
 | runs | RunSummary[] | 是 | 最近 20 个关联 Runs，按 created 降序 |
+| declared_phases | object[] | 否 | loop.md `meta.phases` 声明（ADR-0040），`[{title, detail}]` |
+| declared_args | object[] | 否 | loop.md `meta.args` 声明（BR-047），`[{name, default, description, required}]`；无声明时缺省或空列表 |
+
+LoopSummary 在列表接口中同样携带 `declared_phases` / `declared_args`（可选字段），供 New Run 对话框预填。
 
 LoopFileSummary：`path:string`、`media_type:string/null`、`size:integer`、`previewable:boolean`，全部必填。
 
@@ -470,6 +507,21 @@ Body：`{"timeout_ms":5000}`，范围 100..30000。
 stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感的键 `token|password|secret|api_key`，匹配 `KEY` 后可选空白、分隔符 `=` 或 `:`、可选空白，以及连续到空白/分号/逗号/行尾的非空值；保留原键和分隔符，将值替换为固定文本 `[REDACTED]`。例如 `token=lf-secret-123; connection failed` 必须变为 `token=[REDACTED]; connection failed`。其他脱敏规则可扩展，但不得改变该最小规则的输出。
 
 错误：404 `backend_not_found`；422 `validation_failed`；503 `diagnostic_start_failed`。
+
+### `GET /system/meta`
+
+200：`{"version": "0.20.0"}`——与 `loopflow.__version__` 一致，供 WebUI 显示运行中 server 的版本。
+
+### `POST /system/pick-directory`
+
+在 server 所在机器上调起操作系统原生目录选择器（供 WebUI New Run 对话框的 Browse 按钮使用，ADR-0042）。
+
+200（选中）：`{"path": "/absolute/dir", "cancelled": false}`（返回绝对路径）
+200（取消）：`{"path": null, "cancelled": true}`
+
+平台支持：macOS（osascript `choose folder`）；其他平台返回 501 `not_supported`，前端回退为手动输入。
+
+错误：501 `not_supported`。
 
 ## 八、服务启动约束
 
