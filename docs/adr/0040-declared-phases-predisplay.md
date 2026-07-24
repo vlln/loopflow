@@ -2,7 +2,7 @@
 title: ADR 0040 — Declared Phases 预显示与合并语义
 description: 利用 meta.phases 声明在 Run 启动时预显示占位 phase 节点，运行时按 events 合并为实际执行图；无声明时退化为运行时涌现
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-23T12:00:00Z
 ---
 
