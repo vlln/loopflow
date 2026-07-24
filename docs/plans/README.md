@@ -37,6 +37,7 @@
 | [0066](0066-webui-primitives-refactor/) | WebUI 基础组件整理 | done | 2026-07-24 |
 | [0067](0067-hide-gork-backend-alias/) | 隐藏 gork backend 别名 | done | 2026-07-24 |
 | [0068](0068-system-test-certification/) | SYSTEM_TEST 认证 | done | 2026-07-24 |
+| [0069](0069-release-certification/) | RELEASE 认证 | pending | 2026-07-24 |
 
 ## 状态说明
 
