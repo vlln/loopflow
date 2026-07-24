@@ -35,7 +35,7 @@
 | [0064](0064-release-certification/) | RELEASE 认证 | done | 2026-07-23 |
 | [0065](0065-intervention-choice-compatibility/) | Intervention Choice 兼容修复 | done | 2026-07-23 |
 | [0066](0066-webui-primitives-refactor/) | WebUI 基础组件整理 | done | 2026-07-24 |
-| [0067](0067-hide-gork-backend-alias/) | 隐藏 gork backend 别名 | pending | 2026-07-24 |
+| [0067](0067-hide-gork-backend-alias/) | 隐藏 gork backend 别名 | done | 2026-07-24 |
 
 ## 状态说明
 
