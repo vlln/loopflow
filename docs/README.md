@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DEVELOP` |
-| **设计评估** | 0066 已完成 WebUI 基础组件与滚动区域样式整理；本轮未改变后端接口与业务行为，后续前端功能应优先复用 `ui.tsx` primitives。 |
+| **设计评估** | 0067 正在修复 `gork` 误拼写别名被 diagnostics/WebUI 当成独立 backend 显示的问题；本轮限定为 backend 列表可见性修复。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
