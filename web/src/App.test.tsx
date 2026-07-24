@@ -306,66 +306,57 @@ const fileChangeRecords = [
   ] },
 ];
 
-it('AC-024-N-4: renders file changes list with created action and size for Phase A', async () => {
+it('AC-024-N-4: renders file changes panel with created action and size', async () => {
   installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
-  // Phase graph auto-selects current phase (review-2); click Plan occurrence
-  fireEvent.click(await screen.findByText('Plan'));
-  const list = await screen.findByTestId('file-changes-list');
-  expect(list).toBeVisible();
-  expect(screen.getByText('data/raw.json')).toBeVisible();
-  expect(screen.getByText('created')).toBeVisible();
-  expect(screen.getByText(/1024/)).toBeVisible();
+  const panel = await screen.findByTestId('file-changes-panel');
+  expect(panel).toBeVisible();
+  expect(screen.getAllByText('data/raw.json').length).toBeGreaterThan(0);
+  expect(screen.getAllByText('created').length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/1024/).length).toBeGreaterThan(0);
 });
 
-it('AC-024-N-5: renders modified and created changes for Phase B', async () => {
+it('AC-024-N-5: renders modified and created changes for all phases', async () => {
   installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
-  // Review phase is auto-selected as current phase
-  await screen.findByTestId('file-changes-list');
-  expect(screen.getByText('data/raw.json')).toBeVisible();
+  await screen.findByTestId('file-changes-panel');
+  expect(screen.getAllByText('data/raw.json').length).toBe(2);
   expect(screen.getByText('modified')).toBeVisible();
   expect(screen.getByText(/2048/)).toBeVisible();
   expect(screen.getByText('data/clean.json')).toBeVisible();
-  expect(screen.getAllByText('created')).toHaveLength(1);
 });
 
 it('AC-024-B-6: legacy run without file_changes shows empty state, no error', async () => {
   installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
-  const list = await screen.findByTestId('file-changes-list');
-  expect(list).toBeVisible();
-  expect(screen.getByText('No file changes in this phase')).toBeVisible();
+  const panel = await screen.findByTestId('file-changes-panel');
+  expect(panel).toBeVisible();
+  expect(screen.getByText('No file changes observed')).toBeVisible();
 });
 
-it('AC-024-B-7: phase with no file changes shows empty state', async () => {
-  // Only plan-1 has changes, review-2 has none
-  installFetch({ fileChanges: { 'run-live': [fileChangeRecords[0]] } });
+it('AC-024-B-7: run with no changes shows empty state', async () => {
+  installFetch({ fileChanges: { 'run-live': [] } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
-  // Review is auto-selected (current phase) — it has no file changes
-  const list = await screen.findByTestId('file-changes-list');
-  expect(list).toBeVisible();
-  expect(screen.getByText('No file changes in this phase')).toBeVisible();
+  const panel = await screen.findByTestId('file-changes-panel');
+  expect(panel).toBeVisible();
+  expect(screen.getByText('No file changes observed')).toBeVisible();
 });
 
-it('AC-024-N-7: SSE file_changes push appends to list in real-time', async () => {
+it('AC-024-N-7: SSE file_changes push appends to panel in real-time', async () => {
   installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
-  // Initially empty
-  await screen.findByText('No file changes in this phase');
-  // SSE pushes a file_changes event
+  await screen.findByText('No file changes observed');
   act(() => {
     EventSourceMock.instances[0].emit('file_changes', JSON.stringify({
       seq: 1, phase: 'Review', phase_id: 'review-2', ts: '2026-07-18T22:00:05Z',
       changes: [{ path: 'output/result.json', action: 'created', size: 256 }],
     }));
   });
-  // Now the list should show the new file change
   await waitFor(() => expect(screen.getByText('output/result.json')).toBeVisible());
   expect(screen.getByText('created')).toBeVisible();
 });
