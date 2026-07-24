@@ -2,7 +2,7 @@
 title: System Test Recertification Plan
 description: 0076 合并后 develop 全量系统级验证与 0.20.0 重新发布就绪判定
 type: plan
-status: pending
+status: done
 created: 2026-07-24T06:05:00Z
 ---
 

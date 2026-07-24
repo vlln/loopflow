@@ -45,6 +45,7 @@
 | [0074](0074-webui-ia/) | WebUI 信息架构收敛 | done | 2026-07-24 |
 | [0075](0075-release-certification/) | RELEASE 认证（0.20.0） | pending | 2026-07-24 |
 | [0076](0076-run-working-directory/) | Run 显式工作目录与观察语义 | done | 2026-07-24 |
+| [0077](0077-system-test-recertification/) | SYSTEM_TEST 认证（含 0076） | done | 2026-07-24 |
 
 ## 状态说明
 
