@@ -2,7 +2,7 @@
 title: WebUI Primitives Refactor Plan
 description: 整理 WebUI 基础组件与滚动区域样式，降低 runs/loops 页面局部重复
 type: plan
-status: pending
+status: done
 created: 2026-07-24T01:52:56Z
 ---
 
@@ -27,4 +27,4 @@ created: 2026-07-24T01:52:56Z
 
 # Exit
 
-0066 完成后，WebUI 后续功能优先复用 primitives；更大范围页面拆分另起执行容器。
+0066 已完成。WebUI 后续功能优先复用 primitives；更大范围页面拆分另起执行容器。

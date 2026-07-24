@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [WebUI 基础组件与滚动区域整理](01-plan-webui-primitives-refactor.md) | [Report](01-report-webui-primitives-refactor.md) | pending |
+| 01 | [WebUI 基础组件与滚动区域整理](01-plan-webui-primitives-refactor.md) | [Report](01-report-webui-primitives-refactor.md) | done |
 
 ## 背景
 
