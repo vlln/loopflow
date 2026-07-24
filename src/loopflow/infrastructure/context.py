@@ -81,6 +81,7 @@ class RunContext:
         self.live = live
         self.loop_dir = loop_dir
         self.state = state
+        self.file_observer = None  # FileChangeObserver | None, set by execution.py
 
     def next_session(self) -> str:
         call_id = self.next_call_id()

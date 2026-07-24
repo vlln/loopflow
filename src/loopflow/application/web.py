@@ -367,6 +367,25 @@ class WebApplication:
         terminal = self.runs.read_summary(run_dir)["status"] not in {"running", "stale"}
         return records, maximum, terminal
 
+    def list_file_changes(self, run_id: str) -> dict[str, Any]:
+        """REST query: return all file_changes.jsonl records for a run.
+
+        Returns {"items": [...], "count": N}. If file_changes.jsonl does not
+        exist, returns {"items": [], "count": 0}.
+        """
+        run_dir = self._run_dir(run_id)
+        path = run_dir / "file_changes.jsonl"
+        if not path.is_file():
+            return {"items": [], "count": 0}
+        from loopflow.infrastructure.web_events import read_complete_jsonl
+        records = read_complete_jsonl(path)
+        valid = [
+            rec for rec in records
+            if isinstance(rec, dict) and isinstance(rec.get("seq"), int) and rec["seq"] >= 1
+        ]
+        valid.sort(key=lambda r: r["seq"])
+        return {"items": valid, "count": len(valid)}
+
     def legacy_events(self, run_id: str) -> dict[str, Any]:
         detail = self.get_run(run_id)
         return {

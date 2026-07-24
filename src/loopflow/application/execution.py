@@ -95,6 +95,15 @@ def execute_workflow(
     context.only_phase = options.get("only_phase")
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
+    # File change observation (ADR-0039): initialize observer from loop meta
+    from loopflow.infrastructure.file_observation import FileChangeObserver, FileObservationConfig
+    obs_config = FileObservationConfig.from_meta(metadata)
+    if obs_config.enabled:
+        context.file_observer = FileChangeObserver(
+            run_dir=run_dir,
+            working_dir=Path.cwd(),
+            config=obs_config,
+        )
     set_context(context)
     kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
     kwargs["state"] = state

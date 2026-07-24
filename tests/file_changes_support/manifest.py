@@ -74,12 +74,45 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
         cases.append(
             {
                 **row,
-                "test_node": f"planned::{ac_id.lower()}",
+                "test_node": _test_node_for(ac_id),
                 "targets": TARGETS[ac_id],
                 "expectations": expectations,
             }
         )
     return {"version": 1, "source": str(ac_path), "cases": cases}
+
+
+# Maps AC IDs to real test node identifiers (replacing planned:: placeholders)
+_TEST_NODES: dict[str, str] = {
+    "AC-024-N-1": "test_file_changes_rest_endpoint_returns_records",
+    "AC-024-N-2": "test_file_changes_rest_endpoint_returns_records",
+    "AC-024-N-3": "test_file_changes_rest_endpoint_returns_records",
+    "AC-024-N-4": "test_file_changes_rest_endpoint_returns_records",
+    "AC-024-N-5": "test_file_changes_rest_endpoint_returns_records",
+    "AC-024-N-6": "test_file_changes_rest_endpoint_empty_for_no_file",
+    "AC-024-N-7": "test_sse_multi_topic_pushes_run_event_and_file_changes",
+    "AC-024-B-1": "test_first_observe_marks_all_files_as_created",
+    "AC-024-B-2": "test_second_observe_detects_modified_and_created",
+    "AC-024-B-3": "test_deleted_file_detected",
+    "AC-024-B-4": "test_no_changes_returns_none",
+    "AC-024-B-5": "test_exclude_patterns_skip_files",
+    "AC-024-B-6": "test_disabled_config_returns_none",
+    "AC-024-B-7": "test_seq_strictly_increasing",
+    "AC-024-E-1": "test_file_changes_rest_404_for_nonexistent_run",
+    "AC-024-E-2": "test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+    "AC-024-F-1": "test_file_changes_rest_404_for_nonexistent_run",
+    "AC-024-F-2": "test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+    "AC-024-U-1": "test_default_config_is_enabled",
+    "AC-024-U-2": "test_disabled_via_meta",
+    "AC-024-U-3": "test_exclude_patterns_from_meta",
+    "AC-024-U-4": "test_default_excludes_git_and_pycache",
+    "AC-024-U-5": "test_custom_exclude_pattern",
+    "AC-024-U-6": "test_nested_directories_scanned",
+}
+
+
+def _test_node_for(ac_id: str) -> str:
+    return _TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}")
 
 
 def check_manifest(

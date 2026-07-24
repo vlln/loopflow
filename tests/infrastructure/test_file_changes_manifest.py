@@ -36,10 +36,13 @@ def test_manifest_checker_rejects_interface_drift_and_empty_assertion():
     assert "AC-024-N-7: assertion does not match AC source" in errors
 
 
-def test_strict_manifest_rejects_planned_nodes():
+def test_strict_manifest_has_no_planned_nodes():
+    """All planned:: nodes have been replaced with real test references."""
     manifest = generate_manifest(AC_PATH)
 
     errors = check_manifest(manifest, AC_PATH)
 
-    assert len(errors) == len(manifest["cases"])
-    assert all("planned test node is not allowed" in error for error in errors)
+    # No planned nodes should remain — strict mode should pass with zero errors
+    assert errors == [], f"Unexpected manifest errors: {errors}"
+    # Verify no test_node starts with planned::
+    assert all(not case["test_node"].startswith("planned::") for case in manifest["cases"])

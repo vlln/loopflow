@@ -37,6 +37,13 @@ def _emit_phase(title: str) -> None:
         "occurrence": _ctx._phase_counter,
     })
 
+    # File change observation (ADR-0039): snapshot diff at phase boundary
+    if _ctx.file_observer is not None:
+        try:
+            _ctx.file_observer.observe(title, _ctx._current_phase_id)
+        except Exception:
+            pass  # file observation failures must not break workflow execution
+
     if _ctx.graph is not None:
         _ctx.graph.record(_ctx._prev_phase, title)
         _ctx._prev_phase = title
