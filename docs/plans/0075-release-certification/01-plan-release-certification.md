@@ -14,7 +14,7 @@ created: 2026-07-24T05:20:00Z
 
 - `develop` HEAD：72b4aab（Merge 0074）
 - SYSTEM_TEST 认证：0073 通过；0074（WebUI 呈现层）前端全量验证通过
-- 待发布内容：0070 SSE 多 topic（ADR-0041）、0071 Declared phases（ADR-0040）、0072 文件变化观察（ADR-0039）、0074 WebUI 信息架构收敛
+- 待发布内容：0070 SSE 多 topic（ADR-0041）、0071 Declared phases（ADR-0040）、0072 文件变化观察（ADR-0039）、0074 WebUI 信息架构收敛、0076 per-run working directory 与观察语义（发布暂停后范围扩展并入本版本，需重新 SYSTEM_TEST 认证）
 
 # Steps
 
