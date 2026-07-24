@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.20.0] — 2026-07-24
+
+### Added
+- Multi-topic SSE transport: `run_event` and `file_changes` topics multiplexed over a single connection with independent cursors; an out-of-range `file_changes` cursor is non-fatal (ADR-0041).
+- Declared phases pre-display: loop frontmatter `meta.phases` is surfaced in Loop summary/detail and merged into the Run phase graph as pending placeholder nodes (ADR-0040).
+- File change observation: `phase()` snapshots and diffs the working directory into `file_changes.jsonl`, exposed via `GET /api/v1/runs/{run_id}/file-changes` (ADR-0039).
+- Explicit run working directory (ADR-0042): `POST /api/v1/runs` accepts an optional absolute `working_directory`; the run subprocess chdirs into it so execution and file observation happen in the chosen project instead of the server launch directory.
+- Run working directory file preview: `GET /api/v1/runs/{run_id}/file?path=` serves a read-only text preview confined to the run's working directory; clicking a file in the WebUI changed-files tree opens its content.
+- Native directory picker for the New Run dialog: `POST /api/v1/system/pick-directory` opens the OS folder chooser on macOS; other platforms fall back to manual input.
+- Loop args declarations (BR-047): loop frontmatter `meta.args` (name/default/description/required) is surfaced as `declared_args` in the Loop API and pre-fills the New Run dialog's key-value editor.
+- Light/dark theme toggle with system-preference default and a persisted choice (BR-048).
+- `GET /api/v1/system/meta` exposes the running server version.
+- WebUI file changes panel: changed-files tree with per-phase action markers that follow the selected phase.
+
+### Changed
+- File observation now seeds a baseline snapshot at run start (ADR-0043): `created` only means created during a phase, and pre-existing files first touched by a phase are reported as `modified` with baseline `prev_size` — aligning the implementation with the documented AC-024-B-1 semantics.
+- Runs workspace information architecture: three task-oriented columns (list / execution / file changes), unified `PanelHeader`/`SectionHeader` primitives, and a three-step type scale.
+- New Run dialog arguments are edited as typed key-value rows with a JSON advanced mode instead of a raw JSON textarea.
+- Intervention requests surface as a top banner in the Runs workspace only while pending; history collapses inline.
+- Event display consolidated into the single center-column timeline; the duplicated right-column process output is removed.
+
+### Fixed
+- WebUI rail version was hardcoded (`v0.17`) and stale; it now reflects the running server's version from `GET /system/meta`.
+- File changes region always renders an explicit empty state for legacy runs and quiet phases (AC-024-B-6/B-7).
+- SSE `file_changes` topic now reaches the WebUI in real time instead of being dropped.
+- The file changes drawer toggle only appears in overlay layout (≤1180px) where it has an effect.
+
 ## [0.19.1] — 2026-07-24
 
 ### Changed
