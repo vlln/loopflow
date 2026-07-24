@@ -54,6 +54,26 @@ def _frontmatter(path: Path) -> dict[str, Any]:
     return value
 
 
+def _extract_declared_phases(metadata: dict[str, Any]) -> list[dict[str, str]]:
+    """Extract declared phases from loop.md frontmatter meta.phases.
+
+    Returns a list of {"title": ..., "detail": ...} dicts. Invalid entries
+    (missing or empty title) are silently skipped.
+    """
+    phases = metadata.get("phases")
+    if not isinstance(phases, list):
+        return []
+    result: list[dict[str, str]] = []
+    for entry in phases:
+        if not isinstance(entry, dict):
+            continue
+        title = entry.get("title")
+        if not isinstance(title, str) or not title.strip():
+            continue
+        result.append({"title": title.strip(), "detail": str(entry.get("detail") or "")})
+    return result
+
+
 class LoopRepository:
     def __init__(self, loops_root: Path, runs: RunRepository | None = None) -> None:
         self.loops_root = loops_root
@@ -82,6 +102,7 @@ class LoopRepository:
             "description": str(metadata.get("description") or ""),
             "agent_count": len([path for path in agents if not path.name.startswith("_")]),
             "triggers": metadata.get("triggers") if isinstance(metadata.get("triggers"), list) else [],
+            "declared_phases": _extract_declared_phases(metadata),
             "valid": valid,
             "error_summary": error,
         }
@@ -114,6 +135,7 @@ class LoopRepository:
             "triggers": metadata.get("triggers") if isinstance(metadata.get("triggers"), list) else [],
             "resources": metadata.get("resources") if isinstance(metadata.get("resources"), list) else [],
             "environment": metadata.get("environment") if isinstance(metadata.get("environment"), str) else None,
+            "declared_phases": summary.get("declared_phases", []),
             "files": files,
             "agents": agents,
             "runs": related[:20],

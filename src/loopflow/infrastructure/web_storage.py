@@ -311,6 +311,7 @@ class RunRepository:
             "args": metadata.get("args") if isinstance(metadata, dict) else None,
             "state": state,
             "working_directory": self._working_directory(run_dir),
+            "declared_phases": metadata.get("declared_phases") if isinstance(metadata, dict) else None,
             "graph": projection.graph,
             "occurrences": projection.occurrences,
             "calls": calls,

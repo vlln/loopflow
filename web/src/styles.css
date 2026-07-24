@@ -136,6 +136,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .phase-node small { color: var(--muted); font-size: 9px; }
 .phase-node.is-selected, .phase-node.is-current { border-color: #64d8ca; background: #26302e; color: var(--text); }
 .phase-node.is-selected small, .phase-node.is-current small { color: var(--mint-strong); }
+.phase-node.is-declared { border-style: dashed; border-color: var(--muted); opacity: 0.65; }
+.phase-node.is-undeclared { border-color: #e0a060; }
 .react-flow__handle { width: 7px; height: 7px; border: 0; background: var(--mint-strong); }
 .react-flow__edge-path { stroke: #59615f; stroke-width: 1.5; }
 .react-flow__edge.animated .react-flow__edge-path { stroke: var(--mint-strong); }

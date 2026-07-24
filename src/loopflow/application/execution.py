@@ -51,6 +51,15 @@ def execute_workflow(
         "process_group_id": os.getpgrp(),
         "process_started_at": SystemProcessProbe().identity(pid),
     }
+    declared_phases = metadata.get("phases")
+    if isinstance(declared_phases, list):
+        valid_phases = [
+            {"title": str(p.get("title", "")).strip(), "detail": str(p.get("detail") or "")}
+            for p in declared_phases
+            if isinstance(p, dict) and isinstance(p.get("title"), str) and p["title"].strip()
+        ]
+        if valid_phases:
+            run_metadata["declared_phases"] = valid_phases
     if recover and (run_dir / "run.json").is_file():
         previous = read_json(run_dir / "run.json")
         run_metadata.update(previous)

@@ -170,16 +170,23 @@ function InterventionHistory({ items }: { items: InterventionSummary[] }) {
   return <details className="intervention-history"><summary>Requests <span>{items.length}</span></summary><div>{items.map((item) => <article key={item.request_id}><header><strong>{item.prompt}</strong><StatusBadge value={item.status} /></header><dl><div><dt>Key</dt><dd>{item.key}</dd></div><div><dt>Response</dt><dd>{item.status === 'answered' ? formatResponse(item.response) : item.status}</dd></div><div><dt>Responded</dt><dd>{item.responded_at ? formatTime(item.responded_at) : '—'}</dd></div></dl></article>)}</div></details>;
 }
 
-function PhaseNodeView({ data, selected }: NodeProps<Node<{ label: string; count: number; current: boolean }>>) {
-  return <div className={`phase-node ${selected ? 'is-selected' : ''} ${data.current ? 'is-current' : ''}`}><Handle type="target" position={Position.Left} /><span>{data.label}</span><small>{data.count} occurrence{data.count === 1 ? '' : 's'}</small><Handle type="source" position={Position.Right} /></div>;
+function PhaseNodeView({ data, selected }: NodeProps<Node<{ label: string; count: number; current: boolean; declared?: boolean; undeclared?: boolean }>>) {
+  return <div className={`phase-node ${selected ? 'is-selected' : ''} ${data.current ? 'is-current' : ''} ${data.declared ? 'is-declared' : ''} ${data.undeclared ? 'is-undeclared' : ''}`}><Handle type="target" position={Position.Left} /><span>{data.label}</span><small>{data.declared ? 'pending' : `${data.count} occurrence${data.count === 1 ? '' : 's'}`}</small><Handle type="source" position={Position.Right} /></div>;
 }
 
 function PhaseGraph({ detail, selectedPhaseId, onSelect }: { detail: RunDetail; selectedPhaseId: string | null; onSelect: (phaseId: string) => void }) {
   const nodeTypes = useMemo(() => ({ phase: PhaseNodeView }), []);
   const phaseToOccurrence = new Map(detail.occurrences.map((item) => [item.phase, item.phase_id]));
-  const nodes: Node[] = detail.graph.nodes.map((item, index) => ({ id: item.phase, type: 'phase', position: { x: 40 + (index % 4) * 190, y: 54 + Math.floor(index / 4) * 110 }, data: { label: item.phase, count: item.occurrence_count, current: item.is_current }, selected: phaseToOccurrence.get(item.phase) === selectedPhaseId }));
+  const declaredTitles = new Set((detail.declared_phases ?? []).map((p) => p.title));
+  const runtimePhases = new Set(detail.graph.nodes.map((n) => n.phase));
+  // Merge: runtime nodes first, then declared phases not yet executed as pending placeholders
+  const mergedNodes: Array<{ phase: string; occurrence_count: number; is_current: boolean; is_declared?: boolean; is_undeclared?: boolean }> = [
+    ...detail.graph.nodes.map((n) => ({ phase: n.phase, occurrence_count: n.occurrence_count, is_current: n.is_current, is_undeclared: declaredTitles.size > 0 && !declaredTitles.has(n.phase) })),
+    ...(detail.declared_phases ?? []).filter((p) => !runtimePhases.has(p.title)).map((p) => ({ phase: p.title, occurrence_count: 0, is_current: false, is_declared: true })),
+  ];
+  const nodes: Node[] = mergedNodes.map((item, index) => ({ id: item.phase, type: 'phase', position: { x: 40 + (index % 4) * 190, y: 54 + Math.floor(index / 4) * 110 }, data: { label: item.phase, count: item.occurrence_count, current: item.is_current, declared: !!item.is_declared, undeclared: !!item.is_undeclared }, selected: phaseToOccurrence.get(item.phase) === selectedPhaseId }));
   const edges: Edge[] = detail.graph.edges.map((item, index) => ({ id: `${item.from}-${item.to}-${index}`, source: item.from, target: item.to, animated: item.to === detail.current_phase, label: item.count > 1 ? String(item.count) : undefined, className: item.is_backedge ? 'backedge' : '' }));
-  return <section className={`phase-graph ${nodes.length > 4 ? 'is-multiline' : ''}`} aria-label="Phase graph"><div className="section-heading"><div><span className="eyebrow">Execution path</span><h3>Phase graph</h3></div><span className="muted">{detail.graph.nodes.length} phases</span></div>{nodes.length ? <div className="flow-canvas" data-testid="phase-flow"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.35} maxZoom={1.5} nodesDraggable={false} onNodeClick={(_, node) => { const occurrences = detail.occurrences.filter((item) => item.phase === node.id); onSelect(occurrences.at(-1)?.phase_id ?? ''); }}><Background color="#292d2c" gap={24} size={1} /><Controls showInteractive={false} /></ReactFlow></div> : <EmptyState title="No phase events" detail="Raw Run events remain available below." />}</section>;
+  return <section className={`phase-graph ${nodes.length > 4 ? 'is-multiline' : ''}`} aria-label="Phase graph"><div className="section-heading"><div><span className="eyebrow">Execution path</span><h3>Phase graph</h3></div><span className="muted">{mergedNodes.length} phases</span></div>{nodes.length ? <div className="flow-canvas" data-testid="phase-flow"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.35} maxZoom={1.5} nodesDraggable={false} onNodeClick={(_, node) => { const occurrences = detail.occurrences.filter((item) => item.phase === node.id); onSelect(occurrences.at(-1)?.phase_id ?? ''); }}><Background color="#292d2c" gap={24} size={1} /><Controls showInteractive={false} /></ReactFlow></div> : <EmptyState title="No phase events" detail="Raw Run events remain available below." />}</section>;
 }
 
 function EventTimeline({ events, title }: { events: RunEvent[]; title: string }) {

@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Declared phases 预显示实现](01-plan-declared-phases.md) | [Report](01-report-declared-phases.md) | pending |
+| 01 | [Declared phases 预显示实现](01-plan-declared-phases.md) | [Report](01-report-declared-phases.md) | done |
 
 ## 背景
 
