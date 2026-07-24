@@ -240,7 +240,7 @@ def test_background_executor_surfaces_replay_divergence_before_return(tmp_path, 
         "created": "old",
         "failed_call_id": "0001",
         "execution_epoch": 1,
-        "execution_options": {"mock": "auto"},
+        "execution_options": {"mock": "bash"},
     }))
     (run / "0001.jsonl").write_text(
         json.dumps({
