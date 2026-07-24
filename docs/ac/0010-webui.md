@@ -85,6 +85,27 @@ created: 2026-07-18T21:00:00Z
 
 ---
 
+## Declared Phases 预显示（BR-042）
+
+> 2026-07-23 追加。验证 WebUI 中 `meta.phases` 声明的预显示和合并语义，详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md)。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-N-6 | Loop 含 `meta.phases = [{"title":"采集","detail":"从数据源拉取"},{"title":"处理","detail":"清洗转换"}]` | 在 WebUI 启动该 Loop 的 Run | Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件 | 自动化 |
+| AC-015-N-7 | 同 AC-015-N-6，SSE 推送 phase("采集") 事件 | 观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
+| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | 观察 phase graph | 归档作为 undeclared 节点出现，带 "undeclared" badge；采集、处理按实际状态显示 | 自动化 + 截图 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-B-3 | Loop 无 `meta.phases` 声明 | 在 WebUI 启动 Run | phase graph 从空白开始，按 SSE 事件涌现（现有行为不变） | 自动化 |
+| AC-015-B-4 | declared ["采集","归档"], runtime 只执行采集后 done | 打开完成的 Run | 采集为 done 节点（✓），归档保持 pending 占位，不报错 | 自动化 |
+
+---
+
 # AC-016: Run 事件流
 
 验证 SSE 初次订阅、增量推送、断线续传和去重。
