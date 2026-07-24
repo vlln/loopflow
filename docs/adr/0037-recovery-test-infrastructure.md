@@ -1,6 +1,6 @@
 ---
 title: Recovery Control Test Infrastructure
-description: 定义恢复、永久停止和人工介入的缓存工厂、Backend 替身、故障注入、进程组与 AC manifest 测试底座
+description: 定义恢复、可靠取消和人工介入的缓存工厂、Backend 替身、故障注入、进程组与 AC manifest 测试底座
 type: adr
 status: accepted
 created: 2026-07-22T08:00:00Z

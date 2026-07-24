@@ -229,7 +229,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | status | string | required | pending / answered / closed；stop waiting_input 不关闭 pending request，closed 仅用于显式废弃或 legacy 读取 |
 | response | any | optional | immutable 回答，仅 status=answered 时存在 |
 | created_at | ISO 8601 | required | 请求创建时间 |
-| answered_at | ISO 8601/null | required | 回答时间 |
+| responded_at | ISO 8601/null | required | 回答时间 |
 
 ### Agent 定义文件
 
@@ -384,9 +384,9 @@ Agent 隔离层级体系（递进）：
 | BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；进程不存在或启动标识不匹配时，读模型返回 stale 且不修改文件。显式 reconcile 再次校验后原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at，随后允许 recover |
 | BR-033 | 恢复模式显式选择 | failed/cancelled Run 执行 recover | retry/replay 是默认恢复路径，创建新 session 或重放到 pending 边界；continue 使用原 session_id；缺少 durable session 能力、目标 Call 未落盘 session_id 或 active worker 为原子/隔离边界时返回 continue_not_supported，不静默降级 |
 | BR-034 | stop 取消当前 execution attempt | running/waiting_input Run 执行 stop | 先持久化取消意图，再终止已验证身份的进程组；SIGTERM 超时后 SIGKILL；最终 cancelled；cancelled 表示本次 execution epoch 被取消，不表示 Run identity 不可恢复 |
-| BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 intervention | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow 请求通过 replay 返回回答；Agent 请求仅在 durable session 已落盘时创建并通过 continue 返回回答；waiting_input 被 stop 后 pending request 保留，respond 可恢复同一 Run |
-| BR-036 | Intervention 不从自然语言推断 | Agent 输出问题文本 | 仅结构化 control request 触发 waiting_input；普通文本按 Agent 结果处理 |
-| BR-037 | 回答只提交一次 | pending intervention 接收 response | schema 校验通过后原子写 answered；后续提交返回 intervention_already_answered，不覆盖 response 或重复恢复 |
+| BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 requests | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow `intervene()` 是 routing/control gate，通过 replay 返回回答给 workflow；Agent requests 是继续执行所需输入，仅在 durable session 已落盘时创建并通过 continue 返回给 Agent；waiting_input 被 stop 后 pending request 保留，respond 可恢复同一 Run |
+| BR-036 | Intervention 不从自然语言推断 | Agent 输出问题文本 | 仅结构化 `__loopflow.status=waiting_input` 且含 requests 的 control output 触发 waiting_input；普通文本按 Agent 结果处理 |
+| BR-037 | 回答只提交一次 | pending intervention 接收 response | options/custom 校验通过后原子写 answered；后续提交返回 intervention_already_answered，不覆盖 response 或重复恢复 |
 | BR-038 | 首次执行冻结恢复选项 | 创建 Run | 将自动选择后的有效 backend/model 和其他执行选项写入 run.json；recover 沿用且不接受覆盖 |
 | BR-039 | CLI resume 是 deprecated recover retry 别名 | failed/cancelled Run 调用旧 CLI resume | 执行 recover --mode retry 并输出弃用提示；Web API 不保留 resume 端点；legacy stopped 仍拒绝 |
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
@@ -395,10 +395,22 @@ Agent 隔离层级体系（递进）：
 Agent 结构化 intervention 控制结果固定为：
 
 ```json
-{"__loopflow":{"status":"waiting_input","key":"approve","prompt":"Approve?","schema":{"type":"boolean"}}}
+{
+  "__loopflow": {
+    "status": "waiting_input",
+    "requests": [
+      {
+        "key": "scope",
+        "prompt": "本轮是否扩大搜索范围？",
+        "options": ["扩大", "不扩大"],
+        "allow_custom": false
+      }
+    ]
+  }
+}
 ```
 
-`status` 固定为 `waiting_input`，`key` 和 `prompt` 为非空字符串，`schema` 可为 JSON Schema object 或 null。该控制对象不作为业务结果返回给 workflow；满足 durable session 条件时转为 Intervention，否则 Call 失败。
+`status` 固定为 `waiting_input`。`requests` 为非空数组；每个 request 的 `key` 和 `prompt` 为非空字符串，`options` 为 string array，`allow_custom` 为 boolean。response 统一为 string；`allow_custom=false` 时 response 必须属于 options，`allow_custom=true` 时可以是任意非空 string。该控制对象不作为业务结果返回给 workflow；满足 durable session 条件时转为 Intervention，否则 Call 失败。
 
 ---
 

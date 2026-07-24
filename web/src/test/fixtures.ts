@@ -14,6 +14,7 @@ export const detail: RunDetail = {
   occurrences: [{ phase_id: 'plan-1', phase: 'Plan', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-plan'] }, { phase_id: 'review-2', phase: 'Review', occurrence: 2, started_at: '2026-07-18T22:00:02Z', ended_at: null, call_ids: ['call-a', 'call-b'] }],
   calls: [{ call_id: 'call-plan', phase_id: 'plan-1', session: 'wf-plan', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }, { call_id: 'call-a', phase_id: 'review-2', session: 'wf-review-a', status: 'running', started_at: null, finished_at: null, exit_code: null, backend: 'codex', model: 'gpt-5' }, { call_id: 'call-b', phase_id: 'review-2', session: 'wf-review-b', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }],
   unattributed_count: 1, malformed_count: 1,
+  interventions: [],
   events: [{ version: 2, event_id: 1, type: 'phase', ts: '2026-07-18T22:00:00Z', phase: 'Plan', phase_id: 'plan-1', payload: {} }, { version: 2, event_id: 2, type: 'agent_start', ts: '2026-07-18T22:00:02Z', phase: 'Review', phase_id: 'review-2', call_id: 'call-a', payload: { backend: 'codex' } }, { version: 2, event_id: 3, type: 'agent_message', ts: '2026-07-18T22:00:03Z', phase: 'Review', phase_id: 'review-2', call_id: 'call-a', payload: { session: 'wf-review-a', content: 'Reviewing **workflow output** now.' } }],
   unattributed: [{ type: 'message', content: 'legacy' }], malformed: [{ version: 2, event_id: 3, type: 'agent_start' }],
 };

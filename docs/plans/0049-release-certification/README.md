@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [发布认证](01-plan-release-certification.md) | 待创建 | pending |
+| 01 | [发布认证](01-plan-release-certification.md) | [Report](01-report-release-certification.md) | done |
 
 ## 范围
 

@@ -23,6 +23,7 @@ export const api = {
   run: (id: string) => request<RunDetail>(`/runs/${encodeURIComponent(id)}`),
   interventions: (id: string) => request<{ items: InterventionSummary[] }>(`/runs/${encodeURIComponent(id)}/interventions`),
   respondIntervention: (id: string, requestId: string, response: unknown) => request<RunSummary>(`/runs/${encodeURIComponent(id)}/interventions/${encodeURIComponent(requestId)}/response`, { method: 'POST', body: JSON.stringify({ response }) }),
+  respondInterventions: (id: string, responses: { request_id: string; response: string }[]) => request<RunSummary>(`/runs/${encodeURIComponent(id)}/interventions/responses`, { method: 'POST', body: JSON.stringify({ responses }) }),
   createRun: (body: Record<string, unknown>) => request<RunSummary>('/runs', { method: 'POST', body: JSON.stringify(body) }),
   runAction: (id: string, action: string, body?: Record<string, unknown>) => request<RunSummary>(`/runs/${encodeURIComponent(id)}/${action}`, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }),
   loops: () => request<Page<LoopSummary>>('/loops'),

@@ -17,8 +17,22 @@ function response(body: unknown, status = 200) {
   return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) } as Response);
 }
 
-function installFetch(durable = true) {
-  const calls: string[] = [];
+type FetchOptions = boolean | {
+  durable?: boolean;
+  intervention?: Record<string, unknown> | Record<string, unknown>[];
+  responseStatus?: number;
+  responseBody?: unknown;
+};
+
+function installFetch(config: FetchOptions = true) {
+  vi.stubGlobal('EventSource', EventSourceMock);
+  const durable = typeof config === 'boolean' ? config : config.durable ?? true;
+  const waitingInterventions = typeof config === 'boolean' || !config.intervention ? [{ request_id: 'approve-1', key: 'approve', prompt: 'Approve?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:00:00Z', responded_at: null }] : Array.isArray(config.intervention) ? config.intervention : [config.intervention];
+  const waitingIntervention = waitingInterventions[0];
+  const responseStatus = typeof config === 'boolean' ? 200 : config.responseStatus ?? 200;
+  const responseBody = typeof config === 'boolean' ? null : config.responseBody ?? null;
+  const calls = [] as unknown as string[] & { bodies: unknown[] };
+  calls.bodies = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
     const path = String(input);
@@ -26,13 +40,19 @@ function installFetch(durable = true) {
     if (path.startsWith('/api/v1/runs?')) return response({ items: runs.filter((run) => path.includes('status=failed') ? run.status === 'failed' : true), next_cursor: null });
     if (path === '/api/v1/runs') return options?.method === 'POST' ? response(runs[0], 201) : response({ items: runs, next_cursor: null });
     if (path === '/api/v1/runs/run-live') return response(detail);
-    if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'] });
-    if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: [{ request_id: 'approve-1', key: 'approve', prompt: 'Approve?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, created_at: '2026-07-18T22:00:00Z', responded_at: null }] });
+    if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'], interventions: waitingInterventions });
+    if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: waitingInterventions });
     if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[2], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
     if (path === '/api/v1/runs/run-cancelled') return response({ ...detail, ...runs[3], allowed_actions: ['recover_retry', 'respond', 'rerun'] });
-    if (path === '/api/v1/runs/run-cancelled/interventions') return response({ items: [{ request_id: 'approve-2', key: 'approve', prompt: 'Approve after cancel?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, created_at: '2026-07-18T20:00:00Z', responded_at: null }] });
-    if (path.includes('/api/v1/runs/run-waiting/interventions/approve-1/response')) return response({ ...runs[1], status: 'running', allowed_actions: ['stop'] });
-    if (path.includes('/api/v1/runs/run-cancelled/interventions/approve-2/response')) return response({ ...runs[3], status: 'running', allowed_actions: ['stop'] });
+    if (path === '/api/v1/runs/run-cancelled/interventions') return response({ items: [{ request_id: 'approve-2', key: 'approve', prompt: 'Approve after cancel?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T20:00:00Z', responded_at: null }] });
+    if (path === '/api/v1/runs/run-waiting/interventions/responses') {
+      calls.bodies.push(JSON.parse(String(options?.body)).responses);
+      return response(responseBody ?? { ...runs[1], status: 'running', allowed_actions: ['stop'] }, responseStatus);
+    }
+    if (path === '/api/v1/runs/run-cancelled/interventions/responses') {
+      calls.bodies.push(JSON.parse(String(options?.body)).responses);
+      return response({ ...runs[3], status: 'running', allowed_actions: ['stop'] });
+    }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
     if (path === '/api/v1/loops') return response({ items: [loopSummary, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return response(loopDetail);
@@ -102,6 +122,7 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   await waitFor(() => expect(calls.some((call) => call.includes('status=failed'))).toBe(true));
   fireEvent.click(screen.getByRole('listitem'));
   expect(await screen.findByRole('button', { name: 'Retry failed call' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Retry failed call' })).toHaveClass('primary-button');
   expect(screen.getByRole('button', { name: 'Continue failed session' })).toBeEnabled();
   fireEvent.click(screen.getByRole('button', { name: 'Retry failed call' }));
   await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/recover'));
@@ -141,11 +162,49 @@ it('answers a waiting intervention with a boolean control', async () => {
   await screen.findByRole('heading', { name: 'run-live' });
   fireEvent.click(screen.getByText('run-waiting'));
 
-  expect(await screen.findByRole('heading', { name: 'Approve?' })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: '1 pending request' })).toBeVisible();
+  expect(screen.getByText('Approve?')).toBeVisible();
   expect(screen.queryByRole('button', { name: 'Resume run' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  fireEvent.click(screen.getByRole('button', { name: 'true' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Submit all' }));
 
-  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-waiting/interventions/approve-1/response'));
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-waiting/interventions/responses'));
+  expect(calls.bodies).toContainEqual([{ request_id: 'approve-1', response: 'true' }]);
+});
+
+it('answers string interventions with typed controls', async () => {
+  const stringCalls = installFetch({ intervention: { request_id: 'name-1', key: 'name', prompt: 'Reviewer name?', schema: { type: 'string' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:00:00Z', responded_at: null } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Response for name' }), { target: { value: 'Ada' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Submit all' }));
+  await waitFor(() => expect(stringCalls.bodies).toContainEqual([{ request_id: 'name-1', response: 'Ada' }]));
+});
+
+it('answers option interventions and surfaces response errors', async () => {
+  const objectCalls = installFetch({ intervention: { request_id: 'payload-1', key: 'payload', prompt: 'Structured payload?', source: 'agent', options: ['low', 'high'], allow_custom: false, status: 'pending', resume_mode: 'continue', call_id: '0002', can_continue_session: true, created_at: '2026-07-18T22:00:00Z', responded_at: null } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+  expect(await screen.findByText('Session continuation')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'low' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Submit all' }));
+  await waitFor(() => expect(objectCalls.bodies).toContainEqual([{ request_id: 'payload-1', response: 'low' }]));
+  cleanup();
+  window.history.replaceState(null, '', '/');
+  EventSourceMock.instances = [];
+  vi.unstubAllGlobals();
+
+  const errorCalls = installFetch({ intervention: { request_id: 'free-1', key: 'free', prompt: 'Any value?', schema: null, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:00:00Z', responded_at: null }, responseStatus: 422, responseBody: { error: { code: 'validation_failed', message: 'response must be string', details: {} } } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Response for free' }), { target: { value: 'anything' } });
+  fireEvent.click(await screen.findByRole('button', { name: 'Submit all' }));
+  await waitFor(() => expect(errorCalls.bodies).toContainEqual([{ request_id: 'free-1', response: 'anything' }]));
+  expect(await screen.findByRole('alert')).toHaveTextContent('response must be string');
+  expect(screen.getByRole('status')).toHaveTextContent('response must be string');
 });
 
 it('answers a cancelled pending intervention and keeps recovery controls', async () => {
@@ -154,11 +213,43 @@ it('answers a cancelled pending intervention and keeps recovery controls', async
   await screen.findByRole('heading', { name: 'run-live' });
   fireEvent.click(screen.getByText('run-cancelled'));
 
-  expect(await screen.findByRole('button', { name: 'Retry cancelled call' })).toBeVisible();
-  expect(await screen.findByRole('heading', { name: 'Approve after cancel?' })).toBeVisible();
-  fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+  expect(await screen.findByRole('button', { name: 'Retry cancelled call' })).toHaveClass('secondary-button');
+  expect(await screen.findByText('Approve after cancel?')).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: 'true' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Submit all' }));
 
-  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-cancelled/interventions/approve-2/response'));
+  await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-cancelled/interventions/responses'));
+});
+
+it('shows answered interventions as read-only history', async () => {
+  installFetch({ intervention: { request_id: 'approve-answered', key: 'approve', prompt: 'Approved already?', schema: { type: 'boolean' }, status: 'answered', response: true, resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:00:00Z', responded_at: '2026-07-18T22:01:00Z' } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+
+  expect(await screen.findByText('Requests')).toBeVisible();
+  fireEvent.click(screen.getByText('Requests'));
+  expect(screen.getByText('Approved already?')).toBeVisible();
+  expect(screen.getByText('true')).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'true' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Submit all' })).not.toBeInTheDocument();
+});
+
+it('answers multiple pending requests in one submit', async () => {
+  installFetch({ intervention: [
+    { request_id: 'first', key: 'first', prompt: 'First pending?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:00:00Z', responded_at: null },
+    { request_id: 'second', key: 'second', prompt: 'Second pending?', options: ['ship'], allow_custom: true, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:01:00Z', responded_at: null },
+    { request_id: 'done', key: 'done', prompt: 'Done request?', schema: { type: 'boolean' }, status: 'answered', response: false, resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:02:00Z', responded_at: '2026-07-18T22:03:00Z' },
+  ] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByText('run-waiting'));
+
+  expect(await screen.findByRole('heading', { name: '2 pending requests' })).toBeVisible();
+  expect(screen.getByText('First pending?')).toBeVisible();
+  expect(screen.getByText('Second pending?')).toBeVisible();
+  fireEvent.click(screen.getByText('Requests'));
+  expect(screen.getByText('Done request?')).toBeVisible();
 });
 
 it('navigates Loop declarations and renders files', async () => {

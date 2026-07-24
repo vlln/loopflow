@@ -214,6 +214,30 @@ def test_v13_contract_examples_and_negative_shapes():
     with pytest.raises(ValidationError):
         validate_contract("backend_capabilities_v13", invalid_capabilities)
 
+    vnext = dict(examples["intervention_vnext"])
+    validate_contract("intervention_vnext", vnext)
+
+    old_shape = dict(examples["intervention"])
+    with pytest.raises(ValidationError):
+        validate_contract("intervention_vnext", old_shape)
+
+    invalid_vnext = dict(vnext)
+    invalid_vnext["schema"] = {"type": "boolean"}
+    with pytest.raises(ValidationError):
+        validate_contract("intervention_vnext", invalid_vnext)
+
+    invalid_vnext = dict(vnext)
+    invalid_vnext["response"] = True
+    invalid_vnext["status"] = "answered"
+    invalid_vnext["responded_at"] = "2026-07-22T08:01:00Z"
+    with pytest.raises(ValidationError):
+        validate_contract("intervention_vnext", invalid_vnext)
+
+    validate_contract("batch_intervention_response", examples["batch_intervention_response"])
+    invalid_batch = {"responses": [{"request_id": "scope-1", "response": ""}]}
+    with pytest.raises(ValidationError):
+        validate_contract("batch_intervention_response", invalid_batch)
+
 
 def test_recovery_boundary_metadata_expresses_cancel_points():
     resumable = recovery_boundary_metadata(can_recover_continue=True)

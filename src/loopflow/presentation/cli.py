@@ -21,6 +21,7 @@ from pathlib import Path
 
 import click
 
+from loopflow.infrastructure.workflow_args import accepted_kwargs
 from loopflow.infrastructure.web_storage import append_run_index, atomic_write_json
 
 
@@ -154,7 +155,7 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
-    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow, intervene
 
     if mock:
         set_mock(mock)
@@ -230,12 +231,10 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
             phase=phase, log=log, args=args_dict, workflow=workflow,
+            intervene=intervene,
         )
-        import inspect
-        sig = inspect.signature(mod.run)
-        if "state" in sig.parameters:
-            run_kwargs["state"] = state
-        result = mod.run(**run_kwargs)
+        run_kwargs["state"] = state
+        result = mod.run(**accepted_kwargs(mod.run, run_kwargs))
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
         _finish_run(run_meta, "stopped")
@@ -245,6 +244,16 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
             live.stop()
         sys.exit(0)
     except Exception as e:
+        from loopflow.infrastructure.intervention import InterventionPending
+
+        if isinstance(e, InterventionPending):
+            _finish_run(run_meta, "waiting_input")
+            run_meta["counter"] = ctx._counter
+            _write_run(run_dir / "run.json", run_meta)
+            if live:
+                live.stop()
+            print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
+            sys.exit(0)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         _finish_run(run_meta, "failed")
         run_meta["failed_call_id"] = ctx._current_call_id
@@ -281,7 +290,7 @@ def legacy_resume_internal(run_id, mock, watch):
     """Resume a crashed loop run."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
-    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow, intervene
 
     if mock:
         set_mock(mock)
@@ -344,12 +353,10 @@ def legacy_resume_internal(run_id, mock, watch):
         run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
             phase=phase, log=log, args=args_dict, workflow=workflow,
+            intervene=intervene,
         )
-        import inspect
-        sig = inspect.signature(mod.run)
-        if "state" in sig.parameters:
-            run_kwargs["state"] = state
-        result = mod.run(**run_kwargs)
+        run_kwargs["state"] = state
+        result = mod.run(**accepted_kwargs(mod.run, run_kwargs))
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
         _finish_run(run_meta, "stopped")
@@ -359,6 +366,16 @@ def legacy_resume_internal(run_id, mock, watch):
             live.stop()
         sys.exit(0)
     except Exception as e:
+        from loopflow.infrastructure.intervention import InterventionPending
+
+        if isinstance(e, InterventionPending):
+            _finish_run(run_meta, "waiting_input")
+            run_meta["counter"] = ctx._counter
+            _write_run(run_json, run_meta)
+            if live:
+                live.stop()
+            print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
+            sys.exit(0)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         _finish_run(run_meta, "failed")
         _write_run(run_json, run_meta)

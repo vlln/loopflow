@@ -131,7 +131,27 @@ PhaseEdge：`from:string`、`to:string`、`count:integer >= 1`、`is_backedge:bo
 | can_continue_session | boolean | 是 | session 和 backend capability 均满足 continue 条件 |
 | response | any | 条件必填 | status=answered 时必填；其他状态不返回该字段 |
 | created_at | string | 是 | 请求创建时间 |
-| answered_at | string/null | 是 | 回答时间 |
+| responded_at | string/null | 是 | 回答时间 |
+
+### InterventionSummary vNext
+
+Agent structured intervention vNext 将替代 `schema`/任意 JSON response 形态。迁移完成后 read model 使用：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| request_id | string | 是 | Run 内唯一请求 ID |
+| source | string | 是 | `workflow` 或 `agent` |
+| key | string | 是 | 稳定请求键；workflow source 下参与 replay 对齐 |
+| prompt | string | 是 | 向用户展示的问题 |
+| options | string[] | 是 | Agent/workflow 提供的预设选项；可为空 |
+| allow_custom | boolean | 是 | false 时 response 必须属于 options；true 时可为任意非空 string |
+| status | string | 是 | `pending/answered/closed` |
+| call_id | string/null | 是 | 关联 Agent Call；workflow source 为 null |
+| resume_mode | string | 是 | `replay` 或 `continue` |
+| can_continue_session | boolean | 是 | session 和 backend capability 均满足 continue 条件 |
+| response | string | 条件必填 | status=answered 时必填；其他状态不返回该字段 |
+| created_at | string | 是 | 请求创建时间 |
+| responded_at | string/null | 是 | 回答时间 |
 
 ## 三、Runs
 
@@ -208,6 +228,53 @@ Body：
 只允许字段 `response`，其值按请求 schema 校验。成功后 response 不可修改，服务自动恢复相同 run_id。Run 为 `waiting_input`，或 Run 已 `cancelled` 但 request 仍为 pending 时均可提交；后者表示用户取消了等待中的 execution attempt，但没有关闭该人工输入请求。
 
 200：status=running、execution_epoch 已递增的 `RunSummary`。
+
+前置条件错误由 application command 保证副作用边界：
+
+| 错误 | HTTP/code | 副作用边界 |
+|------|-----------|------------|
+| response 不符合 request schema 或 body 不合约 | 422 `validation_failed` | response 不落盘；不启动恢复 worker |
+| request 不存在 | 404 `intervention_not_found` | Run 和 request 集合不变；不启动恢复 worker |
+| request 已 answered | 409 `intervention_already_answered` | 原 response 不覆盖；不重复启动恢复 worker |
+| Run 当前不允许 respond | 409 `invalid_run_transition` | request 不变；不启动恢复 worker |
+
+response 持久化成功后，后续恢复 worker/agent 失败按普通 Run execution failure 表达，不作为 Intervention 特殊状态建模。
+
+错误：404 `run_not_found` 或 `intervention_not_found`；409 `invalid_run_transition`、`intervention_already_answered`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。
+
+### `POST /runs/{run_id}/interventions/responses` vNext
+
+批量回答同一 Run 当前 pending requests。Body：
+
+```json
+{
+  "responses": [
+    {"request_id": "scope-1", "response": "扩大"},
+    {"request_id": "note-1", "response": "重点看最近两年的资料"}
+  ]
+}
+```
+
+约束：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| responses | object[] | 是 | 非空数组；同一 request_id 不得重复 |
+| responses[].request_id | string | 是 | Run 内 request ID |
+| responses[].response | string | 是 | 非空 string；按 request options/allow_custom 校验 |
+
+成功语义：all-or-nothing 持久化全部 response，追加对应 `intervention_responded` 事件，然后只启动一次恢复 worker。200：status=running、execution_epoch 已递增的 `RunSummary`。
+
+前置条件错误由 application command 保证 all-or-nothing 副作用边界：
+
+| 错误 | HTTP/code | 副作用边界 |
+|------|-----------|------------|
+| body 不合约、response 为空、response 不符合 options/allow_custom | 422 `validation_failed` | 所有 responses 均不落盘；不启动恢复 worker |
+| 任一 request 不存在 | 404 `intervention_not_found` | 所有 responses 均不落盘；不启动恢复 worker |
+| 任一 request 已 answered | 409 `intervention_already_answered` | 不覆盖既有 response；其他 responses 也不落盘；不启动恢复 worker |
+| Run 当前不允许 respond | 409 `invalid_run_transition` | 所有 requests 不变；不启动恢复 worker |
+
+response 持久化成功后，后续恢复 worker/agent 失败按普通 Run execution failure 表达，不作为 Intervention 特殊状态建模。
 
 错误：404 `run_not_found` 或 `intervention_not_found`；409 `invalid_run_transition`、`intervention_already_answered`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。
 

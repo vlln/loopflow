@@ -62,12 +62,31 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-022-B-1 AC-022-B-2", "unit:intervention")
     assign("AC-022-B-3", "GET /api/v1/runs/{run_id}", "GET /api/v1/runs/{run_id}/interventions")
     assign(
-        "AC-022-E-1 AC-022-E-2",
+        "AC-022-E-1 AC-022-E-2 AC-022-E-4 AC-022-E-5",
         "POST /api/v1/runs/{run_id}/interventions/{request_id}/response",
     )
     assign("AC-022-E-3", "unit:session-intervention")
     assign("AC-022-F-1", "unit:intervention-replay")
     assign("AC-022-F-2", "unit:agent-control-output")
+
+    assign("AC-023-N-1", "unit:agent-control-output")
+    assign("AC-023-N-2", "POST /api/v1/runs/{run_id}/interventions/responses")
+    assign("AC-023-N-3", "unit:intervention-routing")
+    assign("AC-023-N-4", "process:cli-run", "POST /api/v1/runs")
+    assign("AC-023-N-5", "ui:intervention")
+    assign("AC-023-B-1", "unit:parallel-intervention", "GET /api/v1/runs/{run_id}/interventions")
+    assign(
+        "AC-023-B-2 AC-023-B-3",
+        "POST /api/v1/runs/{run_id}/interventions/responses",
+    )
+    assign(
+        "AC-023-E-1 AC-023-E-2 AC-023-E-3 AC-023-E-4",
+        "POST /api/v1/runs/{run_id}/interventions/responses",
+    )
+    assign("AC-023-E-5", "unit:agent-control-output")
+    assign("AC-023-F-1", "unit:agent-control-output")
+    assign("AC-023-F-2", "unit:session-intervention")
+    assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
     return targets
 
 
@@ -106,11 +125,29 @@ TEST_NODES = {
     "AC-022-B-1": "tests/integration/test_web_api.py::test_intervention_endpoints_list_validate_and_respond",
     "AC-022-B-2": "tests/unit/test_web_application.py::test_intervention_null_schema_accepts_any_json_value",
     "AC-022-B-3": "tests/unit/test_web_application.py::test_cancelled_pending_intervention_remains_pending_without_response",
-    "AC-022-E-1": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
-    "AC-022-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_and_duplicate_without_recovery",
+    "AC-022-E-1": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_schema_without_persisting_or_recovery",
+    "AC-022-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
     "AC-022-E-3": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+    "AC-022-E-4": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+    "AC-022-E-5": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
     "AC-022-F-1": "tests/unit/test_web_execution.py::test_workflow_intervention_replay_diverges_on_prompt_change",
     "AC-022-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
+    "AC-023-N-1": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-N-2": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+    "AC-023-N-3": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-N-4": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
+    "AC-023-N-5": "web/src/App.test.tsx::answers multiple pending requests in one submit",
+    "AC-023-B-1": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-B-2": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+    "AC-023-B-3": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+    "AC-023-E-1": "tests/unit/test_web_application.py::test_batch_intervention_response_is_all_or_nothing",
+    "AC-023-E-2": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
+    "AC-023-E-3": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+    "AC-023-E-4": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
+    "AC-023-E-5": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+    "AC-023-F-1": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
+    "AC-023-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+    "AC-023-F-3": "tests/integration/test_web_api.py::test_batch_intervention_endpoint_is_all_or_nothing",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
@@ -151,6 +188,32 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
             "code": "intervention_already_answered",
         }
     ],
+    "AC-022-E-4": [
+        {"kind": "http_status", "value": 404, "code": "intervention_not_found"}
+    ],
+    "AC-022-E-5": [
+        {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
+    ],
+    "AC-023-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-023-B-2": [{"kind": "http_status", "value": 200}],
+    "AC-023-B-3": [{"kind": "http_status", "value": 200}],
+    "AC-023-E-1": [
+        {"kind": "http_status", "value": 422, "code": "validation_failed"}
+    ],
+    "AC-023-E-2": [
+        {
+            "kind": "http_status",
+            "value": 409,
+            "code": "intervention_already_answered",
+        }
+    ],
+    "AC-023-E-3": [
+        {"kind": "http_status", "value": 404, "code": "intervention_not_found"}
+    ],
+    "AC-023-E-4": [
+        {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
+    ],
+    "AC-023-F-3": [{"kind": "http_status", "value": 200}],
 }
 
 

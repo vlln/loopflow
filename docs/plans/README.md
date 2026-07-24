@@ -17,11 +17,22 @@
 | [0046](0046-grok-backend/) | Grok 后端接入 | done | 2026-07-22 |
 | [0047](0047-grok-acp/) | Grok ACP 接入 | done | 2026-07-22 |
 | [0048](0048-system-test-certification/) | SYSTEM_TEST 发布前认证 | done | 2026-07-23 |
-| [0049](0049-release-certification/) | RELEASE 发布认证 | pending | 2026-07-23 |
+| [0049](0049-release-certification/) | RELEASE 发布认证 | done | 2026-07-23 |
 | [0050](0050-cancel-recovery-semantics/) | 取消恢复语义设计修订 | done | 2026-07-23 |
 | [0051](0051-cancel-recovery-test-infra/) | 取消恢复测试契约同步 | done | 2026-07-23 |
 | [0052](0052-cancel-recovery-implementation/) | 取消恢复语义实现 | done | 2026-07-23 |
 | [0053](0053-system-test-certification/) | 取消恢复后 SYSTEM_TEST 认证 | done | 2026-07-23 |
+| [0054](0054-status-contract-alignment/) | 状态契约对齐 | done | 2026-07-23 |
+| [0055](0055-intervention-frontend-contract/) | Intervention 前后端契约对齐 | done | 2026-07-23 |
+| [0056](0056-intervention-webui-design/) | Intervention WebUI 设计 | done | 2026-07-23 |
+| [0057](0057-intervention-respond-test-infra/) | Intervention respond 错误边界测试契约 | done | 2026-07-23 |
+| [0058](0058-intervention-webui-implementation/) | Intervention WebUI 实现对齐 | done | 2026-07-23 |
+| [0059](0059-agent-intervention-design/) | Agent structured intervention 设计修订 | done | 2026-07-23 |
+| [0060](0060-agent-intervention-test-infra/) | Agent structured intervention 测试契约 | done | 2026-07-23 |
+| [0061](0061-agent-intervention-implementation/) | Agent structured intervention 实现 | done | 2026-07-23 |
+| [0062](0062-system-test-certification/) | SYSTEM_TEST 发布前认证 | done | 2026-07-23 |
+| [0063](0063-system-test-fix/) | SYSTEM_TEST 局部修复 | done | 2026-07-23 |
+| [0064](0064-release-certification/) | RELEASE 认证 | pending | 2026-07-23 |
 
 ## 状态说明
 

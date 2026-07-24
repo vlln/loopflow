@@ -20,6 +20,11 @@ def test_contract_validator_rejects_shape_drift():
     with pytest.raises(ValidationError):
         validate_contract("backend", invalid)
 
+    invalid_intervention = dict(contract_examples()["intervention"])
+    invalid_intervention["answered_at"] = None
+    with pytest.raises(ValidationError):
+        validate_contract("intervention", invalid_intervention)
+
 
 def test_filesystem_factory_creates_v2_legacy_and_unreadable_runs(tmp_path):
     factory = WebFixtureFactory(tmp_path)

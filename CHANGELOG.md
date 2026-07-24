@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.19.0] — 2026-07-23
+
+### Added
+- Agent structured intervention vNext: Agents can return multiple `__loopflow.requests[]` in one turn.
+- Intervention request options and custom-response constraints with string responses.
+- Batch intervention response endpoint: `POST /runs/{run_id}/interventions/responses`.
+- WebUI multi-question intervention form with one submit action.
+
+### Changed
+- `intervene()` remains a workflow routing gate and now supports `options` and `allow_custom`.
+- CLI and Web workflow execution inject `intervene()` consistently.
+- Intervention summaries now expose `source`, `options`, `allow_custom`, and string `response`.
+
+### Fixed
+- CLI waiting-input workflows no longer fail just because `intervene()` was not injected.
+- Strict-signature workflows no longer receive unsupported framework kwargs.
+- Agent intervention request IDs include call identity to avoid parallel worker collisions.
+
 ## [0.18.0] — 2026-07-23
 
 ### Added
