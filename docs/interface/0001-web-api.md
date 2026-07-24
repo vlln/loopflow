@@ -337,6 +337,38 @@ Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`e
 
 错误：404 `run_not_found`。
 
+### `GET /runs/{run_id}/file-changes`
+
+200：
+
+```json
+{"items": [{"seq": 1, "phase": "Plan", "phase_id": "plan-1", "ts": "...", "changes": [{"path": "data/raw.json", "action": "created", "size": 1024}]}], "count": 1}
+```
+
+按 seq 升序返回 run 的全部文件变化记录；无 `file_changes.jsonl` 的 legacy Run 返回空列表。
+
+错误：404 `run_not_found`。
+
+### `GET /runs/{run_id}/file?path={relative_path}`
+
+读取 run 工作目录（ADR-0042）内单个文件的内容，供 WebUI 文件预览。
+
+200：
+
+```json
+{
+  "path": "src/main.py",
+  "media_type": "text/x-python",
+  "content": "...",
+  "size": 1200,
+  "read_only": true
+}
+```
+
+限制：path 必须是相对 POSIX 路径；resolve 后仍在 run 的 working_directory 内；文本预览上限 1 MiB；只读。
+
+错误：403 `path_forbidden`；404 `run_not_found`/`file_not_found`；422 `file_not_previewable`。
+
 ## 五、Loops 与文件
 
 ### `GET /loops`
