@@ -279,15 +279,54 @@ function EventContent({ event }: { event: RunEvent }) {
   return <>{message && <div className="event-message markdown"><ReactMarkdown>{message}</ReactMarkdown></div>}{!message && event.type === 'phase' && <p className="event-message">Entered {event.phase ?? firstString(payload, 'title') ?? 'phase'}</p>}{!message && event.type === 'agent_start' && <p className="event-message">Agent started</p>}{!message && event.type === 'agent_done' && <p className="event-message">Agent completed</p>}{details.length > 0 && <dl className="event-details">{details.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{formatEventValue(value)}</dd></div>)}</dl>}{!message && details.length === 0 && !['phase', 'agent_start', 'agent_done'].includes(event.type) && <p className="event-message muted">Event recorded</p>}</>;
 }
 
+interface ArgEntry { key: string; value: string }
+
+function parseArgValue(raw: string): unknown {
+  try { return JSON.parse(raw); } catch { return raw; }
+}
+
 function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (run: RunSummary) => void }) {
   const [loops, setLoops] = useState<LoopSummary[]>([]);
   const [loop, setLoop] = useState('');
+  const [argsMode, setArgsMode] = useState<'editor' | 'json'>('editor');
+  const [entries, setEntries] = useState<ArgEntry[]>([{ key: '', value: '' }]);
   const [args, setArgs] = useState('{}');
   const [workdir, setWorkdir] = useState('');
+  const [browseSupported, setBrowseSupported] = useState(true);
+  const [browsing, setBrowsing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setLoop(page.items[0]?.name ?? ''); }); }, []);
-  const submit = async () => { try { const body: Record<string, unknown> = { loop, args: JSON.parse(args) }; if (workdir.trim()) body.working_directory = workdir.trim(); onCreated(await api.createRun(body)); } catch (cause) { setError(messageOf(cause)); } };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => setLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><label>Arguments<textarea value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /></label><label>Working directory<input value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} /></label>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
+  const browse = async () => {
+    setBrowsing(true);
+    setError(null);
+    try {
+      const result = await api.pickDirectory();
+      if (!result.cancelled && result.path) setWorkdir(result.path);
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'not_supported') setBrowseSupported(false);
+      else setError(messageOf(cause));
+    } finally { setBrowsing(false); }
+  };
+  const submit = async () => {
+    try {
+      let parsed: unknown;
+      if (argsMode === 'json') {
+        parsed = JSON.parse(args);
+      } else {
+        const object: Record<string, unknown> = {};
+        for (const entry of entries) {
+          const key = entry.key.trim();
+          if (!key || entry.value === '') continue;
+          object[key] = parseArgValue(entry.value);
+        }
+        parsed = object;
+      }
+      const body: Record<string, unknown> = { loop, args: parsed };
+      if (workdir.trim()) body.working_directory = workdir.trim();
+      onCreated(await api.createRun(body));
+    } catch (cause) { setError(messageOf(cause)); }
+  };
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => setLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} /><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} />{browseSupported && <button type="button" className="secondary-button" disabled={browsing} onClick={() => void browse()}><Folder size={14} />{browsing ? 'Browsing…' : 'Browse…'}</button>}</div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
 }
 
 function LoopsWorkspace() {

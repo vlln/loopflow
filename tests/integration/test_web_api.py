@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import subprocess
 import threading
 import time
 
@@ -765,3 +766,32 @@ def test_run_file_preview_missing_file_and_unknown_run(api, tmp_path):
     unknown = client.request("GET", "/api/v1/runs/no-such-run/file?path=missing.txt")
     assert unknown.status == 404
     assert unknown.json()["error"]["code"] == "run_not_found"
+
+
+def test_pick_directory_endpoint(api, monkeypatch):
+    """AC-025-N-6/B-6/B-7: native picker endpoint contract over HTTP."""
+    client, _, _ = api
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    def selected(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout="/tmp/B/\n", stderr="")
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", selected)
+    picked = client.request("POST", "/api/v1/system/pick-directory")
+    assert picked.status == 200
+    assert picked.json() == {"path": "/tmp/B", "cancelled": False}
+
+    def cancelled(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="User cancelled.")
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", cancelled)
+    cancelled_response = client.request("POST", "/api/v1/system/pick-directory")
+    assert cancelled_response.status == 200
+    assert cancelled_response.json() == {"path": None, "cancelled": True}
+
+    monkeypatch.setattr("sys.platform", "linux")
+    unsupported = client.request("POST", "/api/v1/system/pick-directory")
+    assert unsupported.status == 501
+    assert unsupported.json()["error"]["code"] == "not_supported"
+
+    assert client.request("GET", "/api/v1/system/pick-directory").status == 404

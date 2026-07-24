@@ -48,6 +48,7 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-014-N-5", "POST /api/v1/runs/{run_id}/stop", "ui:runs")
     assign("AC-014-N-6", "POST /api/v1/runs/{run_id}/resume", "ui:runs")
     assign("AC-014-N-7", "POST /api/v1/runs/{run_id}/rerun", "ui:runs")
+    assign("AC-014-N-9 AC-014-B-3 AC-014-B-4", "POST /api/v1/runs", "ui:runs")
     assign(
         "AC-014-F-1",
         "POST /api/v1/runs/{run_id}/stop",

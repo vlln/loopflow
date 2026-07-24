@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import json
+import subprocess
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -364,6 +366,31 @@ class WebApplication:
 
     def list_backends(self) -> dict[str, Any]:
         return {"items": self.backends.list()}
+
+    def pick_directory(self) -> dict[str, Any]:
+        """Launch the OS-native folder picker on the server machine (ADR-0042).
+
+        macOS only: osascript `choose folder`. A user cancel (exit -128) or a
+        timeout is reported as {"path": None, "cancelled": True}; other
+        platforms and osascript invocation failures raise 501 not_supported.
+        """
+        if sys.platform != "darwin":
+            raise ApplicationError("not_supported", "Directory picker is only supported on macOS")
+        try:
+            result = subprocess.run(
+                ["osascript", "-e", 'POSIX path of (choose folder with prompt "Select a working directory")'],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired:
+            return {"path": None, "cancelled": True}
+        except (OSError, subprocess.SubprocessError) as error:
+            raise ApplicationError("not_supported", f"Directory picker is unavailable: {error}") from error
+        if result.returncode != 0:
+            return {"path": None, "cancelled": True}
+        path = result.stdout.strip().rstrip("/") or "/"
+        return {"path": path, "cancelled": False}
 
     def diagnose_backend(self, name: str, timeout_ms: int) -> dict[str, Any]:
         if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 100 <= timeout_ms <= 30000:

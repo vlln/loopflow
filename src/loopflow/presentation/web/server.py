@@ -52,6 +52,7 @@ ERROR_STATUS = {
     "intervention_not_found": 404,
     "atomic_write_failed": 500,
     "internal_error": 500,
+    "not_supported": 501,
     "diagnostic_start_failed": 503,
 }
 
@@ -141,6 +142,10 @@ def handler_for(
                 return
             if method == "GET" and path == "/backends":
                 self._json(200, self.app.list_backends())
+                return
+            if method == "POST" and path == "/system/pick-directory":
+                self._require_empty_body()
+                self._json(200, self.app.pick_directory())
                 return
 
             batch_intervention = re.fullmatch(r"/runs/([^/]+)/interventions/responses", path)

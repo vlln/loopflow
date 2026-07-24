@@ -1,4 +1,5 @@
 import json
+import subprocess
 
 import pytest
 
@@ -639,3 +640,59 @@ def test_reconcile_and_validation_edges(tmp_path):
         assert invalid.value.code == "validation_failed"
     with pytest.raises(ApplicationError):
         service.enqueue({"loop": "hello", "priority": 101})
+
+
+def test_pick_directory_returns_normalized_path(tmp_path, monkeypatch):
+    """AC-025-N-6: selected folder path is returned without a trailing slash."""
+    service, _, _ = app(tmp_path)
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    def fake_run(command, **kwargs):
+        assert command[0] == "osascript"
+        return subprocess.CompletedProcess(command, 0, stdout="/tmp/lf-work/\n", stderr="")
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", fake_run)
+    assert service.pick_directory() == {"path": "/tmp/lf-work", "cancelled": False}
+
+    def fake_root(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout="/\n", stderr="")
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", fake_root)
+    assert service.pick_directory() == {"path": "/", "cancelled": False}
+
+
+def test_pick_directory_cancel_and_timeout(tmp_path, monkeypatch):
+    """AC-025-B-6: user cancel (non-zero exit) or timeout reports cancelled."""
+    service, _, _ = app(tmp_path)
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    def cancelled(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout="", stderr="User cancelled.")
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", cancelled)
+    assert service.pick_directory() == {"path": None, "cancelled": True}
+
+    def stalled(command, **kwargs):
+        raise subprocess.TimeoutExpired(command, 120)
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", stalled)
+    assert service.pick_directory() == {"path": None, "cancelled": True}
+
+
+def test_pick_directory_not_supported_platforms(tmp_path, monkeypatch):
+    """AC-025-B-7: non-macOS platforms and missing osascript raise 501."""
+    service, _, _ = app(tmp_path)
+    monkeypatch.setattr("sys.platform", "linux")
+    with pytest.raises(ApplicationError) as error:
+        service.pick_directory()
+    assert error.value.code == "not_supported"
+
+    monkeypatch.setattr("sys.platform", "darwin")
+
+    def missing(command, **kwargs):
+        raise FileNotFoundError("osascript")
+
+    monkeypatch.setattr("loopflow.application.web.subprocess.run", missing)
+    with pytest.raises(ApplicationError) as missing_error:
+        service.pick_directory()
+    assert missing_error.value.code == "not_supported"

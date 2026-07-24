@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [New Run 对话框 UX](01-plan-new-run-dialog-ux.md) | [Report](01-report-new-run-dialog-ux.md) | pending |
+| 01 | [New Run 对话框 UX](01-plan-new-run-dialog-ux.md) | [Report](01-report-new-run-dialog-ux.md) | done |
 
 ## 范围
 

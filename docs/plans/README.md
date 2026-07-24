@@ -46,6 +46,7 @@
 | [0075](0075-release-certification/) | RELEASE 认证（0.20.0） | pending | 2026-07-24 |
 | [0076](0076-run-working-directory/) | Run 显式工作目录与观察语义 | done | 2026-07-24 |
 | [0077](0077-system-test-recertification/) | SYSTEM_TEST 认证（含 0076） | done | 2026-07-24 |
+| [0078](0078-new-run-dialog-ux/) | New Run 对话框 UX（目录选择器 + Arguments 编辑器） | done | 2026-07-24 |
 
 ## 状态说明
 

@@ -186,6 +186,13 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .dialog label { display: grid; gap: 7px; padding: 11px 16px 0; color: var(--muted); font-size: 11px; }.dialog label:last-of-type { padding-bottom: 16px; }
 .dialog select, .dialog textarea, .dialog input { width: 100%; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--surface-raised); outline: 0; color: var(--text); }.dialog select, .dialog input { height: 38px; padding: 0 10px; }.dialog input { font-size: 11px; }.dialog textarea { min-height: 110px; resize: vertical; padding: 10px; font-family: monospace; font-size: 11px; }
 .dialog select:focus, .dialog textarea:focus, .dialog input:focus { border-color: rgb(204 251 241 / 44%); }.dialog .form-error { display: block; padding: 0 16px 10px; }
+.dialog-field { display: grid; gap: 7px; padding: 11px 16px 0; color: var(--muted); font-size: 11px; }.dialog-field:last-of-type { padding-bottom: 16px; }
+.dialog-field-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mode-toggle { padding: 2px 6px; border: 0; border-radius: 7px; background: transparent; color: var(--mint-strong); font-size: 10px; font-weight: 650; }.mode-toggle:hover { background: var(--surface-soft); }
+.args-editor { display: grid; gap: 8px; }
+.arg-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 30px; gap: 8px; align-items: center; }.arg-row .icon-button { width: 30px; height: 30px; flex-basis: 30px; }.arg-row .icon-button svg { width: 14px; height: 14px; }
+.add-argument { min-height: 30px; justify-self: start; font-size: 11px; }
+.workdir-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 .file-preview-dialog { width: min(720px, 100%); }
 .file-preview-status { display: block; padding: 4px 16px 16px; color: var(--muted); font-size: 11px; }
 .file-preview-body { display: flex; min-height: 160px; max-height: 62vh; flex-direction: column; padding: 0 16px 16px; }

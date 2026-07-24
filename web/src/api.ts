@@ -33,6 +33,7 @@ export const api = {
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),
   fileChanges: (id: string) => request<{ items: FileChangeRecord[]; count: number }>(`/runs/${encodeURIComponent(id)}/file-changes`),
   runFile: (id: string, path: string) => request<RunFileContent>(`/runs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
+  pickDirectory: () => request<{ path: string | null; cancelled: boolean }>('/system/pick-directory', { method: 'POST' }),
 };
 
 export interface RunEventHandlers {

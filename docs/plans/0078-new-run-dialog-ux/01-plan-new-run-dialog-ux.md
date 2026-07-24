@@ -2,7 +2,7 @@
 title: New Run 对话框 UX Plan
 description: 工作目录 OS 原生选择器（pick-directory 端点 + Browse 按钮）与 Arguments 键值编辑器
 type: plan
-status: pending
+status: done
 created: 2026-07-24T06:30:00Z
 ---
 

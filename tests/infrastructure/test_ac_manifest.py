@@ -13,7 +13,7 @@ def test_generated_manifest_covers_every_frozen_scenario():
     manifest = generate_manifest(AC_PATH)
 
     assert check_manifest(manifest, AC_PATH, allow_planned=True) == []
-    assert len(manifest["cases"]) == 72
+    assert len(manifest["cases"]) == 75
 
 
 def test_manifest_checker_rejects_missing_scenario():
