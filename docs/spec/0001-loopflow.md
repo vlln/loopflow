@@ -48,6 +48,8 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-025 | 开发者 | 在 workflow 或 Agent 定义变化时阻止错误缓存命中 | 避免把旧调用结果或 session 注入语义不同的新调用 | P0 |
 | US-026 | 开发者 | 创建 Run 时显式指定工作目录 | WebUI 常驻 server 下让不同 run 在各自项目目录执行和观察，互不污染 | P0 |
 | US-027 | 开发者 | 在 WebUI 查看 run 工作目录内文件的内容 | 不离开控制台即可确认 agent 新建或修改的文件内容 | P1 |
+| US-028 | 开发者 | 创建 Run 时按 loop 声明预填 Arguments 键和默认值 | 不用记忆每个 loop 的参数字面量，降低输入错误 | P1 |
+| US-029 | 开发者 | 在白天和夜晚主题间切换 WebUI 外观 | 在不同光照环境下舒适使用 | P2 |
 
 ---
 
@@ -421,6 +423,8 @@ Agent 隔离层级体系（递进）：
 | BR-044 | Run 显式工作目录 | `POST /runs` 携带 `working_directory` 时 | 必须是已存在目录的绝对路径（否则 422 `validation_failed`）；executor 子进程 chdir 到该目录执行 workflow 与文件观察；缺省为进程 cwd（向后兼容）；持久化到 run.json，recover/rerun 沿用；详见 [ADR-0042](../adr/0042-run-working-directory.md) |
 | BR-045 | 文件观察基线快照 | Run 启动时且观察启用 | 先建立基线快照（内存态，不产生记录），phase diff 针对基线或上一快照；`created` 仅表示 phase 期间新建，预先存在的文件首改标记 `modified`；详见 [ADR-0043](../adr/0043-file-observation-baseline.md) |
 | BR-046 | Run 工作目录文件预览 | WebUI 点击文件 / `GET /runs/{run_id}/file` | 仅限 run 工作目录内的相对 POSIX 路径，resolve 越界拒绝（403 `path_forbidden`）；文本预览上限 1 MiB；只读；WebUI 在文件变化目录树中点击文件弹出只读预览 |
+| BR-047 | Loop args 声明预填 | loop.md `meta.args` 声明 `[{name, default, description, required}]` 时 | Loop summary/detail API 返回 `declared_args`（非法声明静默忽略）；New Run 对话框按声明预填键值行（default 填入，required 仅提示）；无声明时为空白起始 |
+| BR-048 | WebUI 主题 | 用户点击 rail 主题切换按钮 | 日夜主题切换（CSS 变量调色板）；选择持久化于 localStorage；未选择时跟随系统 `prefers-color-scheme` |
 
 Agent 结构化 intervention 控制结果固定为：
 

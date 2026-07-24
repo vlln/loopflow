@@ -407,6 +407,10 @@ Query：可选 `q`、`limit`、`cursor`。200：
 | files | LoopFileSummary[] | 是 | 允许预览的目录树平铺列表 |
 | agents | AgentDefinitionSummary[] | 是 | Agent 摘要 |
 | runs | RunSummary[] | 是 | 最近 20 个关联 Runs，按 created 降序 |
+| declared_phases | object[] | 否 | loop.md `meta.phases` 声明（ADR-0040），`[{title, detail}]` |
+| declared_args | object[] | 否 | loop.md `meta.args` 声明（BR-047），`[{name, default, description, required}]`；无声明时缺省或空列表 |
+
+LoopSummary 在列表接口中同样携带 `declared_phases` / `declared_args`（可选字段），供 New Run 对话框预填。
 
 LoopFileSummary：`path:string`、`media_type:string/null`、`size:integer`、`previewable:boolean`，全部必填。
 
@@ -503,6 +507,10 @@ Body：`{"timeout_ms":5000}`，范围 100..30000。
 stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感的键 `token|password|secret|api_key`，匹配 `KEY` 后可选空白、分隔符 `=` 或 `:`、可选空白，以及连续到空白/分号/逗号/行尾的非空值；保留原键和分隔符，将值替换为固定文本 `[REDACTED]`。例如 `token=lf-secret-123; connection failed` 必须变为 `token=[REDACTED]; connection failed`。其他脱敏规则可扩展，但不得改变该最小规则的输出。
 
 错误：404 `backend_not_found`；422 `validation_failed`；503 `diagnostic_start_failed`。
+
+### `GET /system/meta`
+
+200：`{"version": "0.20.0"}`——与 `loopflow.__version__` 一致，供 WebUI 显示运行中 server 的版本。
 
 ### `POST /system/pick-directory`
 

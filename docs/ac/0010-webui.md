@@ -25,6 +25,8 @@ created: 2026-07-18T21:00:00Z
 | AC-014-N-7 | done Run A | 对 A 执行 Rerun | API 返回 201 和新 Run B；B.run_id != A.run_id，B.loop/args 与 A 相同，A 文件不变 | 自动化 |
 | AC-014-N-8 | fixture 含 Loop 名和 run_id 可区分的 Runs | 分别应用 Loop 筛选和文本搜索 | 每次结果只包含匹配项；清除筛选后恢复完整列表 | 自动化 |
 | AC-014-N-9 | WebUI New Run 对话框 | 用 Arguments 键值编辑器添加 `name=review`、`count=2`、`debug=true` 并启动 | POST body args 为 `{"name":"review","count":2,"debug":true}`（值智能类型解析：数字/布尔不包字符串） | 自动化 |
+| AC-014-N-10 | Loop 声明 `meta.args`（`review` 默认 `main`，`count` 无默认） | 打开 New Run 对话框并选择该 Loop | 键值编辑器预填 `review=main` 与空值 `count` 行；直接启动时 POST body args 含 `{"review":"main"}`（空值行忽略） | 自动化 |
+| AC-014-N-11 | server 运行中 | `GET /api/v1/system/meta` 并观察 WebUI rail | 端点返回 200 `{"version": "..."}`（与 `loopflow.__version__` 一致）；rail 显示该版本而非硬编码值 | 自动化 |
 
 ## 边界场景
 
@@ -34,6 +36,7 @@ created: 2026-07-18T21:00:00Z
 | AC-014-B-2 | Runs 目录为空 | 打开 Runs | 左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用 | 自动化 |
 | AC-014-B-3 | Arguments 键值编辑器含空 key 行 | 启动 Run | 空 key 行被忽略；args 仅含有效条目；无任何条目时 args 为 `{}` | 自动化 |
 | AC-014-B-4 | Arguments 切换到 JSON 高级模式 | 输入非法 JSON 并启动 | 显示 JSON 校验错误，不发送请求 | 自动化 |
+| AC-014-B-5 | Loop 无 `meta.args` 声明 | 打开 New Run 对话框 | 键值编辑器为空白起始（无预填行），行为与声明前一致 | 自动化 |
 
 ## 异常场景
 
@@ -242,6 +245,7 @@ created: 2026-07-18T21:00:00Z
 | AC-019-N-2 | Runs 工作区打开，焦点置于左栏第一个 failed Run A；A 含 Phase p1 和 Call c1；fixture DOM 的区域顺序为 Runs→Phase→Calls→Run actions | 按 Enter 选择 A；按 Tab 1 次进入 Phase 并按 ArrowRight 选择 p1；按 Tab 1 次进入 Calls 并按 ArrowDown 选择 c1；按 Tab 1 次聚焦 accessible name=`Resume run` 的按钮并按 Enter | 每步有可见 focus；详情依次显示 A、p1、c1；最后只发出一次 A 的 resume 请求 | 自动化 |
 | AC-019-N-3 | 启动 Web 服务时未传 host | 检查监听 socket | 仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口 | 自动化 |
 | AC-019-N-4 | 本机测试接口地址为 `0.0.0.0` | 以 host=`0.0.0.0` 且 allow-remote=true 启动服务 | 服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告 | 自动化 |
+| AC-019-N-5 | WebUI 已打开 | 点击 rail 主题切换按钮，然后刷新页面 | 日夜主题切换；选择持久化（刷新后保持）；未做过选择时默认跟随系统 `prefers-color-scheme` | 自动化 |
 
 ## 边界场景
 
@@ -249,6 +253,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-019-B-1 | 1024x768 视口 | 打开 Run | 主列表和 Phase 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠 | 自动化 + 截图 |
 | AC-019-B-2 | 390x844 视口 | 在 Runs、Phase、Process 间切换 | 一次只显示一个主区域；Stop/Resume 可到达；无水平页面滚动 | 自动化 + 截图 |
+| AC-019-B-3 | light 主题 | 打开 Runs 工作区 | 面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域 | 自动化 + 截图 |
 
 ## 异常场景
 
