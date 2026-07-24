@@ -8,6 +8,8 @@ created: 2026-07-18T00:00:00Z
 
 # ADR 0034: Web 事件与 Run 生命周期契约
 
+> 2026-07-22 修订：事件信封、SSE、原子写和 stale reconcile 继续有效；缓存命中、recover、`cancelled/waiting_input` 状态和 stop 终态语义由 [ADR 0036](0036-recovery-intervention.md) 替代本 ADR 中相冲突的 resume/stopped 条款。
+
 ## Context
 
 WebUI 要同时观察正在写入的 Run、重建带循环的 Phase 执行图、查看 Agent Call 过程并在断线后继续消费事件。现有运行目录中有两种 JSONL：`events.jsonl` 是 Run 级时间线，`<seq>.jsonl` 是 Agent 调用的 resume 缓存。两者服务于不同正确性目标，不能因 Web 展示而合并为一种格式。
@@ -70,15 +72,19 @@ Phase 事件的 `payload.occurrence` 是同 title 在该 Run 中从 1 开始的�
 
 只有在事件自身存在明确 session、phase 或其他稳定证据时，才建立 Call 或 Phase occurrence 关联。并行交错、字段缺失或证据冲突时，事件标记为 `unattributed`。不得按文件位置、最近出现的 Phase 或 UI 需要虚构归属，也不要求改写历史文件。
 
-### 5. `event_id` 是 SSE 断线恢复游标
+### 5. `event_id` 是 SSE `run_event` topic 的断线恢复游标
 
-`event_id` 在单个 Run 内严格递增且持久化后才可对 SSE 客户端可见。客户端提供最后确认的 `event_id`，服务端：
+> 2026-07-23 修订：SSE 从 events.jsonl 管道重构为多 topic transport（[ADR-0041](0041-sse-multi-topic-transport.md)），`event_id` 从"全局 SSE 游标"修订为"`run_event` topic 的游标"。其他 topic（如 `file_changes`）有各自独立的游标，不影响本节语义。
 
-1. 从 `events.jsonl` 重放所有 `event_id > last_event_id` 的已持久化 v2 事件；
+`event_id` 在单个 Run 内严格递增且持久化后才可对 SSE 客户端可见。客户端提供最后确认的 `event_id`（作为 `run_event` topic 的游标），服务端：
+
+1. 从 `events.jsonl` 重放所有 `event_id > last_event_id` 的已持久化 v2 事件，通过 `event: run_event` 推送；
 2. 继续推送之后成功追加的事件；
 3. 允许客户端按 `event_id` 去重；
-4. 游标超出可恢复范围时返回明确的不可恢复响应，不静默跳到最新事件；
+4. 游标超出可恢复范围时返回明确的不可恢复响应（`stream_error` 带 `topic=run_event`），不静默跳到最新事件；
 5. 建立或重建 SSE 连接不得触发 Run 执行、resume 或状态修改。
+
+其他 topic 的游标（如 `file_changes` topic 的 `seq`）独立于 `event_id`，各自有独立的 replay 和不可恢复响应。一个 topic 的游标超出范围不影响其他 topic。
 
 Legacy 文件没有可靠 `event_id`，可以作为一次性历史时间线读取，但不承诺在 legacy 区间提供精确断点恢复。
 

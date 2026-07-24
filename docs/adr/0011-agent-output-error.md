@@ -108,7 +108,7 @@ class AgentError(Exception):
 ```
 agent() 失败 → AgentError 抛出一 → workflow 崩溃
     ↓
-loop resume   → workflow.py 重头执行
+loopflow resume   → workflow.py 重头执行
     ↓
 try_resume()  → 已完成调用缓存命中，跳过
     ↓

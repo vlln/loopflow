@@ -10,14 +10,22 @@ from tests.web_support.factories import WebFixtureFactory
 class Probe:
     def __init__(self, identities=None):
         self.identities = identities or {}
+        self.groups = {}
         self.terminated = []
 
     def identity(self, pid):
         return self.identities.get(pid)
 
+    def group_id(self, pid):
+        return self.groups.get(pid)
+
     def terminate(self, pid):
         self.terminated.append(pid)
         return True
+
+    def terminate_group(self, process_group_id, *, grace_seconds=0.2):
+        self.terminated.append(process_group_id)
+        return "terminated"
 
 
 def test_unreadable_run_does_not_hide_valid_siblings(tmp_path):

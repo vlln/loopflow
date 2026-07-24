@@ -36,7 +36,7 @@ loopflow 是一个独立的 AI Agent 循环编排工具。以 Agent（完整 ReA
 
 - loop 定义是文件夹，包含 workflow.py + agents/，可版本控制、可分享、可复用
 - 任意 CLI Agent 后端可插拔使用，后端细节对 loop 作者透明
-- 运行实例管理完善：loop run / loop resume / loop status / loop list
+- 运行实例管理完善：loopflow run / loopflow resume / loopflow status / loopflow list
 - 社区贡献的 loop 模板库，覆盖常见场景（代码审查、文档生成、测试修复、重构等）
 - 与 subagent-skills 共享底层后端代码，但上层各自独立演进
 

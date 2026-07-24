@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import importlib.util
 import os
 import sys
+import types
 from pathlib import Path
 
 import yaml
@@ -142,16 +142,11 @@ def list_agents(loop_name: str) -> list[dict]:
 
 def _load_module(wf_path: Path):
     """Load a Python module from a file path."""
-    spec = importlib.util.spec_from_file_location(
-        f"loop_{wf_path.parent.name}", wf_path
-    )
-    if spec is None or spec.loader is None:
-        print(f"Error: cannot load {wf_path}", file=sys.stderr)
-        sys.exit(1)
-
-    mod = importlib.util.module_from_spec(spec)
+    mod = types.ModuleType(f"loop_{wf_path.parent.name}")
+    mod.__file__ = str(wf_path)
     try:
-        spec.loader.exec_module(mod)
+        source = wf_path.read_text(encoding="utf-8")
+        exec(compile(source, str(wf_path), "exec"), mod.__dict__)
     except Exception as e:
         print(f"Error: failed to load {wf_path}: {e}", file=sys.stderr)
         sys.exit(1)

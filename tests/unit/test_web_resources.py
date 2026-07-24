@@ -111,3 +111,10 @@ def test_backend_list_reports_missing_and_unknown_version(monkeypatch):
     items = BackendRepository().list()
     assert items and all(item["status"] == "missing" for item in items)
     assert all(item["version"] is None for item in items)
+    assert "grok" in {item["name"] for item in items}
+    assert "gork" not in {item["name"] for item in items}
+
+
+def test_backend_diagnostics_do_not_accept_gork_typo():
+    with pytest.raises(KeyError):
+        BackendRepository().diagnose("gork", 100)

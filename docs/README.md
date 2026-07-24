@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DESIGN` |
-| **设计评估** | v0.17.2 已发布：WebUI 收尾（Run 目录索引持久化、Operations Workspace 优化、类型化 Markdown 渲染）。新一轮迭代待启动。 |
+| **设计评估** | 0.20.0 已发布（v0.20.0 tag 在 main，0070-0079 全部闭环）。新一轮迭代候选：web profile manifest 漂移修复（test 容器）、loop args schema 服务端校验、非 macOS 目录选择器。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

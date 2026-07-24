@@ -11,7 +11,11 @@ class ClaudeBackend(CliBackend):
     @property
     def capabilities(self):
         from loopflow.domain.capabilities import Capabilities
-        return Capabilities(native_goal=True)
+        return Capabilities(
+            native_goal=True,
+            resume_session=True,
+            durable_session_id=True,
+        )
 
     def _cmd_create(self, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]:
         cmd = ["claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"]

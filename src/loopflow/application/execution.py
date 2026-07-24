@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import inspect
+import json
 import multiprocessing
 import os
 import time
@@ -13,6 +13,7 @@ from typing import Any
 from loopflow.infrastructure.context import RunContext, State, set_context
 from loopflow.infrastructure.discovery import load_loop
 from loopflow.infrastructure.web_storage import SystemProcessProbe, append_run_index, atomic_write_json, now_iso, read_json
+from loopflow.infrastructure.workflow_args import accepted_kwargs
 
 
 def execute_workflow(
@@ -23,13 +24,12 @@ def execute_workflow(
     run_dir: Path,
 ) -> None:
     """Execute one workflow in the current process and persist its lifecycle."""
-    from loopflow.runtime import agent, log, parallel, phase, pipeline, set_mock, workflow
+    from loopflow.runtime import agent, intervene, log, parallel, phase, pipeline, set_mock, workflow
 
-    resume = bool(options.get("resume"))
+    recover = bool(options.get("recover") or options.get("resume"))
     module, metadata, loop_dir = load_loop(loop)
-    if options.get("mock"):
-        set_mock(options["mock"])
     started = now_iso()
+    pid = os.getpid()
     run_metadata = {
         "loop": loop,
         "run_id": run_id,
@@ -39,44 +39,159 @@ def execute_workflow(
         "finished_at": None,
         "args": args,
         "counter": 0,
-        "pid": os.getpid(),
-        "process_started_at": SystemProcessProbe().identity(os.getpid()),
+        "execution_epoch": 1,
+        "execution_options": {
+            key: value
+            for key, value in options.items()
+            if key in {"backend", "model", "mock", "from_phase", "only_phase"}
+        },
+        "pid": pid,
+        "process_group_id": os.getpgrp(),
+        "process_started_at": SystemProcessProbe().identity(pid),
+        # Explicit run working directory (ADR-0042): the child process has
+        # already chdir'd, so cwd is the authoritative value
+        "working_directory": str(Path.cwd()),
     }
-    if resume and (run_dir / "run.json").is_file():
+    declared_phases = metadata.get("phases")
+    if isinstance(declared_phases, list):
+        valid_phases = [
+            {"title": str(p.get("title", "")).strip(), "detail": str(p.get("detail") or "")}
+            for p in declared_phases
+            if isinstance(p, dict) and isinstance(p.get("title"), str) and p["title"].strip()
+        ]
+        if valid_phases:
+            run_metadata["declared_phases"] = valid_phases
+    if recover and (run_dir / "run.json").is_file():
         previous = read_json(run_dir / "run.json")
         run_metadata.update(previous)
-        run_metadata.update({"status": "running", "started_at": started, "finished_at": None, "pid": os.getpid(), "process_started_at": SystemProcessProbe().identity(os.getpid())})
+        frozen_options = dict(previous.get("execution_options") or {})
+        run_metadata.update({
+            "status": "running",
+            "started_at": started,
+            "finished_at": None,
+            "pid": pid,
+            "process_group_id": os.getpgrp(),
+            "process_started_at": SystemProcessProbe().identity(pid),
+            "counter": 0,
+            "execution_epoch": int(previous.get("execution_epoch", 0)) + 1,
+            "execution_options": frozen_options,
+        })
+        options = {**frozen_options, **{key: value for key, value in options.items() if key in {"recover", "resume", "recovery_mode"}}}
+    # Apply mock after the frozen execution_options merge so recovery of a
+    # mock-executed run does not resolve a real backend (sys.exit when absent)
+    if options.get("mock"):
+        set_mock(options["mock"])
     atomic_write_json(run_dir / "run.json", run_metadata)
 
     defaults = metadata.get("state", {})
     state = State(defaults)
-    if resume and (run_dir / "state.json").is_file():
-        try:
-            state = State.from_dict(read_json(run_dir / "state.json"), defaults)
-        except (OSError, ValueError):
-            pass
-    context = RunContext(run_id=run_id, run_dir=run_dir, resume=resume, loop_dir=loop_dir, state=state, counter=int(run_metadata.get("counter", 0)))
+    context = RunContext(
+        run_id=run_id,
+        run_dir=run_dir,
+        resume=recover,
+        loop_dir=loop_dir,
+        state=state,
+        counter=0,
+        recovery_mode=options.get("recovery_mode", "retry") if recover else None,
+        recovery_target_call_id=run_metadata.get("failed_call_id") if recover else None,
+        execution_options=run_metadata.get("execution_options"),
+    )
     context.from_phase = options.get("from_phase")
     context.only_phase = options.get("only_phase")
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
+    # File change observation (ADR-0039): initialize observer from loop meta
+    from loopflow.infrastructure.file_observation import FileChangeObserver, FileObservationConfig
+    obs_config = FileObservationConfig.from_meta(metadata)
+    if obs_config.enabled:
+        context.file_observer = FileChangeObserver(
+            run_dir=run_dir,
+            working_dir=Path.cwd(),
+            config=obs_config,
+        )
+        # Baseline snapshot (ADR-0043): pre-existing files are not "created"
+        context.file_observer.seed()
     set_context(context)
-    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow}
-    if "state" in inspect.signature(module.run).parameters:
-        kwargs["state"] = state
+    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
+    kwargs["state"] = state
     try:
-        module.run(**kwargs)
+        module.run(**accepted_kwargs(module.run, kwargs))
     except KeyboardInterrupt:
-        status, error = "stopped", None
+        status, error = "cancelled", None
+    except Exception as exc:
+        from loopflow.infrastructure.intervention import InterventionPending
+        from loopflow.infrastructure.recovery import ReplayDiverged
+
+        if isinstance(exc, InterventionPending):
+            status, error = "waiting_input", None
+        elif isinstance(exc, ReplayDiverged):
+            status, error = "failed", "replay_diverged"
+        else:
+            status, error = "failed", str(exc)
     except BaseException as exc:
         status, error = "failed", str(exc)
     else:
-        status, error = "done", None
+        if recover and context.recovery_target_call_id and not context.recovery_target_reached:
+            status, error = "failed", "replay_diverged"
+        else:
+            status, error = "done", None
     finished = now_iso()
     run_metadata.update({"status": status, "counter": context._counter, "finished_at": finished, "updated_at": finished, "error_summary": error})
+    if recover:
+        run_metadata["recovery_verification"] = (
+            "unverified" if context.legacy_recovery else "verified"
+        )
+    if status == "failed" and context._current_call_id:
+        run_metadata["failed_call_id"] = context._current_call_id
+        run_metadata["active_call_id"] = context._current_call_id
+        run_metadata["failed_session_id"] = context.failed_session_id
+        run_metadata["can_recover_continue"] = context.failed_can_continue
+    elif status == "done":
+        run_metadata.pop("failed_call_id", None)
+        run_metadata.pop("failed_session_id", None)
+        run_metadata.pop("can_recover_continue", None)
+        run_metadata.pop("cancel_point", None)
+        run_metadata.pop("active_call_id", None)
+        run_metadata.pop("active_worker_atomic", None)
+        if "state" in accepted_kwargs(module.run, {"state": state}) and context.state is not None:
+            atomic_write_json(run_dir / "state.json", context.state.to_dict())
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)
-    atomic_write_json(run_dir / "run.json", run_metadata)
+    run_metadata.pop("process_group_id", None)
+    current = read_json(run_dir / "run.json")
+    if (
+        current.get("execution_epoch") == run_metadata.get("execution_epoch")
+        and current.get("status") == "running"
+    ):
+        atomic_write_json(run_dir / "run.json", run_metadata)
+
+
+def _execute_workflow_process(
+    loop: str,
+    args: dict[str, Any],
+    options: dict[str, Any],
+    run_id: str,
+    run_dir: Path,
+    execution_lock: Path,
+    working_directory: str,
+) -> None:
+    try:
+        # Explicit run working directory (ADR-0042): chdir first so every
+        # downstream Path.cwd() consumer (observer, backends, workflow)
+        # resolves inside the run's directory
+        os.chdir(working_directory)
+        if hasattr(os, "setsid"):
+            try:
+                os.setsid()
+            except OSError:
+                pass
+        execute_workflow(loop, args, options, run_id, run_dir)
+    finally:
+        for path in (execution_lock, run_dir / ".recovery.ready"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
 
 
 class BackgroundRunExecutor:
@@ -84,25 +199,95 @@ class BackgroundRunExecutor:
 
     def __init__(self, runs_root: Path, start_method: str | None = None) -> None:
         self.runs_root = runs_root
-        self.context = multiprocessing.get_context(start_method) if start_method else multiprocessing.get_context()
+        # Default to spawn for cross-platform determinism: every child gets a
+        # fresh interpreter with the parent's *current* environment. The
+        # platform defaults (fork / forkserver) leak stale state — forkserver
+        # children inherit the forkserver process's env from its creation
+        # time, not the parent's env at start() time.
+        self.context = multiprocessing.get_context(start_method or "spawn")
 
-    def start(self, loop: str, args: dict[str, Any], options: dict[str, Any], run_id: str | None = None) -> str:
+    def start(
+        self,
+        loop: str,
+        args: dict[str, Any],
+        options: dict[str, Any],
+        run_id: str | None = None,
+        working_directory: str | Path | None = None,
+    ) -> str:
         run_id = run_id or uuid.uuid4().hex
-        run_dir = self._existing(run_id) if options.get("resume") else None
-        working_directory = Path.cwd()
+        recover = bool(options.get("recover") or options.get("resume"))
+        run_dir = self._existing(run_id) if recover else None
+        if recover and run_dir is not None:
+            # Recover/rerun reuse the persisted working directory (ADR-0042);
+            # a new value never overrides it
+            persisted = read_json(run_dir / "run.json").get("working_directory")
+            working_directory = persisted if isinstance(persisted, str) and persisted else None
+        working_directory = Path(working_directory) if working_directory is not None else Path.cwd()
         encoded = str(working_directory.resolve()).lstrip("/").replace("/", "-")
         run_dir = run_dir or self.runs_root / f"lf_{encoded}" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
-        if not options.get("resume"):
+        previous_epoch = None
+        if recover:
+            previous_epoch = int(read_json(run_dir / "run.json").get("execution_epoch", 0))
+        if not recover:
             append_run_index(self.runs_root, working_directory, run_dir.parent, run_id)
-        process = self.context.Process(target=execute_workflow, args=(loop, args, options, run_id, run_dir), daemon=False)
-        process.start()
-        deadline = time.monotonic() + 2
-        while not (run_dir / "run.json").is_file() and process.is_alive() and time.monotonic() < deadline:
+        lock_path = run_dir / ".execution.lock"
+        ready_path = run_dir / ".recovery.ready"
+        try:
+            ready_path.unlink()
+        except OSError:
+            pass
+        try:
+            descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.write(descriptor, str(os.getpid()).encode())
+            os.close(descriptor)
+        except FileExistsError as error:
+            raise RuntimeError("invalid_run_transition") from error
+        process = self.context.Process(target=_execute_workflow_process, args=(loop, args, options, run_id, run_dir, lock_path, str(working_directory)), daemon=False)
+        try:
+            process.start()
+        except BaseException:
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
+            raise
+        # The child must signal a started run within this window. Keep it
+        # generous: on loaded or low-core machines (CI), interpreter boot plus
+        # coverage tracing can take several seconds before run.json appears.
+        deadline = time.monotonic() + 15
+        def started() -> bool:
+            if not (run_dir / "run.json").is_file():
+                return False
+            if previous_epoch is None:
+                return True
+            try:
+                metadata = read_json(run_dir / "run.json")
+                epoch_started = int(metadata.get("execution_epoch", 0)) > previous_epoch
+                return epoch_started and (
+                    ready_path.is_file()
+                    or metadata.get("status") in {"done", "failed", "cancelled", "waiting_input"}
+                )
+            except (OSError, ValueError, json.JSONDecodeError):
+                return False
+
+        while not started() and process.is_alive() and time.monotonic() < deadline:
             time.sleep(0.005)
-        if not (run_dir / "run.json").is_file():
+        if not started():
             process.join(timeout=0.1)
+            try:
+                lock_path.unlink()
+            except OSError:
+                pass
             raise RuntimeError("run_process_start_failed")
+        if recover:
+            metadata = read_json(run_dir / "run.json")
+            error = metadata.get("error_summary")
+            if metadata.get("status") == "failed" and error in {
+                "replay_diverged",
+                "continue_not_supported",
+            }:
+                raise RuntimeError(error)
         return run_id
 
     def _existing(self, run_id: str) -> Path | None:

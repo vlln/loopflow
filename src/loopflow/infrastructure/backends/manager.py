@@ -72,12 +72,14 @@ def _run_mock_auto(schema: dict | None) -> tuple[str, int]:
 # ── backend creation ─────────────────────────────────────────────────────────
 
 def _make_backend(backend: str | None = None, transport: str | None = None,
-                  text_handler=None, thought_handler=None, cwd: str | None = None):
+                  text_handler=None, thought_handler=None, session_handler=None,
+                  cwd: str | None = None):
     """Create a backend instance. Detects available backend if not specified."""
     from loopflow.infrastructure.backends.base import BaseBackend
     from loopflow.infrastructure.backends.claude import ClaudeBackend
     from loopflow.infrastructure.backends.codex import CodexBackend
     from loopflow.infrastructure.backends.gemini import GeminiBackend
+    from loopflow.infrastructure.backends.grok import GrokBackend
     from loopflow.infrastructure.backends.kimi import KimiBackend
     from loopflow.infrastructure.backends.kiro import KiroBackend
     from loopflow.infrastructure.backends.opencode import OpencodeBackend
@@ -93,6 +95,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         "opencode": OpencodeBackend,
         "qwen": QwenBackend,
         "gemini": GeminiBackend,
+        "grok": GrokBackend,
     }
 
     if backend is None:
@@ -113,6 +116,8 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         kwargs["text_handler"] = text_handler
     if thought_handler:
         kwargs["thought_handler"] = thought_handler
+    if session_handler:
+        kwargs["session_handler"] = session_handler
     kwargs["transport"] = transport
     instance = cls(**kwargs)
     if cwd and hasattr(instance, '_transport'):
@@ -126,7 +131,8 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   model: str | None = None, cwd: str | None = None,
                   agent_def=None,
                   cache_path: Path | None = None,
-                  resume_session_id: str | None = None) -> list[dict]:
+                  resume_session_id: str | None = None,
+                  call_id: str | None = None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     output_parts: list[str] = []
 
@@ -141,7 +147,18 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         if text:
             _append_cache(cache_path, {"type": "agent_thought", "content": text})
 
-    instance = _make_backend(backend, text_handler=text_handler, thought_handler=thought_handler, cwd=cwd)
+    def session_handler(session_id: str) -> None:
+        event = {"type": "agent_session", "call_id": call_id, "session_id": session_id}
+        _append_cache(cache_path, event)
+        _write_event(event)
+
+    instance = _make_backend(
+        backend,
+        text_handler=text_handler,
+        thought_handler=thought_handler,
+        session_handler=session_handler,
+        cwd=cwd,
+    )
     try:
         _emit_log(f"Calling agent via {backend or 'auto'}...")
 

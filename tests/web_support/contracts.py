@@ -13,6 +13,7 @@ RUN_SUMMARY_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "run_id",
+        "working_directory",
         "loop",
         "status",
         "current_phase",
@@ -24,12 +25,14 @@ RUN_SUMMARY_SCHEMA = {
         "iteration_count",
         "error_summary",
         "parse_error",
+        "execution_epoch",
         "allowed_actions",
     ],
     "properties": {
         "run_id": {"type": "string"},
+        "working_directory": {"type": "string"},
         "loop": NULLABLE_STRING,
-        "status": {"enum": ["running", "done", "failed", "stopped", "stale", "unreadable"]},
+        "status": {"enum": ["running", "waiting_input", "cancelling", "cancelled", "done", "failed", "stopped", "stale", "unreadable"]},
         "current_phase": NULLABLE_STRING,
         "created": NULLABLE_STRING,
         "started_at": NULLABLE_STRING,
@@ -39,10 +42,11 @@ RUN_SUMMARY_SCHEMA = {
         "iteration_count": {"type": "integer", "minimum": 0},
         "error_summary": NULLABLE_STRING,
         "parse_error": NULLABLE_STRING,
+        "execution_epoch": NULLABLE_INTEGER,
         "allowed_actions": {
             "type": "array",
             "uniqueItems": True,
-            "items": {"enum": ["stop", "resume", "rerun", "reconcile"]},
+            "items": {"enum": ["stop", "recover_retry", "recover_continue", "respond", "rerun", "reconcile"]},
         },
     },
 }
@@ -125,11 +129,13 @@ BACKEND_SCHEMA = {
         "capabilities": {
             "type": "object",
             "additionalProperties": False,
-            "required": ["native_goal", "structured_output", "native_skills"],
+            "required": ["native_goal", "structured_output", "native_skills", "resume_session", "durable_session_id"],
             "properties": {
                 "native_goal": {"type": "boolean"},
                 "structured_output": {"type": "boolean"},
                 "native_skills": {"type": "boolean"},
+                "resume_session": {"type": "boolean"},
+                "durable_session_id": {"type": "boolean"},
             },
         },
         "diagnosed_at": NULLABLE_STRING,
@@ -149,6 +155,47 @@ DIAGNOSTIC_SCHEMA = {
         "stderr": {"type": "string"},
         "diagnosed_at": {"type": "string"},
     },
+}
+
+INTERVENTION_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "request_id",
+        "source",
+        "key",
+        "prompt",
+        "options",
+        "allow_custom",
+        "status",
+        "call_id",
+        "resume_mode",
+        "can_continue_session",
+        "created_at",
+        "responded_at",
+    ],
+    "properties": {
+        "request_id": {"type": "string"},
+        "source": {"enum": ["workflow", "agent"]},
+        "key": {"type": "string", "minLength": 1},
+        "prompt": {"type": "string", "minLength": 1},
+        "options": {"type": "array", "items": {"type": "string"}},
+        "allow_custom": {"type": "boolean"},
+        "status": {"enum": ["pending", "answered", "closed"]},
+        "call_id": NULLABLE_STRING,
+        "resume_mode": {"enum": ["replay", "continue"]},
+        "can_continue_session": {"type": "boolean"},
+        "response": {"type": "string"},
+        "created_at": {"type": "string"},
+        "responded_at": NULLABLE_STRING,
+    },
+    "allOf": [
+        {
+            "if": {"properties": {"status": {"const": "answered"}}},
+            "then": {"required": ["response"]},
+            "else": {"not": {"required": ["response"]}},
+        }
+    ],
 }
 
 V2_EVENT_SCHEMA = {
@@ -175,6 +222,7 @@ SCHEMAS = {
     "queue_item": QUEUE_ITEM_SCHEMA,
     "backend": BACKEND_SCHEMA,
     "diagnostic": DIAGNOSTIC_SCHEMA,
+    "intervention": INTERVENTION_SCHEMA,
     "v2_event": V2_EVENT_SCHEMA,
 }
 
@@ -187,6 +235,7 @@ def contract_examples() -> dict[str, dict[str, Any]]:
     return {
         "run_summary": {
             "run_id": "run-1",
+            "working_directory": "/fixture/project",
             "loop": "hello",
             "status": "running",
             "current_phase": "Review",
@@ -198,6 +247,7 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "iteration_count": 0,
             "error_summary": None,
             "parse_error": None,
+            "execution_epoch": 1,
             "allowed_actions": ["stop"],
         },
         "error": {"error": {"code": "run_not_found", "message": "not found", "details": {}}},
@@ -229,6 +279,8 @@ def contract_examples() -> dict[str, dict[str, Any]]:
                 "native_goal": True,
                 "structured_output": False,
                 "native_skills": True,
+                "resume_session": True,
+                "durable_session_id": True,
             },
             "diagnosed_at": None,
         },
@@ -240,6 +292,20 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "stdout": "",
             "stderr": "diagnostic timed out after 100ms",
             "diagnosed_at": "2026-07-18T22:00:00Z",
+        },
+        "intervention": {
+            "request_id": "approve-1",
+            "source": "workflow",
+            "key": "approve",
+            "prompt": "Approve?",
+            "options": ["true", "false"],
+            "allow_custom": False,
+            "status": "pending",
+            "call_id": None,
+            "resume_mode": "replay",
+            "can_continue_session": False,
+            "created_at": "2026-07-18T22:00:00Z",
+            "responded_at": None,
         },
         "v2_event": {
             "version": 2,

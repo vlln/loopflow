@@ -43,6 +43,7 @@ class AcpTransport:
             "listSessions": True,
         }
         self._proc: subprocess.Popen | None = None
+        self._initialize_result: dict[str, Any] | None = None
         self._lock = threading.Lock()
         self._next_id = 0
         self._notification_handlers: dict[str, Callable[[dict], None]] = {}
@@ -67,9 +68,9 @@ class AcpTransport:
                 f"Command not found: {self._command[0]}\n"
                 f"Please install '{self._command[0]}' or use a different backend with --backend <name>."
             ) from None
-        self._initialize()
+        self._initialize_result = self._initialize()
 
-    def _initialize(self) -> None:
+    def _initialize(self) -> dict[str, Any]:
         """ACP handshake: send initialize request to the agent."""
         result = self.call(
             "initialize",
@@ -79,8 +80,7 @@ class AcpTransport:
                 "capabilities": self._capabilities,
             },
         )
-        # Server responds with its own capabilities — we don't need them
-        _ = result
+        return result
 
     def close(self) -> None:
         if self._proc is None:

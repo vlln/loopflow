@@ -36,12 +36,17 @@ class CliBackend(BaseBackend):
     @property
     def capabilities(self):
         from loopflow.domain.capabilities import Capabilities
-        return Capabilities(native_goal=self.supports_native_goal)
+        return Capabilities(
+            native_goal=self.supports_native_goal,
+            resume_session=True,
+            durable_session_id=True,
+        )
 
-    def __init__(self, text_handler: Callable[[str], None] | None = None, thought_handler: Callable[[str], None] | None = None, backend_name: str | None = None, **kwargs) -> None:
+    def __init__(self, text_handler: Callable[[str], None] | None = None, thought_handler: Callable[[str], None] | None = None, session_handler: Callable[[str], None] | None = None, backend_name: str | None = None, **kwargs) -> None:
         self._transport = CliTransport(backend_name=backend_name)
         self._text_handler = text_handler
         self._thought_handler = thought_handler
+        self._session_handler = session_handler
 
     @abstractmethod
     def _cmd_create(self, user: str, system: str | None, model: str | None, system_mode: str) -> list[str]: ...
@@ -106,6 +111,8 @@ class CliBackend(BaseBackend):
                     self._emit_text(text)
                 if new_sid:
                     sid = new_sid
+                    if self._session_handler:
+                        self._session_handler(new_sid)
             ec = self._transport.run(cmd, on_stdout=on_stdout, on_stderr=lambda _: None)
 
         if not self._text_handler:
@@ -176,6 +183,8 @@ def _StderrSidExtractor(backend: CliBackend, cap: _SidCapture):
             _, sid = backend._parse_line(line)
             if sid:
                 cap.value = sid
+                if backend._session_handler:
+                    backend._session_handler(sid)
                 return
         backend._on_stderr_line(line)
     return on_stderr

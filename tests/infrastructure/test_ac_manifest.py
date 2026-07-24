@@ -13,7 +13,7 @@ def test_generated_manifest_covers_every_frozen_scenario():
     manifest = generate_manifest(AC_PATH)
 
     assert check_manifest(manifest, AC_PATH, allow_planned=True) == []
-    assert len(manifest["cases"]) == 60
+    assert len(manifest["cases"]) == 80
 
 
 def test_manifest_checker_rejects_missing_scenario():
@@ -42,5 +42,9 @@ def test_strict_manifest_rejects_planned_nodes():
 
     errors = check_manifest(manifest, AC_PATH)
 
-    assert len(errors) == len(manifest["cases"])
+    active = [
+        case for case in manifest["cases"]
+        if case["ac_id"] not in {"AC-014-N-3", "AC-014-N-5", "AC-014-N-6", "AC-014-F-1"}
+    ]
+    assert len(errors) == len(active)
     assert all("planned test node is not allowed" in error for error in errors)

@@ -25,8 +25,8 @@ async function installApi(page: Page) {
       return json({ items, next_cursor: null });
     }
     if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } }] });
-    if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[1], allowed_actions: ['resume'] });
-    if (/\/api\/v1\/runs\/[^/]+\/(stop|resume|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'stopped', allowed_actions: ['resume'] });
+    if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[2], allowed_actions: ['recover_retry', 'recover_continue'] });
+    if (/\/api\/v1\/runs\/[^/]+\/(stop|recover|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'running', allowed_actions: ['stop'] });
     if (path === '/api/v1/loops') return json({ items: [loopSummary], next_cursor: null });
     if (path === '/api/v1/loops/review-loop') return json(loopDetail);
     if (path === '/api/v1/loops/review-loop/file') return json({ content: url.searchParams.get('path') === 'workflow.py' ? 'def run():\n    return "review"' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
@@ -51,7 +51,7 @@ test.beforeEach(async ({ page }) => {
 test('operates Runs without overflow and renders a nonblank phase graph', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'chromium-390';
   const tablet = testInfo.project.name === 'chromium-1024';
-  const liveRun = page.getByRole('listitem').filter({ hasText: 'lf_tmp-review-workspace' }).first();
+  const liveRun = page.getByRole('listitem').filter({ hasText: 'run-live' }).first();
   await expect(liveRun).toBeVisible();
   if (mobile) await liveRun.click();
   await expect(page.getByRole('heading', { name: 'Phase graph' })).toBeVisible();
@@ -78,21 +78,26 @@ test('operates Runs without overflow and renders a nonblank phase graph', async 
   }
   expect((await flow.screenshot()).byteLength).toBeGreaterThan(1000);
 
-  await page.getByRole('button', { name: 'Open process inspector' }).click();
-  if (mobile || tablet) await expect(page.getByRole('button', { name: 'Close process inspector' })).toBeVisible();
+  if (mobile || tablet) {
+    await page.getByRole('button', { name: 'Open file changes panel' }).click();
+    await expect(page.getByRole('button', { name: 'Close file changes panel' })).toBeVisible();
+  } else {
+    await expect(page.getByRole('button', { name: 'Open file changes panel' })).toBeHidden();
+  }
   await expectNoPageOverflow(page);
-  const log = page.locator('.process-log');
+  const log = page.locator('.event-list');
   await expect(log).toContainText(longOutput);
   expect(await log.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
 
-  if (mobile || tablet) await page.getByRole('button', { name: 'Close process inspector' }).click();
+  if (mobile || tablet) await page.getByRole('button', { name: 'Close file changes panel' }).click();
   if (!mobile) {
     await page.getByLabel('Filter status').selectOption('failed');
-    const failedRun = page.getByRole('listitem').filter({ hasText: 'lf_tmp-review-workspace' }).first();
+    const failedRun = page.getByRole('listitem').filter({ hasText: 'run-failed' }).first();
     await expect(failedRun).toBeVisible();
     await failedRun.click();
     await expect(page).toHaveURL(/run=run-failed/);
-    await expect(page.getByRole('button', { name: 'Resume run' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Retry failed call' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Continue failed session' })).toBeEnabled();
     await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0);
   }
   await page.screenshot({ path: testInfo.outputPath('runs.png'), fullPage: true });
@@ -129,14 +134,14 @@ test('all icon-only controls expose names and tooltips', async ({ page }) => {
 
 test('keeps a thousand Runs reachable without resizing the workspace', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'chromium-1440', 'large-list boundary is viewport-independent');
-  const bulkRuns = Array.from({ length: 1000 }, (_, index) => { const id = `bulk-${String(index + 1).padStart(4, '0')}`; return { ...runs[1], run_id: id, working_directory: `lf_tmp-bulk-${String(index + 1).padStart(4, '0')}` }; });
+  const bulkRuns = Array.from({ length: 1000 }, (_, index) => { const id = `bulk-${String(index + 1).padStart(4, '0')}`; return { ...runs[2], run_id: id, working_directory: `lf_tmp-bulk-${String(index + 1).padStart(4, '0')}` }; });
   await page.unroute('**/api/v1/**');
   await page.route('**/api/v1/runs?*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ items: bulkRuns, next_cursor: null }) }));
-  await page.route('**/api/v1/runs/*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...detail, ...bulkRuns.at(-1), allowed_actions: ['resume'] }) }));
+  await page.route('**/api/v1/runs/*', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ...detail, ...bulkRuns.at(-1), allowed_actions: ['recover_retry'] }) }));
   await page.getByLabel('Search runs').fill('bulk');
   const list = page.locator('.run-list');
   const width = await list.evaluate((element) => element.getBoundingClientRect().width);
-  const last = page.getByRole('listitem').filter({ hasText: 'lf_tmp-bulk-1000' });
+  const last = page.getByRole('listitem').filter({ hasText: 'bulk-1000' });
   await last.scrollIntoViewIfNeeded();
   await last.click();
   await expect(page.getByRole('heading', { name: 'bulk-1000' })).toBeVisible();

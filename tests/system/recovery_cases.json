@@ -1,0 +1,906 @@
+{
+  "version": 1,
+  "profile": "recovery",
+  "source": "docs/ac/0011-recovery-intervention.md",
+  "cases": [
+    {
+      "ac_id": "AC-020-N-1",
+      "fixture": "failed Run A 有 Call 0001 的 succeeded 缓存和 Call 0002 的 failed 缓存；两者 input_digest 与当前调用一致",
+      "action": "对 A 执行 recover mode=retry",
+      "assertion": "沿用 A.run_id；0001 返回缓存且不调用 backend；0002 创建新 session 执行；Run 最终 done",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_recovery_replays_success_then_retries_failed_call",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-N-2",
+      "fixture": "failed Run A 的目标 Call 已持久化 session_id，backend capabilities 含 resume_session=true、durable_session_id=true",
+      "action": "对 A 执行 recover mode=continue",
+      "assertion": "前序成功 Call 返回缓存；目标 Call 使用原 session_id 调用 resume_session；不创建新 session",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_recovery_continue_uses_failed_durable_session",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-N-3",
+      "fixture": "顺序 Call 成功完成",
+      "action": "检查 `<call-id>.jsonl`",
+      "assertion": "agent_start 含 call_id/input_digest；agent_done 含 call_id/status=succeeded/session_id/exit_code=0；输出仍由 message 事件提取",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_writes_cache",
+      "targets": [
+        "unit:call-cache"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-N-4",
+      "fixture": "failed Run A 的 backend 支持 durable session，failed Run B 不支持",
+      "action": "在 WebUI 分别选择 A、B",
+      "assertion": "A 显示 Retry 和 Continue；B 显示 Retry 且 Continue 禁用并说明原因；均不显示 Resume",
+      "test_node": "web/src/App.test.tsx::disables Continue when the failed backend has no durable session",
+      "targets": [
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-B-1",
+      "fixture": "parallel 含三个 Call，执行完成顺序为分支 2、0、1",
+      "action": "首次运行失败后 recover",
+      "assertion": "三个分支的 call_id 由输入位置稳定分配；恢复不因完成顺序变化而串用缓存",
+      "test_node": "tests/unit/test_runtime.py::TestRunContext::test_parallel_namespaces_are_stable_by_input_position",
+      "targets": [
+        "unit:parallel-call-id"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-B-2",
+      "fixture": "旧 Run 缓存没有 input_digest/status，但含 exit_code=0",
+      "action": "执行 legacy retry",
+      "assertion": "允许按旧规则恢复并标记 unverified；continue 不可用；原缓存不迁移",
+      "test_node": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
+      "targets": [
+        "unit:legacy-cache"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-B-3",
+      "fixture": "failed Run 使用旧 CLI `resume` 命令",
+      "action": "执行 resume",
+      "assertion": "作为 deprecated recover --mode retry 执行并输出弃用提示；stopped Run 使用相同命令失败",
+      "test_node": "tests/integration/test_cli.py::TestResume::test_resume_is_deprecated_retry_alias_for_failed_run",
+      "targets": [
+        "process:cli-recover"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-E-1",
+      "fixture": "Call 0001 有 succeeded 缓存，但当前规范化输入 digest 不同",
+      "action": "执行任一 recover mode",
+      "assertion": "返回 409 replay_diverged；不返回缓存、不调用 backend、不覆盖旧文件",
+      "test_node": "tests/unit/test_web_execution.py::test_background_executor_surfaces_replay_divergence_before_return",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "replay_diverged"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-E-2",
+      "fixture": "failed Call 有 session_id，但 backend 不声明 durable_session_id",
+      "action": "执行 recover mode=continue",
+      "assertion": "返回 409 continue_not_supported；不创建新 session；retry 仍可单独执行",
+      "test_node": "tests/unit/test_web_application.py::test_continue_requires_durable_session_and_concurrent_recovery_is_rejected",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "continue_not_supported"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-E-3",
+      "fixture": "recover 重放时 `random`、时间或外部读取令同一 call_id 产生不同规范化输入",
+      "action": "到达该 Call",
+      "assertion": "返回 replay_diverged；不返回旧缓存或执行新调用",
+      "test_node": "tests/unit/test_recovery.py::test_call_digest_is_stable_and_tracks_workflow_and_prompt",
+      "targets": [
+        "unit:replay-digest"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-F-1",
+      "fixture": "`<call-id>.jsonl` 最后一行损坏或没有 succeeded agent_done",
+      "action": "执行 recover mode=retry",
+      "assertion": "该 Call 视为未提交并创建新 session；前序合法缓存仍命中",
+      "test_node": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
+      "targets": [
+        "unit:call-cache"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-F-2",
+      "fixture": "同一 failed Run 已有恢复 worker 持有 Run 锁",
+      "action": "再次提交 recover",
+      "assertion": "返回 409 invalid_run_transition；只存在一个有效 execution_epoch",
+      "test_node": "tests/unit/test_web_execution.py::test_background_executor_rejects_second_worker_for_same_run",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-020-F-3",
+      "fixture": "recover 的目标是失败 Call 0003，但 workflow 重放在 0003 前提前返回",
+      "action": "执行 recover",
+      "assertion": "Run 变为 failed，错误为 replay_diverged；不得标记 done",
+      "test_node": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
+      "targets": [
+        "unit:replay-target"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-N-1",
+      "fixture": "running Run A 的 workflow 和 backend 子进程均存活",
+      "action": "对 A 执行 stop",
+      "assertion": "先持久化 cancelling；进程组收到 SIGTERM；最终 status=cancelled、finished_at 非空、pid 被清除",
+      "test_node": "tests/unit/test_web_application.py::test_create_stop_recover_rerun_and_invalid_transition",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop",
+        "process:group"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-N-2",
+      "fixture": "Run A 为 waiting_input 且没有存活 worker，request R 为 pending",
+      "action": "对 A 执行 stop",
+      "assertion": "不要求 PID；A 原子变为 cancelled；R 仍为 pending；allowed_actions 包含 respond，不把用户未回答解释为放弃 Run",
+      "test_node": "tests/unit/test_web_application.py::test_stop_waiting_input_cancels_without_worker_and_preserves_pending_request",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-N-3",
+      "fixture": "cancelled Run A 有前序 succeeded 缓存和取消点 Call 0002；两者 input_digest 与当前调用一致",
+      "action": "对 A 执行 recover mode=retry",
+      "assertion": "沿用 A.run_id；前序缓存命中；0002 创建新 session 重新执行；Run 进入 running 并递增 execution_epoch",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-1",
+      "fixture": "backend 忽略 SIGTERM",
+      "action": "对 Run 执行 stop 并等待 grace period",
+      "assertion": "grace period 后向进程组发送 SIGKILL；Run 最终 cancelled",
+      "test_node": "tests/unit/test_web_application.py::test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun",
+      "targets": [
+        "process:group"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-2",
+      "fixture": "legacy Run status=stopped",
+      "action": "查询 Run 和 allowed_actions",
+      "assertion": "Run 可读；不提供 recover；可提供 rerun",
+      "test_node": "tests/unit/test_web_application.py::test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun",
+      "targets": [
+        "GET /api/v1/runs/{run_id}"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-3",
+      "fixture": "running Run A 的 active worker 声明 atomic/isolated，且已持久化 durable session_id",
+      "action": "对 A 执行 stop 后再 recover mode=continue",
+      "assertion": "返回 409 continue_not_supported；不恢复原 session；recover mode=retry 仍可单独执行",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "continue_not_supported"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-B-4",
+      "fixture": "running Run A 的 active worker 非 atomic，且 backend/session 均支持 durable continue",
+      "action": "对 A 执行 stop 后再 recover mode=continue",
+      "assertion": "目标 Call 使用原 session_id 调用 resume_session；不创建新 session",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-E-1",
+      "fixture": "stop 已将 A 写为 cancelling，旧 worker 随后尝试写 done",
+      "action": "完成竞态",
+      "assertion": "worker 因 execution_epoch/terminal guard 被拒绝；A 最终 cancelled",
+      "test_node": "tests/unit/test_web_execution.py::test_execute_workflow_terminal_guard_does_not_overwrite_cancelled",
+      "targets": [
+        "unit:execution-epoch"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-E-2",
+      "fixture": "A 已 cancelled 且没有可重放边界或 pending request",
+      "action": "对 A 执行 recover 或 respond",
+      "assertion": "返回 409 invalid_run_transition 或具体恢复错误；run.json 不被错误标记为 done",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_without_boundary_rejects_recover_and_respond",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover",
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-F-1",
+      "fixture": "持久化 cancelling 失败",
+      "action": "执行 stop",
+      "assertion": "返回 500 atomic_write_failed；不向进程发送信号，避免产生未记录的终止",
+      "test_node": "tests/unit/test_web_application.py::test_stop_does_not_signal_when_cancelling_write_fails",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/stop"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 500,
+          "code": "atomic_write_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-021-F-2",
+      "fixture": "持久化取消成功后进程身份已变化",
+      "action": "继续 stop",
+      "assertion": "不向复用 PID 的无关进程发信号；Run 最终 cancelled，并记录 process_gone 摘要",
+      "test_node": "tests/unit/test_web_application.py::test_stop_pid_reuse_does_not_signal_and_records_process_gone",
+      "targets": [
+        "process:identity"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-1",
+      "fixture": "workflow 调用 `intervene(key=\"approve\", prompt=\"Approve?\", schema={\"type\":\"boolean\"})`，尚无 response",
+      "action": "运行 workflow",
+      "assertion": "request 原子持久化；追加 intervention_requested；Run 变为 waiting_input；worker 退出且释放执行锁",
+      "test_node": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
+      "targets": [
+        "unit:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-2",
+      "fixture": "A 为 waiting_input，request R 未回答",
+      "action": "对 R 提交 boolean `true`",
+      "assertion": "response 持久化；追加 intervention_responded；A 自动恢复；重放到相同 key 时返回 true；A.run_id 不变",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_validates_persists_and_recovers_same_run",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-3",
+      "fixture": "Agent 结构化请求人工输入且缓存含 durable session_id",
+      "action": "回答 request",
+      "assertion": "前序 Call 返回缓存；目标 Call 使用回答恢复原 backend session；自然语言文本不用于推断请求",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_requires_durable_session",
+      "targets": [
+        "unit:session-intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-4",
+      "fixture": "Run A 为 waiting_input，request schema 为 boolean",
+      "action": "在 WebUI 选择 A",
+      "assertion": "展示 request prompt 和布尔输入控件；不展示自由文本 Resume；提交后按钮禁用直到响应完成",
+      "test_node": "web/src/App.test.tsx::answers a waiting intervention with a boolean control",
+      "targets": [
+        "ui:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-N-5",
+      "fixture": "A 原为 waiting_input，随后被 stop 为 cancelled，request R 仍 pending",
+      "action": "对 R 提交 boolean `true`",
+      "assertion": "response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回 true",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_pending_intervention_can_be_answered",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-B-1",
+      "fixture": "Web 服务在 Run waiting_input 期间重启",
+      "action": "重启后查询 request 并回答",
+      "assertion": "request 仍可读取；回答后同一 Run 恢复，不依赖旧进程内存",
+      "test_node": "tests/integration/test_web_api.py::test_intervention_endpoints_list_validate_and_respond",
+      "targets": [
+        "unit:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-B-2",
+      "fixture": "request schema 为 null",
+      "action": "提交任意 JSON 值",
+      "assertion": "值作为 immutable response 接受并在重放时原样返回",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_null_schema_accepts_any_json_value",
+      "targets": [
+        "unit:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-B-3",
+      "fixture": "A 为 cancelled 且含 pending request R；用户不提交 response",
+      "action": "查询 Run 和 request",
+      "assertion": "A 保持 cancelled；R 保持 pending；框架不自动关闭 request，也不把该状态建模为 abandon",
+      "test_node": "tests/unit/test_web_application.py::test_cancelled_pending_intervention_remains_pending_without_response",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/interventions"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-1",
+      "fixture": "request schema 要求 boolean",
+      "action": "提交字符串 `\"yes\"`",
+      "assertion": "返回 422 validation_failed；request 保持未回答；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_schema_without_persisting_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "validation_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-2",
+      "fixture": "response 已提交",
+      "action": "再次提交相同或不同值",
+      "assertion": "返回 409 intervention_already_answered；原 response 不变；不重复启动恢复",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "intervention_already_answered"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-3",
+      "fixture": "Agent 返回结构化 intervention，但没有 durable session_id",
+      "action": "处理 Agent 结果",
+      "assertion": "Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+      "targets": [
+        "unit:session-intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-4",
+      "fixture": "Run A 存在但 request R 不存在",
+      "action": "对 R 提交 response",
+      "assertion": "返回 404 intervention_not_found；Run/request 集合不变；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 404,
+          "code": "intervention_not_found"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-E-5",
+      "fixture": "Run A 当前不是 waiting_input/cancelled，但存在 pending request R",
+      "action": "对 R 提交 response",
+      "assertion": "返回 409 invalid_run_transition；R 保持 pending 且 response 不落盘；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/{request_id}/response"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-F-1",
+      "fixture": "workflow 重放时相同位置产生不同 intervention key 或 prompt digest",
+      "action": "回答后自动恢复",
+      "assertion": "Run 变为 failed，错误为 replay_diverged；不把旧 response 注入新请求",
+      "test_node": "tests/unit/test_web_execution.py::test_workflow_intervention_replay_diverges_on_prompt_change",
+      "targets": [
+        "unit:intervention-replay"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-022-F-2",
+      "fixture": "Agent 仅在自然语言输出中提出问题，没有结构化请求",
+      "action": "Agent 正常返回",
+      "assertion": "loopflow 不创建 intervention；结果按普通 Agent 输出处理",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-1",
+      "fixture": "Agent 返回 `__loopflow.status=waiting_input`，含两个 requests，backend 已持久化 durable session_id",
+      "action": "运行 workflow",
+      "assertion": "两个 request 原子持久化；`source=agent`、`resume_mode=continue`、response 类型为 string；Run 进入 waiting_input；worker 退出且释放执行锁",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-2",
+      "fixture": "A 为 waiting_input，两个 agent requests 均 pending，分别含 options/custom 约束",
+      "action": "对 A 执行 batch respond，提交两个 string responses",
+      "assertion": "responses all-or-nothing 持久化；只启动一次恢复 worker；同一 Agent session 收到回答继续执行；A.run_id 不变",
+      "test_node": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-3",
+      "fixture": "workflow 调用 `intervene(key, prompt, options=[...], allow_custom=False)`",
+      "action": "运行 workflow 并回答一个 option",
+      "assertion": "request `source=workflow`、`resume_mode=replay`；重放到同一 key 后 answer 返回给 workflow；workflow 根据 answer 进入对应分支",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+      "targets": [
+        "unit:intervention-routing"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-4",
+      "fixture": "CLI `loopflow run` 与 Web `POST /runs` 执行同一含 `intervene()` 的 workflow",
+      "action": "分别运行",
+      "assertion": "两条入口均注入 `intervene`，均进入 waiting_input，而不是把 `intervention_pending` 记录为 failed",
+      "test_node": "tests/unit/test_web_execution.py::test_workflow_intervention_waits_and_replays_answer",
+      "targets": [
+        "process:cli-run",
+        "POST /api/v1/runs"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-N-5",
+      "fixture": "Run A 有多个 pending requests",
+      "action": "在 WebUI 选择 A",
+      "assertion": "显示多问题表单；每个 request 展示 prompt、options 和可选手动输入；用户填写全部后一次提交",
+      "test_node": "web/src/App.test.tsx::answers multiple pending requests in one submit",
+      "targets": [
+        "ui:intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-B-1",
+      "fixture": "并行 Agent worker 同时产生 pending requests",
+      "action": "查询 Run interventions",
+      "assertion": "所有 pending requests 可读；request_id 稳定且不互相覆盖；Run allowed_actions 包含 respond",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+      "targets": [
+        "unit:parallel-intervention",
+        "GET /api/v1/runs/{run_id}/interventions"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-B-2",
+      "fixture": "request `allow_custom=true` 且 options 非空",
+      "action": "batch respond 提交非 options 的非空 string",
+      "assertion": "response 被接受并持久化",
+      "test_node": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-B-3",
+      "fixture": "request `allow_custom=false` 且 options 只有一个值",
+      "action": "batch respond 提交该 option",
+      "assertion": "response 被接受并持久化",
+      "test_node": "tests/unit/test_web_application.py::test_batch_intervention_response_persists_all_and_recovers_once",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-1",
+      "fixture": "request `allow_custom=false` 且 options 不包含 `\"other\"`",
+      "action": "batch respond 提交 `\"other\"`",
+      "assertion": "返回 422 validation_failed；所有 responses 均不落盘；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_batch_intervention_response_is_all_or_nothing",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "validation_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-2",
+      "fixture": "batch respond 中一个 request 已 answered",
+      "action": "提交 batch",
+      "assertion": "返回 409 intervention_already_answered；所有 responses 均不覆盖/不落盘；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_duplicate_without_overwrite_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "intervention_already_answered"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-3",
+      "fixture": "batch respond 中一个 request_id 不存在",
+      "action": "提交 batch",
+      "assertion": "返回 404 intervention_not_found；所有 responses 均不落盘；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_missing_request_without_mutation_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 404,
+          "code": "intervention_not_found"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-4",
+      "fixture": "Run 当前不是 waiting_input/cancelled",
+      "action": "提交 batch",
+      "assertion": "返回 409 invalid_run_transition；所有 requests 不变；不启动恢复 worker",
+      "test_node": "tests/unit/test_web_application.py::test_intervention_response_rejects_invalid_run_transition_without_mutation_or_recovery",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "invalid_run_transition"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-E-5",
+      "fixture": "Agent structured request 缺 key/prompt，或 options 含非 string",
+      "action": "处理 Agent 结果",
+      "assertion": "Call/Run failed，错误为 validation_failed；不创建 pending request",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_structured_intervention_accepts_multiple_requests",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-F-1",
+      "fixture": "Agent 返回自然语言问题但无结构化 requests",
+      "action": "Agent 正常返回",
+      "assertion": "loopflow 不创建 intervention；结果按普通 Agent 输出处理",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
+      "targets": [
+        "unit:agent-control-output"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-F-2",
+      "fixture": "Agent requests 需要 continue，但 durable session_id 未落盘",
+      "action": "处理 Agent 结果",
+      "assertion": "Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request",
+      "test_node": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
+      "targets": [
+        "unit:session-intervention"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-023-F-3",
+      "fixture": "batch respond 持久化成功后恢复 worker 失败",
+      "action": "提交 batch",
+      "assertion": "responses 保持 answered；后续失败按普通 Run execution failure 表达，不创建 intervention 特殊状态",
+      "test_node": "tests/integration/test_web_api.py::test_batch_intervention_endpoint_is_all_or_nothing",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/interventions/responses"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    }
+  ]
+}

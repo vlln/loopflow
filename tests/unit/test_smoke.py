@@ -1,9 +1,24 @@
 """Smoke tests for loopflow package."""
 
+from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:  # Python 3.10 has no tomllib (3.11+)
+    tomllib = None
+
 
 def test_import():
     import loopflow
-    assert loopflow.__version__ == "0.17.1"
+
+    text = Path("pyproject.toml").read_text(encoding="utf-8")
+    if tomllib is not None:
+        version = tomllib.loads(text)["project"]["version"]
+    else:
+        import re
+
+        version = re.search(r'(?m)^version = "([^"]+)"', text).group(1)
+    assert loopflow.__version__ == version
 
 
 def test_backends_exist():

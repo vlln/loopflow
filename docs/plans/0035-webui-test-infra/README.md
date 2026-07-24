@@ -14,4 +14,4 @@
 - MR 门禁、提测门禁、覆盖率与 CI
 - Vite 静态资产进入 wheel 的隔离冒烟
 
-本容器不实现 Runs、Loops、Queue、Backends、SSE 或 `loop web` 产品行为。
+本容器不实现 Runs、Loops、Queue、Backends、SSE 或 `loopflow web` 产品行为。

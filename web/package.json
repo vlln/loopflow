@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:browser": "playwright test",
-    "test:browser:smoke": "playwright test tests/smoke.spec.ts",
+    "test:browser:smoke": "playwright test webui.spec.ts",
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {

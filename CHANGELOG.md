@@ -1,5 +1,77 @@
 # Changelog
 
+## [0.20.0] — 2026-07-24
+
+### Added
+- Multi-topic SSE transport: `run_event` and `file_changes` topics multiplexed over a single connection with independent cursors; an out-of-range `file_changes` cursor is non-fatal (ADR-0041).
+- Declared phases pre-display: loop frontmatter `meta.phases` is surfaced in Loop summary/detail and merged into the Run phase graph as pending placeholder nodes (ADR-0040).
+- File change observation: `phase()` snapshots and diffs the working directory into `file_changes.jsonl`, exposed via `GET /api/v1/runs/{run_id}/file-changes` (ADR-0039).
+- Explicit run working directory (ADR-0042): `POST /api/v1/runs` accepts an optional absolute `working_directory`; the run subprocess chdirs into it so execution and file observation happen in the chosen project instead of the server launch directory.
+- Run working directory file preview: `GET /api/v1/runs/{run_id}/file?path=` serves a read-only text preview confined to the run's working directory; clicking a file in the WebUI changed-files tree opens its content.
+- Native directory picker for the New Run dialog: `POST /api/v1/system/pick-directory` opens the OS folder chooser on macOS; other platforms fall back to manual input.
+- Loop args declarations (BR-047): loop frontmatter `meta.args` (name/default/description/required) is surfaced as `declared_args` in the Loop API and pre-fills the New Run dialog's key-value editor.
+- Light/dark theme toggle with system-preference default and a persisted choice (BR-048).
+- `GET /api/v1/system/meta` exposes the running server version.
+- WebUI file changes panel: changed-files tree with per-phase action markers that follow the selected phase.
+
+### Changed
+- File observation now seeds a baseline snapshot at run start (ADR-0043): `created` only means created during a phase, and pre-existing files first touched by a phase are reported as `modified` with baseline `prev_size` — aligning the implementation with the documented AC-024-B-1 semantics.
+- Runs workspace information architecture: three task-oriented columns (list / execution / file changes), unified `PanelHeader`/`SectionHeader` primitives, and a three-step type scale.
+- New Run dialog arguments are edited as typed key-value rows with a JSON advanced mode instead of a raw JSON textarea.
+- Intervention requests surface as a top banner in the Runs workspace only while pending; history collapses inline.
+- Event display consolidated into the single center-column timeline; the duplicated right-column process output is removed.
+
+### Fixed
+- WebUI rail version was hardcoded (`v0.17`) and stale; it now reflects the running server's version from `GET /system/meta`.
+- File changes region always renders an explicit empty state for legacy runs and quiet phases (AC-024-B-6/B-7).
+- SSE `file_changes` topic now reaches the WebUI in real time instead of being dropped.
+- The file changes drawer toggle only appears in overlay layout (≤1180px) where it has an effect.
+
+## [0.19.1] — 2026-07-24
+
+### Changed
+- WebUI shared primitives now centralize status badges, icon buttons, empty states, metrics, facts, and scroll areas.
+- Runs, Loops, Backends, event timelines, process logs, and intervention questions now share a single scrollbar treatment.
+
+### Fixed
+- Legacy `intervene(schema={"type": "boolean"})` requests now expose `true`/`false` choices in the WebUI while preserving boolean replay semantics.
+- Removed the misspelled `gork` backend registration; `grok` is the only valid Grok backend name.
+- `test:browser:smoke` now points at the existing Playwright `webui.spec.ts` suite.
+
+## [0.19.0] — 2026-07-23
+
+### Added
+- Agent structured intervention vNext: Agents can return multiple `__loopflow.requests[]` in one turn.
+- Intervention request options and custom-response constraints with string responses.
+- Batch intervention response endpoint: `POST /runs/{run_id}/interventions/responses`.
+- WebUI multi-question intervention form with one submit action.
+
+### Changed
+- `intervene()` remains a workflow routing gate and now supports `options` and `allow_custom`.
+- CLI and Web workflow execution inject `intervene()` consistently.
+- Intervention summaries now expose `source`, `options`, `allow_custom`, and string `response`.
+
+### Fixed
+- CLI waiting-input workflows no longer fail just because `intervene()` was not injected.
+- Strict-signature workflows no longer receive unsupported framework kwargs.
+- Agent intervention request IDs include call identity to avoid parallel worker collisions.
+
+## [0.18.0] — 2026-07-23
+
+### Added
+- Grok backend and Grok ACP support.
+- Verifiable recovery controls for failed and cancelled Runs, including retry and durable-session continue.
+- Persistent intervention requests that can be answered after worker exit or after a waiting Run is cancelled.
+
+### Changed
+- `cancelled` now means the current execution attempt was cancelled, not that the Run identity is unrecoverable.
+- `loopflow stop` on `waiting_input` preserves pending intervention requests.
+- Web/API allowed actions now derive `recover_retry`, `recover_continue` and `respond` from recovery boundaries and pending requests.
+
+### Fixed
+- Atomic/isolated cancelled worker boundaries no longer expose durable-session continue.
+- `src/loopflow/__init__.py` version is synchronized with package metadata for release.
+
 ## [0.17.2] — 2026-07-21
 
 ### Added
@@ -27,7 +99,7 @@
 - **queue 模块**：`infrastructure/queue.py`，文件队列（`~/.loopflow/queue/`），支持 enqueue / dequeue / list / size
 - **resource lock**：`lock.py` 扩展 resource 粒度锁，TTL 30 分钟自动清理
 - **dispatch 模块**：`infrastructure/dispatch.py`，扫描队列、优先级排序、资源锁、执行 loop
-- **CLI 命令**：`loop enqueue`（入队）、`loop dispatch`（调度执行）
+- **CLI 命令**：`loopflow enqueue`（入队）、`loopflow dispatch`（调度执行）
 - 外部调度器文档：macOS 推荐 launchd，Linux 用 cron/systemd timer
 
 ## [0.16.0] — 2026-07-14
@@ -145,7 +217,7 @@
 ## [0.8.0] — 2026-07-10
 
 ### Added
-- `meta.requires.environment`：workflow 声明环境文件路径（如 `environment.yml`），`loop run`/`loop resume` 启动时校验文件存在
+- `meta.requires.environment`：workflow 声明环境文件路径（如 `environment.yml`），`loopflow run`/`loopflow resume` 启动时校验文件存在
 - 松散校验：检查文件存在，不激活环境，不安装依赖，不解析内容
 - 隔离层级体系：声明层（environment 文件）→ 文件系统（worktree）→ 环境激活（conda，未来）→ 完整隔离（容器，未来）
 
@@ -230,7 +302,7 @@
 ## [0.2.2] — 2026-07-09
 
 ### Added
-- `loop run` 和 `loop resume` 结束自动渲染执行图
+- `loopflow run` 和 `loopflow resume` 结束自动渲染执行图
 - `--watch` 标志：Rich Live 实时增量渲染执行图
 - `--mock` 标志：无需安装 AI 后端即可测试
 - `--no-graph` 标志：关闭 status 图形输出
@@ -261,12 +333,12 @@
 - PhaseGraph 执行图：纯数据结构（`graph.py`），邻接表 + 边计数 + 环检测，不依赖任何渲染库
 - TerminalGraphRenderer：Rich 终端渲染，支持线性/回边（循环）/分支三种布局
 - `phase()` 和 `agent()` 自动写入 events.jsonl 事件流
-- `loop status --graph` 显示执行图，`--no-graph` 关闭
+- `loopflow status --graph` 显示执行图，`--no-graph` 关闭
 - 21 个 graph 单元测试 + 4 个集成测试
 
 ### Changed
 - `phase()` 和 `log()` 除 stderr 输出外，同时写入结构化事件到 events.jsonl
-- `loop status` 不再统计 events.jsonl 为 agent 调用
+- `loopflow status` 不再统计 events.jsonl 为 agent 调用
 
 ---
 
@@ -276,7 +348,7 @@
 - Loop 定义：以文件夹形式组织（workflow.py + agents/），支持 `~/.loopflow/loops/` 目录
 - Workflow Runtime：agent/parallel/pipeline/phase/log/args/workflow API，与 Claude Code Workflow 签名一致
 - 崩溃恢复：序号计数器重放，已完成 agent 调用自动跳过，对 workflow 作者透明
-- CLI 命令：loop run / resume / status / list / stop
+- CLI 命令：loopflow run / resume / status / list / stop
 - 多后端支持：从 subagent-skills 复用 8 种后端适配器（kimi/claude/codex/pi/opencode/qwen/kiro/gemini）
 - 测试框架：pytest + coverage.py，50 个测试（41 unit + 9 integration），59% 覆盖率
 - CI/CD：GitHub Actions workflow，Python 3.10 + 3.14 矩阵测试

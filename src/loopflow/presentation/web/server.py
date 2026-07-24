@@ -38,6 +38,9 @@ ERROR_STATUS = {
     "file_not_found": 404,
     "backend_not_found": 404,
     "invalid_run_transition": 409,
+    "replay_diverged": 409,
+    "continue_not_supported": 409,
+    "intervention_already_answered": 409,
     "run_not_stale": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
@@ -46,8 +49,10 @@ ERROR_STATUS = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "intervention_not_found": 404,
     "atomic_write_failed": 500,
     "internal_error": 500,
+    "not_supported": 501,
     "diagnostic_start_failed": 503,
 }
 
@@ -138,8 +143,34 @@ def handler_for(
             if method == "GET" and path == "/backends":
                 self._json(200, self.app.list_backends())
                 return
+            if method == "POST" and path == "/system/pick-directory":
+                self._require_empty_body()
+                self._json(200, self.app.pick_directory())
+                return
+            if method == "GET" and path == "/system/meta":
+                self._json(200, self.app.system_meta())
+                return
 
-            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|resume|rerun|reconcile|events|legacy-events))?", path)
+            batch_intervention = re.fullmatch(r"/runs/([^/]+)/interventions/responses", path)
+            if batch_intervention:
+                if method == "POST":
+                    self._json(200, self.app.respond_interventions(batch_intervention.group(1), self._body()))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
+                return
+
+            intervention = re.fullmatch(r"/runs/([^/]+)/interventions(?:/([^/]+)/response)?", path)
+            if intervention:
+                run_id, request_id = intervention.groups()
+                if method == "GET" and request_id is None:
+                    self._json(200, self.app.list_interventions(run_id))
+                elif method == "POST" and request_id is not None:
+                    self._json(200, self.app.respond_intervention(run_id, request_id, self._body()))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
+                return
+
+            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events|file-changes|file))?", path)
             if match:
                 run_id, action = match.groups()
                 if method == "GET" and action is None:
@@ -147,8 +178,8 @@ def handler_for(
                 elif method == "POST" and action == "stop":
                     self._require_empty_body()
                     self._json(200, self.app.stop_run(run_id))
-                elif method == "POST" and action == "resume":
-                    self._json(200, self.app.resume_run(run_id, self._body(optional=True)))
+                elif method == "POST" and action == "recover":
+                    self._json(200, self.app.recover_run(run_id, self._body()))
                 elif method == "POST" and action == "rerun":
                     self._require_empty_body()
                     item = self.app.rerun(run_id)
@@ -158,8 +189,19 @@ def handler_for(
                     self._json(200, self.app.reconcile(run_id))
                 elif method == "GET" and action == "legacy-events":
                     self._json(200, self.app.legacy_events(run_id))
+                elif method == "GET" and action == "file-changes":
+                    self._json(200, self.app.list_file_changes(run_id))
+                elif method == "GET" and action == "file":
+                    relative = _one(query, "path")
+                    if relative is None:
+                        raise ApplicationError("validation_failed", "path is required")
+                    self._json(200, self.app.preview_run_file(run_id, relative))
                 elif method == "GET" and action == "events":
-                    self._events(run_id, _integer(query, "last_event_id", 0))
+                    self._events(
+                        run_id,
+                        _integer(query, "last_event_id", 0),
+                        _integer(query, "last_file_changes_id", 0),
+                    )
                 else:
                     self._error(404, "run_not_found", "Run endpoint was not found")
                 return
@@ -186,30 +228,63 @@ def handler_for(
                 return
             self._error(404, "file_not_found", "Endpoint was not found")
 
-        def _events(self, run_id: str, last_event_id: int) -> None:
-            initial, maximum, terminal = self.app.replay_events(run_id, last_event_id)
+        def _events(self, run_id: str, last_event_id: int, last_file_changes_id: int) -> None:
+            # run_event cursor out of range is fatal — return 410 JSON before SSE stream
+            ev_pending, _, ev_terminal = self.app.replay_events(run_id, last_event_id)
+
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-cache")
             self.send_header("Connection", "close")
             self.end_headers()
-            cursor = last_event_id
+
+            ev_cursor = last_event_id
+            fc_cursor = last_file_changes_id
+            fc_terminal = False
+            fc_replay = getattr(self.app, "replay_file_changes", None)
+
+            # file_changes topic: non-fatal cursor errors, silently empty if no file
+            if fc_replay is not None:
+                try:
+                    fc_pending, _, fc_terminal = fc_replay(run_id, fc_cursor)
+                except ApplicationError as exc:
+                    self._send_topic_error("file_changes", exc)
+                    fc_pending, fc_terminal = [], True
+            else:
+                fc_pending, fc_terminal = [], True
+
             try:
-                pending = initial
                 while True:
-                    for event in pending:
-                        cursor = event["event_id"]
-                        self._sse("run_event", event, cursor)
-                    if terminal:
-                        self._sse("stream_end", {"last_event_id": cursor}, cursor)
+                    for event in ev_pending:
+                        ev_cursor = event["event_id"]
+                        self._sse("run_event", event, ev_cursor)
+                    for record in fc_pending:
+                        fc_cursor = record["seq"]
+                        self._sse("file_changes", record, fc_cursor)
+                    if ev_terminal and fc_terminal:
+                        self._sse("stream_end", {
+                            "last_event_id": ev_cursor,
+                            "last_file_changes_id": fc_cursor,
+                        }, ev_cursor)
                         return
                     time.sleep(poll_interval)
-                    pending, maximum, terminal = self.app.replay_events(run_id, cursor)
+                    if not ev_terminal:
+                        ev_pending, _, ev_terminal = self.app.replay_events(run_id, ev_cursor)
+                    else:
+                        ev_pending = []
+                    if not fc_terminal and fc_replay is not None:
+                        try:
+                            fc_pending, _, fc_terminal = fc_replay(run_id, fc_cursor)
+                        except ApplicationError as exc:
+                            self._send_topic_error("file_changes", exc)
+                            fc_pending, fc_terminal = [], True
+                    else:
+                        fc_pending = []
             except (BrokenPipeError, ConnectionResetError):
                 return
             except Exception:
                 try:
-                    self._sse("stream_error", {"code": "event_read_failed", "last_event_id": cursor})
+                    self._sse("stream_error", {"code": "event_read_failed", "last_event_id": ev_cursor})
                 except (BrokenPipeError, ConnectionResetError):
                     pass
 
@@ -219,6 +294,13 @@ def handler_for(
             self.wfile.write(f"event: {event}\n".encode())
             self.wfile.write(b"data: " + json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode() + b"\n\n")
             self.wfile.flush()
+
+        def _send_topic_error(self, topic: str, exc: ApplicationError) -> None:
+            """Send a per-topic stream_error without closing the connection."""
+            payload: dict[str, Any] = {"topic": topic, "code": exc.code}
+            if exc.details:
+                payload["details"] = exc.details
+            self._sse("stream_error", payload)
 
         def _body(self, optional: bool = False) -> dict[str, Any]:
             length_text = self.headers.get("Content-Length")
