@@ -19,6 +19,7 @@ created: 2026-07-24T05:30:00Z
 | AC-025-N-3 | WebUI 已打开，server cwd 为 `/A` | New Run 对话框填写 working directory `/B` 并启动 | run 创建成功且 `working_directory` 为 `/B`；留空时与现状一致（`/A`） | 自动化 |
 | AC-025-N-4 | run 的 working_directory 为 `/B`，`/B/src/main.py` 为文本文件 | `GET /api/v1/runs/{run_id}/file?path=src/main.py` | 返回 200，body 含 `path`/`media_type`/`content`/`size`/`read_only` | 自动化 |
 | AC-025-N-5 | 同 AC-025-N-4，WebUI 已打开该 Run 且有文件变化记录 | 在文件变化目录树中点击 `src/main.py` | 弹出只读预览，显示 `/B/src/main.py` 的当前内容 | 自动化 |
+| AC-025-N-6 | server 运行于 macOS，WebUI 打开 New Run 对话框 | 点击 Browse 按钮，在系统目录选择器中选中 `/B` | `POST /api/v1/system/pick-directory` 返回 200 `{"path": "/B"}`；对话框 working directory 输入被填充为 `/B` | 自动化（端点 subprocess mock） |
 
 ## 边界场景
 
@@ -29,6 +30,8 @@ created: 2026-07-24T05:30:00Z
 | AC-025-B-3 | run 以 `working_directory: "/B"` 创建并失败 | 对该 run 执行 recover | recover 沿用 `/B` 执行；recover 请求体中的 `working_directory` 字段被拒绝或忽略，不覆盖原值 | 自动化 |
 | AC-025-B-4 | run 的 working_directory 为 `/B` | `GET /api/v1/runs/{run_id}/file?path=../A/secret.txt`（resolve 后越出 `/B`） | 返回 403 `path_forbidden`；不返回文件内容 | 自动化 |
 | AC-025-B-5 | run 的 working_directory 为 `/B`，`/B/blob.bin` 为二进制文件或超过 1 MiB | `GET /api/v1/runs/{run_id}/file?path=blob.bin` | 返回 422 `file_not_previewable`；不返回文件内容 | 自动化 |
+| AC-025-B-6 | server 运行于 macOS，用户在系统目录选择器中点击取消 | `POST /api/v1/system/pick-directory` | 返回 200 `{"path": null, "cancelled": true}`；WebUI 不改变输入框内容 | 自动化 |
+| AC-025-B-7 | server 运行于非 macOS 平台 | `POST /api/v1/system/pick-directory` | 返回 501 `not_supported`；WebUI 隐藏 Browse 按钮，回退手动输入 | 自动化 |
 
 ## 异常场景
 

@@ -24,6 +24,7 @@ created: 2026-07-18T21:00:00Z
 | AC-014-N-6 | failed Run A 有 1 个已完成缓存和 1 个未完成调用 | 对 A 执行 Resume | API 返回 status=running；已完成调用不执行，未完成调用执行；最终沿用 A 的 run_id | 自动化 |
 | AC-014-N-7 | done Run A | 对 A 执行 Rerun | API 返回 201 和新 Run B；B.run_id != A.run_id，B.loop/args 与 A 相同，A 文件不变 | 自动化 |
 | AC-014-N-8 | fixture 含 Loop 名和 run_id 可区分的 Runs | 分别应用 Loop 筛选和文本搜索 | 每次结果只包含匹配项；清除筛选后恢复完整列表 | 自动化 |
+| AC-014-N-9 | WebUI New Run 对话框 | 用 Arguments 键值编辑器添加 `name=review`、`count=2`、`debug=true` 并启动 | POST body args 为 `{"name":"review","count":2,"debug":true}`（值智能类型解析：数字/布尔不包字符串） | 自动化 |
 
 ## 边界场景
 
@@ -31,6 +32,8 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-014-B-1 | fixture 有 1000 个 Run | 连续滚动列表并选择第 1000 个 Run | 列表可到达目标项；选择后显示正确 run_id；主工作区宽度不因条目内容变化 | 自动化 |
 | AC-014-B-2 | Runs 目录为空 | 打开 Runs | 左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用 | 自动化 |
+| AC-014-B-3 | Arguments 键值编辑器含空 key 行 | 启动 Run | 空 key 行被忽略；args 仅含有效条目；无任何条目时 args 为 `{}` | 自动化 |
+| AC-014-B-4 | Arguments 切换到 JSON 高级模式 | 输入非法 JSON 并启动 | 显示 JSON 校验错误，不发送请求 | 自动化 |
 
 ## 异常场景
 

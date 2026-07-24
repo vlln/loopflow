@@ -504,6 +504,17 @@ stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感�
 
 错误：404 `backend_not_found`；422 `validation_failed`；503 `diagnostic_start_failed`。
 
+### `POST /system/pick-directory`
+
+在 server 所在机器上调起操作系统原生目录选择器（供 WebUI New Run 对话框的 Browse 按钮使用，ADR-0042）。
+
+200（选中）：`{"path": "/absolute/dir", "cancelled": false}`（返回绝对路径）
+200（取消）：`{"path": null, "cancelled": true}`
+
+平台支持：macOS（osascript `choose folder`）；其他平台返回 501 `not_supported`，前端回退为手动输入。
+
+错误：501 `not_supported`。
+
 ## 八、服务启动约束
 
 `loopflow web` 默认 `host=127.0.0.1`。非 loopback host 必须同时设置 `allow_remote=true`，否则 CLI 非零退出且不创建监听 socket。远程绑定成功时 stderr 必须输出远程暴露警告。该约束属于启动接口，不通过 HTTP 修改。
