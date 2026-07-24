@@ -2,7 +2,7 @@
 title: Declared Phases Predisplay Implementation Plan
 description: 实现 meta.phases 声明预显示与运行时合并语义
 type: plan
-status: pending
+status: done
 created: 2026-07-23T15:00:00Z
 ---
 
