@@ -484,6 +484,33 @@ def test_intervention_null_schema_accepts_any_json_value(tmp_path):
     assert request["response"] == {"x": [1]}
 
 
+def test_legacy_boolean_schema_exposes_choices_and_replays_boolean(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve-1.json", {
+        "request_id": "approve-1",
+        "source": "workflow",
+        "key": "approve",
+        "prompt": "Approve?",
+        "options": [],
+        "allow_custom": True,
+        "schema": {"type": "boolean"},
+        "status": "pending",
+        "resume_mode": "replay",
+    })
+
+    listed = service.list_interventions("waiting")
+    result = service.respond_intervention("waiting", "approve-1", {"response": "true"})
+
+    request = json.loads((interventions / "approve-1.json").read_text())
+    assert listed["items"][0]["options"] == ["true", "false"]
+    assert listed["items"][0]["allow_custom"] is False
+    assert request["response"] is True
+    assert result["run_id"] == "waiting"
+
+
 def test_batch_intervention_response_persists_all_and_recovers_once(tmp_path):
     service, factory, _ = app(tmp_path)
     run = factory.create_run("waiting", status="waiting_input")
