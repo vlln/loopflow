@@ -335,10 +335,11 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 
 ### file_changes.jsonl
 
-工作目录文件变化观察数据，按 Phase 边界快照 diff 采集。与 `events.jsonl` 严格分离——不参与业务事件流、不参与确定性重放、不参与 SSE 推送。详见 [ADR-0039](../adr/0039-file-change-observation.md)。
+工作目录文件变化观察数据，按 Phase 边界快照 diff 采集。与 `events.jsonl` 严格分离——不参与业务事件流、不参与确定性重放。通过 SSE `file_changes` topic 实时推送（详见 [ADR-0039](../adr/0039-file-change-observation.md) 和 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)）。
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
+| seq | integer | required | Run 内从 1 开始严格递增的序号，作为 SSE `file_changes` topic 的游标（详见 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)） |
 | phase | string | required | 产生这些变化的 Phase title |
 | phase_id | string | required | 对应的 Phase occurrence 标识，与 events.jsonl 中的 phase_id 一致 |
 | ts | ISO 8601 | required | 快照拍摄时间 |
@@ -414,7 +415,7 @@ Agent 隔离层级体系（递进）：
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
 | BR-041 | Recover 必须到达目标 | workflow 重放 | 到达预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束均报 replay_diverged，不得标记 done |
 | BR-042 | Declared phases 预显示 | Run 创建时 Loop 含 `meta.phases` 声明 | 从 declared phases 生成占位节点（pending 状态），运行时按 title 匹配合并 runtime events；无声明时退化为运行时涌现；详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md) |
-| BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 pwd 拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`；不写入 events.jsonl、不参与重放、不通过 SSE 推送；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
+| BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 pwd 拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`（含 `seq` 序号）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
 
 Agent 结构化 intervention 控制结果固定为：
 
@@ -461,7 +462,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 5. 切换 Run 或 Phase 时保留列表筛选和布局尺寸；实时事件不得引发布局跳动。
 6. failed/cancelled Run 明确提供可用的 Recover/Retry 与 Continue 操作；Continue 不可用时展示后端能力、session 持久化或原子 worker 边界原因，不静默执行 Retry。
 7. waiting_input Run 展示结构化 prompt 和匹配 schema 的输入控件；回答只提交一次，提交期间禁用重复操作。
-8. Phase 详情下方展示该 Phase 期间工作目录的文件变化列表（created/modified/deleted），按 `file_changes.jsonl` 渲染。无文件变化的 Phase 显示空状态；无 `file_changes.jsonl` 的 Run 不显示该区域或显示禁用状态，不报错。文件变化区域有独立滚动，不影响 Phase 图和 Calls/Events 布局。
+8. Phase 详情下方展示该 Phase 期间工作目录的文件变化列表（created/modified/deleted），按 SSE `file_changes` topic 推送的数据渲染。无文件变化的 Phase 显示空状态；无 `file_changes.jsonl` 的 Run 不显示该区域或显示禁用状态，不报错。文件变化区域有独立滚动，不影响 Phase 图和 Calls/Events 布局。
 
 ### Loops 工作台
 
@@ -490,13 +491,13 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 |------|------|----------|----------|
 | 查询 Loops / Loop 文件 | 可选筛选；loop 名和相对路径 | Loop 摘要列表；受限文件内容 | 404 loop/file 不存在；403 路径越界；422 文件不可预览 |
 | 查询 Runs / Run 详情 | 可选状态、Loop、搜索和 cursor；run_id | 分页 Run 摘要；Run/Phase/Call 读模型 | 404 run 不存在；422 筛选无效 |
-| 订阅 Run 事件 | run_id、last_event_id | SSE 事件及重连游标 | 404 run 不存在；410 游标已不可恢复 |
+| 订阅 Run 事件 | run_id、last_event_id、last_file_changes_id | SSE 多 topic 事件（run_event + file_changes）及 per-topic 重连游标 | 404 run 不存在；410 游标已不可恢复 |
 | 启动 / 重跑 Run | loop、args、运行选项；重跑时含源 run_id | 新 Run 摘要和 Location | 404 loop/run 不存在；409 状态冲突；422 参数无效 |
 | 停止 / 恢复 Run | run_id；恢复 mode=retry/continue | 更新后的 Run 摘要 | 404 run 不存在；409 状态冲突、重放分歧或 continue 不支持 |
 | 查询 / 回答 Intervention | run_id、request_id、JSON response | 请求详情；回答后 running Run 摘要 | 404 请求不存在；409 已回答或状态冲突；422 schema 不匹配 |
 | 修复 stale Run | run_id | status=failed 的 Run 摘要 | 404 run 不存在；409 Run 非 stale 或进程重新可用；500 原子写失败 |
 | 查询 / 诊断 Backends | 可选 backend 名 | Backend 摘要、能力和诊断日志 | 404 backend 不存在；503 诊断进程不可启动 |
-| 查询 Run 文件变化 | run_id、可选 phase_id | 按 Phase 分组的文件变化列表 | 404 run 不存在；无 file_changes.jsonl 时返回空列表 |
+| 订阅 Run 文件变化 | run_id、last_file_changes_id | SSE `file_changes` 事件及重连游标 | 404 run 不存在；410 游标已不可恢复 |
 
 ---
 

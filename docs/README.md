@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DESIGN` |
-| **设计评估** | 0069 已完成 `0.19.1` patch release。增量迭代 DESIGN 子阶段进行中：ADR-0039（文件变化观察层）、ADR-0040（Declared phases 预显示）已 proposed，Spec v14 / AC-0012 已追加，待审查 promote 为 active/accepted。 |
+| **设计评估** | 0069 已完成 `0.19.1` patch release。增量迭代 DESIGN 子阶段进行中：ADR-0039（文件变化观察层）、ADR-0040（Declared phases 预显示）、ADR-0041（SSE 多 topic transport）已 proposed，Spec v14 / AC-0012 / AC-016 已追加，待审查 promote 为 active/accepted。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

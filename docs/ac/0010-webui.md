@@ -110,12 +110,16 @@ created: 2026-07-18T21:00:00Z
 
 验证 SSE 初次订阅、增量推送、断线续传和去重。
 
+> 2026-07-23 追加：SSE 从单 topic（run_event）重构为多 topic transport（ADR-0041），新增 `file_changes` topic。AC-016-N-3/N-4、AC-016-B-3、AC-016-E-3 验证多 topic 场景。
+
 ## 正常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-016-N-1 | Run 已有 event_id 1..10 | 不带游标订阅 SSE | 按 1..10 重放，之后连接保持并推送新事件 11 | 自动化 |
-| AC-016-N-2 | 客户端已收到 event_id=7 后断线 | 以 last_event_id=7 重连 | 只返回 8 及之后事件；客户端集合无重复 event_id | 自动化 |
+| AC-016-N-1 | Run 已有 event_id 1..10 | 不带游标订阅 SSE | 按 1..10 重放 `event: run_event`，之后连接保持并推送新事件 11 | 自动化 |
+| AC-016-N-2 | 客户端已收到 event_id=7 后断线 | 以 last_event_id=7 重连 | 只返回 8 及之后 `event: run_event`；客户端集合无重复 event_id | 自动化 |
+| AC-016-N-3 | events.jsonl 有 event_id 1..5，file_changes.jsonl 有 seq 1..3 | 不带游标订阅 SSE | 同一连接收到 `event: run_event`（id 1..5）和 `event: file_changes`（id 1..3），各自 `id:` 独立递增 | 自动化 |
+| AC-016-N-4 | 客户端已收到 run_event id=5、file_changes id=2 后断线 | 以 last_event_id=5&last_file_changes_id=2 重连 | run_event 只推 id>5，file_changes 只推 id>2；两个 topic 独立游标 | 自动化 |
 
 ## 边界场景
 
@@ -123,6 +127,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-B-1 | Run 已结束，最后 event_id=10 | 以 last_event_id=10 订阅 | 不重放旧事件；服务发送 `event: stream_end`（data 含 last_event_id=10）后关闭连接 | 自动化 |
 | AC-016-B-2 | 100 条 1KB 事件连续落盘，单客户端订阅 | 记录落盘到 SSE 可读延迟 | p95 < 500ms，event_id 顺序严格递增 | 自动化 |
+| AC-016-B-3 | Run 已结束（run_event terminal），file_changes.jsonl 仍有未推送数据 | 订阅 SSE | `stream_end` 不发送，直到 file_changes topic 也 terminal；file_changes 数据继续推送 | 自动化 |
 
 ## 异常场景
 
@@ -130,6 +135,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-E-1 | 服务端最大 event_id=10，客户端以 last_event_id=11 订阅 | 订阅 SSE | 返回 410 JSON；body.error.code=`cursor_out_of_range`、body.error.details.max_event_id=10 | 自动化 |
 | AC-016-E-2 | 客户端重复收到同一 event_id | 应用前端事件 reducer | 状态只应用一次，不重复增加 Call 消息或边计数 | 自动化 |
+| AC-016-E-3 | file_changes.jsonl 最大 seq=2，客户端以 last_file_changes_id=99 订阅 | 订阅 SSE | file_changes topic 返回 `event: stream_error`（data 含 topic=file_changes, code=cursor_out_of_range）；run_event topic 不受影响，正常推送 | 自动化 |
 
 ## 失败场景
 

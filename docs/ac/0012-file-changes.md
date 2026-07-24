@@ -20,6 +20,7 @@ created: 2026-07-23T12:00:00Z
 | AC-024-N-4 | Run 有 `file_changes.jsonl`，WebUI 已打开该 Run | 选择 Phase A occurrence | Phase 详情下方显示文件变化列表：`data/raw.json` created（+图标，1024 bytes） | 自动化 |
 | AC-024-N-5 | 同 AC-024-N-4 | 选择 Phase B occurrence | 显示 `data/raw.json` modified（~图标，1024→2048）和 `data/clean.json` created（+图标，512 bytes） | 自动化 |
 | AC-024-N-6 | `file_changes.jsonl` 中 phase_id 与 `events.jsonl` 中 phase 事件的 phase_id 一致 | 对比两个文件中相同 Phase 的 phase_id | phase_id 完全匹配，可建立关联 | 自动化 |
+| AC-024-N-7 | Run 有 `file_changes.jsonl`，WebUI 已建立 SSE 连接 | workflow 产生文件变化 | 通过 `event: file_changes` 收到推送，`id:` 为 seq，data 含 phase/phase_id/changes | 自动化 |
 
 ## 边界场景
 
@@ -60,3 +61,4 @@ created: 2026-07-23T12:00:00Z
 | AC-024-U-3 | 快照 diff：snapshot_0 含 `a.py` (100)，snapshot_1 不含 `a.py` | diff 返回 `[{"path":"a.py","action":"deleted","prev_size":100}]` | 自动化 |
 | AC-024-U-4 | exclude 规则匹配 `*.tmp` | 扫描结果不含 `.tmp` 文件 | 自动化 |
 | AC-024-U-5 | file_changes.jsonl 不 import rich 或任何第三方库 | `import file_observation; "rich" not in sys.modules` | 自动化 |
+| AC-024-U-6 | 连续追加 3 条 file_changes 记录 | 检查 seq | seq 为 1、2、3，严格递增，无空洞 | 自动化 |
