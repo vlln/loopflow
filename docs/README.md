@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0062 SYSTEM_TEST 认证已通过：MR gate 全绿，Python/Web/Browser/Wheel/manifest 均通过；无阻塞级缺陷，可进入 RELEASE。 |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | 0062 SYSTEM_TEST 认证已通过；当前进入 0064 RELEASE，按 SemVer 发布 `0.19.0`。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
