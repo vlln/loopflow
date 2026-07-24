@@ -42,6 +42,7 @@ function RunsWorkspace() {
   const [eventView, setEventView] = useState<'phase' | 'unattributed' | 'malformed'>('phase');
   const [streamState, setStreamState] = useState<'live' | 'closed' | 'error'>('closed');
   const [eventState, dispatchEvent] = useReducer(eventReducer, { items: [], lastEventId: 0 });
+  const [fileChangeRecords, setFileChangeRecords] = useState<FileChangeRecord[]>([]);
   const [showNew, setShowNew] = useState(false);
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'process'>('list');
   const [error, setError] = useState<string | null>(null);
@@ -72,11 +73,12 @@ function RunsWorkspace() {
     window.history.replaceState(null, '', url);
   }, [selectedId]);
   useEffect(() => {
-    if (!selectedId) { setDetail(null); setInterventions([]); return; }
+    if (!selectedId) { setDetail(null); setInterventions([]); setFileChangeRecords([]); return; }
     void api.run(selectedId).then((value) => {
       setDetail(value);
       if (value.status === 'waiting_input' || value.allowed_actions.includes('respond') || value.interventions?.length) void api.interventions(value.run_id).then((page) => setInterventions(page.items)).catch((cause) => setError(messageOf(cause))); else setInterventions([]);
       dispatchEvent({ type: '__reset__', items: value.events });
+      void api.fileChanges(selectedId).then((result) => setFileChangeRecords(result.items)).catch(() => setFileChangeRecords([]));
       const phaseId = value.graph.current_phase_id ?? value.occurrences.at(-1)?.phase_id ?? null;
       setSelectedPhaseId(phaseId);
       setSelectedCallId(value.calls.find((call) => call.phase_id === phaseId)?.call_id ?? null);
@@ -86,7 +88,12 @@ function RunsWorkspace() {
 
   useEffect(() => {
     if (!selectedId || !detail || detail.status !== 'running') return;
-    return connectRunEvents(selectedId, { lastEventId: eventState.lastEventId, lastFileChangesId: 0 }, { onEvent: dispatchEvent, onState: setStreamState });
+    const lastFileChangesId = fileChangeRecords.length > 0 ? Math.max(...fileChangeRecords.map((r) => r.seq)) : 0;
+    return connectRunEvents(selectedId, { lastEventId: eventState.lastEventId, lastFileChangesId }, {
+      onEvent: dispatchEvent,
+      onFileChanges: (record) => setFileChangeRecords((prev) => prev.some((r) => r.seq === record.seq) ? prev : [...prev, record]),
+      onState: setStreamState,
+    });
   }, [selectedId, detail?.status]);
 
   const occurrences = detail?.occurrences ?? [];
@@ -128,7 +135,7 @@ function RunsWorkspace() {
           <div className="event-scope-tabs" role="tablist" aria-label="Event scope"><button role="tab" aria-selected={eventView === 'phase'} onClick={() => setEventView('phase')}>Events <span>{visibleEvents.length}</span></button>{detail.unattributed_count > 0 && <button role="tab" aria-selected={eventView === 'unattributed'} onClick={() => setEventView('unattributed')}>Unattributed <span>{detail.unattributed_count}</span></button>}{detail.malformed_count > 0 && <button role="tab" aria-selected={eventView === 'malformed'} onClick={() => setEventView('malformed')}>Malformed <span>{detail.malformed_count}</span></button>}</div>
           {detail.malformed_count > 0 && <span className="warning-text">{detail.malformed_count} malformed</span>}</div>
           <div className={`call-event-grid ${eventView !== 'phase' || calls.length === 0 ? 'events-only' : ''}`}>{eventView === 'phase' && calls.length > 0 && <ScrollArea className="call-list"><h4>Calls</h4>{calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong>{call.session ?? call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small></span><ChevronRight size={14} /></button>)}</ScrollArea>}<EventTimeline events={displayedEvents} title={eventView === 'phase' ? 'Phase events' : eventView === 'unattributed' ? 'Unattributed events' : 'Malformed events'} /></div>
-          {selectedId && <FileChangesList runId={selectedId} phaseId={selectedPhaseId} />}
+          {selectedId && <FileChangesList records={fileChangeRecords} phaseId={selectedPhaseId} />}
         </section>
       </>}
     </section>
@@ -194,17 +201,8 @@ function EventTimeline({ events, title }: { events: RunEvent[]; title: string })
   return <ScrollArea className="event-list"><div className="event-list-heading"><h4>{title}</h4><span>{events.length} events</span></div>{events.length ? events.map((event, index) => <div className="event-row" key={`${event.event_id ?? 'legacy'}-${index}`}><span className="event-marker" /><div className="event-body"><div className="event-meta"><span className="event-type">{eventLabel(event)}</span><time>{formatTime(event.ts)}</time></div><EventContent event={event} /></div></div>) : <span className="muted">No events for this selection</span>}</ScrollArea>;
 }
 
-function FileChangesList({ runId, phaseId }: { runId: string; phaseId: string | null }) {
-  const [records, setRecords] = useState<FileChangeRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    api.fileChanges(runId).then((result) => { if (!cancelled) { setRecords(result.items); setLoading(false); } }).catch(() => { if (!cancelled) { setRecords([]); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, [runId]);
+function FileChangesList({ records, phaseId }: { records: FileChangeRecord[]; phaseId: string | null }) {
   const phaseRecords = phaseId ? records.filter((r) => r.phase_id === phaseId) : records;
-  if (loading) return null;
   if (phaseRecords.length === 0) return null;
   const totalChanges = phaseRecords.reduce((sum, r) => sum + r.changes.length, 0);
   return <div className="file-changes-list" data-testid="file-changes-list"><div className="file-changes-heading"><h4>File changes</h4><span>{totalChanges} change{totalChanges === 1 ? '' : 's'}</span></div><div className="file-changes-body">{phaseRecords.map((record) => <div key={record.seq} className="file-changes-record"><div className="file-changes-record-meta"><span className="file-changes-phase">{record.phase}</span><time>{formatTime(record.ts)}</time></div><ul className="file-changes-items">{record.changes.map((change, index) => <li key={`${change.path}-${index}`} className={`file-change-item is-${change.action}`}><span className="file-change-action">{change.action}</span><span className="file-change-path">{change.path}</span>{change.size !== undefined && <small>{change.size}{change.prev_size !== undefined ? ` ← ${change.prev_size}` : ''} B</small>}</li>)}</ul></div>)}</div></div>;
