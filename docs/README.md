@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
-| **设计评估** | 增量迭代 DESIGN 完成：ADR-0039/0040/0041 accepted，ADR-0034 §5 修订，Spec v14 / AC active。TEST_INFRA 增量通过（AC manifest 已更新，356 tests green, 81% coverage）。执行容器 0070/0071/0072 已创建，进入 DEVELOP。 |
+| **当前阶段** | `RELEASE` |
+| **设计评估** | SYSTEM_TEST 认证通过（0073）：385 Python tests + 15 frontend tests green，81.61% coverage，AC manifest strict 全通过，0 阻塞级缺陷。进入 RELEASE。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
