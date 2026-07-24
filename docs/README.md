@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0068 正在对 0065-0067 后的 develop 执行系统测试认证；MR gate 已启动并完成一次通过结果复核。 |
+| **设计评估** | 0068 SYSTEM_TEST 认证已通过；0065-0067 后的 develop 无阻塞级缺陷，可进入 RELEASE，建议发布 `0.19.1` patch。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

@@ -2,7 +2,7 @@
 title: System Test Certification Plan
 description: 在 develop 上执行 0065-0067 后的系统级验证、失败分类和 RELEASE 入口判定
 type: plan
-status: pending
+status: done
 created: 2026-07-24T02:28:37Z
 ---
 
@@ -32,4 +32,4 @@ Report 必须记录以下结果：
 
 # Exit
 
-Report complete、Plan/container 状态为 done，并且给出明确阶段建议后，SYSTEM_TEST 执行完成。若结论为可发布，下一步进入 RELEASE。
+0068 已完成。Report complete、Plan/container 状态为 done，结论为可进入 RELEASE。
