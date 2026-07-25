@@ -21,6 +21,7 @@
 | [0047](0047-queue-task-status.md) | 队列任务显式状态语义 | accepted | Spec v15 / AC-028 |
 | [0048](0048-failure-injection-test-infra.md) | 失败注入测试基础设施 | accepted | ADR-0044~0047 / AC-026~029 |
 | [0049](0049-adopt-python-acp-sdk.md) | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | accepted | BL-014 / spike 通过（pi-acp 实跑） |
+| [0050](0050-mock-acp-test-infra.md) | mock ACP server 测试基础设施 | proposed | ADR-0049 / AC-030 |
 
 ## 状态说明
 
