@@ -42,6 +42,7 @@ ERROR_STATUS = {
     "continue_not_supported": 409,
     "intervention_already_answered": 409,
     "run_not_stale": 409,
+    "run_in_grace": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
     "process_gone": 410,

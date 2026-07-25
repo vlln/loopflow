@@ -163,6 +163,9 @@ def execute_workflow(
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)
     run_metadata.pop("process_group_id", None)
+    # Stale grace (BR-052): the worker's terminal write is authoritative and
+    # clears stale_since recorded by the read model while it was unreachable
+    run_metadata.pop("stale_since", None)
     current = read_json(run_dir / "run.json")
     if (
         current.get("execution_epoch") == run_metadata.get("execution_epoch")
