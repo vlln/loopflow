@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [ACP SDK 真实实现](01-plan-acp-sdk-impl.md) | [Report](01-report-acp-sdk-impl.md) | pending |
+| 01 | [ACP SDK 真实实现](01-plan-acp-sdk-impl.md) | [Report](01-report-acp-sdk-impl.md) | done |
 
 ## 范围
 

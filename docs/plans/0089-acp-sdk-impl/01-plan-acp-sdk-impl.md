@@ -2,7 +2,7 @@
 title: ACP SDK 真实实现 Plan
 description: 用 agent-client-protocol SDK 正式实现 ACP transport + backend + manager 路由 + CLI 选项，AC-030 全 6 场景用 mock server 验证
 type: plan
-status: pending
+status: done
 created: 2026-07-25T12:00:00Z
 ---
 
