@@ -2,7 +2,7 @@
 title: stale 失联宽限期 Plan
 description: run.json 新增 stale_since，读模型首次判定 stale 原子写入不刷新；默认 24h 宽限内 reconcile 返回 409 run_in_grace，期满后按 BR-032 转 failed；宽限内 worker 恢复写终态优先并清除 stale_since；UI 呈现失联（宽限中）与剩余时间，AC-029 七场景
 type: plan
-status: pending
+status: done
 created: 2026-07-25T07:05:00Z
 ---
 
