@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Loop 失败熔断与 loop_state](01-plan-loop-failure-circuit-breaker.md) | [Report](01-report-loop-failure-circuit-breaker.md) | pending |
+| 01 | [Loop 失败熔断与 loop_state](01-plan-loop-failure-circuit-breaker.md) | [Report](01-report-loop-failure-circuit-breaker.md) | done |
 
 ## 范围
 
