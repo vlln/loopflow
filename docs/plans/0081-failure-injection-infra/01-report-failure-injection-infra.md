@@ -59,3 +59,15 @@ created: 2026-07-25T05:10:00Z
 - **契约偏差 3（mr-gate npm audit 既有失败）**：`npm audit --audit-level=low` 报 5 high（brace-expansion 经 @vitest/coverage-v8 链），与本次改动无关（web/ 与 package-lock.json 零改动，develop 上同样失败）。门禁在 audit 处中断，其后的浏览器测试与 wheel-smoke 单独补跑（结果见上表）。
 - 注入 seam 说明：fake 经 `loopflow.runtime._make_backend` patch 注入（与 tests/unit/test_runtime.py 同模式），本次未验证端到端注入路径——DEVELOP 业务测试首次使用时若发现 seam 缺口，回本容器扩展。
 - 未发现必须依赖的生产代码改动；Plan Constraints 无遗留业务改动事项。
+
+# 补记（2026-07-25）：scheduling profile 落地，偏差 1 关闭
+
+新增第三个 manifest profile `scheduling` 承接 docs/ac/0004-scheduling.md 全部 32 个场景，偏差 1 关闭：
+
+- `tests/scheduling_support/manifest.py`（新 profile 模块）+ `tests/system/scheduling_cases.json`（32 cases）；`scripts/check-ac-manifest.py` 重构为 PROFILES 表（web/recovery/scheduling）
+- **登记统计：real 14 / planned 18**。real 节点来自既有测试（test_discovery/test_queue/test_dispatch/test_resource_lock/test_cli/test_scheduling_e2e，已逐条实证存在且通过）；planned 18 = AC-027（9）+ AC-028（7）待 DEVELOP + AC-010-N-2/E-2（见下）
+- **新发现契约冲突**：AC-010-N-2/E-2 的 AC 文本期望 loop.md 缺失/损坏时 fallback 到 workflow.py meta，但 ADR-0031 后现行行为是 loop.md 强制、缺失即跳过（`test_no_loop_md_not_discoverable`、`test_loop_md_bad_yaml` 均断言跳过）。两者矛盾，不猜测映射，登记 `planned::` 占位，留 DESIGN 裁决（改 AC 文本或恢复 fallback）
+- `scripts/mr-gate.sh` 接入：与 recovery 相同的阶段门槛——allow-planned 分支（INIT/DESIGN/TEST_INFRA/DEVELOP）与 strict 分支各加一行 `--profile scheduling`
+- CONTRIBUTING.md 测试命令表补两行 scheduling 检查命令
+- 验证：`--profile scheduling --allow-planned` ok（32 scenarios），strict 模式正确拒绝 18 个 planned；web（80）/recovery（69）不回归；`tests/infrastructure/` 56 passed（含新增 test_scheduling_manifest.py 5 条自证）
+- commits：`4e03fad`（profile 代码）、`fa7052f`（CONTRIBUTING）
