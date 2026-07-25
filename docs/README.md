@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
-| **设计评估** | 0.21.0 DEVELOP 进行中：0082 队列任务显式状态（AC-028）已闭环并合并 develop。剩余容器按依赖序串行：0083 失败分类 → 0084 熔断 → 0085 宽限期。 |
+| **当前阶段** | `SYSTEM_TEST` |
+| **设计评估** | 0.21.0 DEVELOP 全部闭环：0082 队列状态（AC-028）、0083 失败分类（AC-026）、0084 失败熔断（AC-027）、0085 宽限期（AC-029）已合并 develop。提测门禁通过（492 passed，覆盖率 82%，recovery/web/scheduling profile 核验）。BL-001~004 done。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
