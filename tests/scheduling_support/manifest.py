@@ -60,6 +60,13 @@ TEST_NODES = {
     "AC-013-N-2": "tests/unit/test_resource_lock.py::TestResourceLock::test_release_deletes_lock_file",
     "AC-013-B-1": "tests/unit/test_resource_lock.py::TestResourceLock::test_stale_lock_cleanup",
     "AC-013-F-1": "tests/unit/test_resource_lock.py::TestResourceLock::test_conflict_detection",
+    "AC-028-N-1": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_enqueue_writes_pending_status",
+    "AC-028-N-2": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_defers_task_when_resource_locked",
+    "AC-028-N-3": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_enqueue_supersede_marks_existing_task",
+    "AC-028-N-4": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_skips_and_cleans_superseded",
+    "AC-028-B-1": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_enqueue_supersede_without_existing_task",
+    "AC-028-E-1": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_treats_unknown_or_missing_status_as_pending",
+    "AC-028-F-1": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_deferred_and_superseded_not_counted_as_errors",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {}

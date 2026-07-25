@@ -408,7 +408,7 @@
       "fixture": "loop hello 存在",
       "action": "执行 `loopflow enqueue hello` 后检查队列文件",
       "assertion": "任务 JSON 含 status=pending",
-      "test_node": "planned::ac-028-n-1",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_enqueue_writes_pending_status",
       "targets": [
         "process:cli-enqueue"
       ],
@@ -424,7 +424,7 @@
       "fixture": "队列中有任务声明资源 repo=/same/path，该资源锁被持有",
       "action": "执行 `loopflow dispatch`",
       "assertion": "任务标记 status=deferred、status_reason 非空，留在队列；锁释放后再次 dispatch 该任务被正常执行",
-      "test_node": "planned::ac-028-n-2",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_defers_task_when_resource_locked",
       "targets": [
         "process:cli-dispatch"
       ],
@@ -440,7 +440,7 @@
       "fixture": "队列中有 loop hello 的 pending 任务 A",
       "action": "执行 `loopflow enqueue hello --supersede`（生成任务 B）",
       "assertion": "任务 A 标记 status=superseded、superseded_by=B 的 uuid；任务 B 为 pending",
-      "test_node": "planned::ac-028-n-3",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_enqueue_supersede_marks_existing_task",
       "targets": [
         "process:cli-enqueue"
       ],
@@ -456,7 +456,7 @@
       "fixture": "队列中有 superseded 任务 A 和 pending 任务 B（同 loop）",
       "action": "执行 `loopflow dispatch`",
       "assertion": "A 被跳过并清理（文件删除），仅 B 执行；dispatch summary 含 superseded 计数且不计入 errors",
-      "test_node": "planned::ac-028-n-4",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_skips_and_cleans_superseded",
       "targets": [
         "process:cli-dispatch"
       ],
@@ -472,7 +472,7 @@
       "fixture": "队列中没有 loop hello 的任务",
       "action": "执行 `loopflow enqueue hello --supersede`",
       "assertion": "与正常入队一致：新任务 pending，无 supersede 动作",
-      "test_node": "planned::ac-028-b-1",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_enqueue_supersede_without_existing_task",
       "targets": [
         "process:cli-enqueue"
       ],
@@ -488,7 +488,7 @@
       "fixture": "队列文件含未知 status 值（如 \"unknown_state\"）或缺失 status 字段",
       "action": "执行 `loopflow dispatch`",
       "assertion": "按 pending 处理，任务正常消费，不阻塞 dispatch",
-      "test_node": "planned::ac-028-e-1",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_treats_unknown_or_missing_status_as_pending",
       "targets": [
         "process:cli-dispatch"
       ],
@@ -504,7 +504,7 @@
       "fixture": "队列中同时存在 deferred 和 superseded 任务",
       "action": "执行 `loopflow dispatch`",
       "assertion": "两者均不计入 dispatch errors；summary 中 deferred、superseded 分别计数",
-      "test_node": "planned::ac-028-f-1",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestQueueTaskStatus::test_dispatch_deferred_and_superseded_not_counted_as_errors",
       "targets": [
         "process:cli-dispatch"
       ],
