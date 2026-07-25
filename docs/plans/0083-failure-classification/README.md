@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Agent 失败分类与重试/续接策略](01-plan-failure-classification.md) | [Report](01-report-failure-classification.md) | doing |
+| 01 | [Agent 失败分类与重试/续接策略](01-plan-failure-classification.md) | [Report](01-report-failure-classification.md) | done |
 
 ## 范围
 
