@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.21.0] — 2026-07-25
+
+### Added
+- Failure classification for agent calls (ADR-0044, AC-026): failures are categorized as auth / quota / transient / task / unknown — structured backend reporting takes precedence over stderr pattern matching; only transient failures auto-retry with the existing 3/9/27s backoff. The category is persisted in `agent_done` events and `run.json` `error_category`.
+- Loop failure circuit breaker (ADR-0045, AC-027): consecutive failed runs are counted per loop in `~/.loopflow/loop_state/<loop>.json`; at the threshold (default 5, overridable via loop frontmatter `failure_threshold`) the loop is paused and its queued tasks are deferred instead of dispatched. `loopflow unpause <name>` / `POST /api/v1/loops/{name}/unpause` clears the pause manually; manual `loopflow run` is never blocked.
+- Stale grace period (ADR-0046, AC-029): a stale run records `stale_since` on first detection; reconcile within the 24h grace window returns 409 `run_in_grace`, and a worker that comes back within the window reconciles naturally — its terminal write wins and clears `stale_since`.
+- Explicit queue task status (ADR-0047, AC-028): queue entries carry `status` (pending / deferred / superseded), `status_reason`, and `superseded_by`; resource-locked tasks are marked deferred, `loopflow enqueue --supersede` replaces same-loop pending tasks, and deferred/superseded no longer count as dispatch errors.
+- WebUI failure and circuit-breaker surfacing: run list and detail render `error_category` + `error_summary`; the Loops workspace shows the paused badge, reason, failure-streak aggregation, and an unpause action; stale runs display "Unreachable (grace period)" with the remaining window.
+
+### Changed
+- AC text aligned with verified implementation (0086): AC-010-N-2/E-2 (loop.md is mandatory per ADR-0031), AC-015-F-3/N-7/N-8, AC-016-F-3 — documentation corrected to actual behavior; 8 previously planned manifest scenarios now map to real test nodes, and all three AC manifest profiles (web / recovery / scheduling) pass in strict mode.
+- Dispatch summary reports `deferred` / `superseded` buckets separately; the legacy `skipped` key is kept at 0 for compatibility.
+
 ## [0.20.1] — 2026-07-24
 
 ### Fixed
