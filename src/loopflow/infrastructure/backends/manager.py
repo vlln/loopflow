@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from loopflow.domain import ERROR_CATEGORIES
 from loopflow.infrastructure.context import (
     _append_cache,
     _ctx,
@@ -182,18 +183,37 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
             stderr_text = instance._transport.stderr_text
         if text:
             _emit_log(f"Agent responded: {len(text)} chars")
+        done = {
+            "type": "agent_done",
+            "exit_code": exit_code,
+            "stderr": stderr_text,
+            "session_id": sid,
+        }
+        # ADR-0044 §3: 后端结构化上报失败分类（尽力而为通道）
+        reported = getattr(instance, "error_category", None)
+        if reported in ERROR_CATEGORIES:
+            done["error_category"] = reported
         return [
             {"type": "agent_message", "content": text},
-            {"type": "agent_done", "exit_code": exit_code, "stderr": stderr_text, "session_id": sid},
+            done,
         ]
     except Exception as e:
         _emit_log(f"Agent backend error: {e}")
         stderr_text = ""
         if hasattr(instance, '_transport') and hasattr(instance._transport, 'stderr_text'):
             stderr_text = instance._transport.stderr_text
+        # ADR-0044 §3: 异常不再纯吞——连接/超时类映射 transient，其余 unknown
+        category = (
+            "transient" if isinstance(e, (ConnectionError, TimeoutError)) else "unknown"
+        )
         return [
             {"type": "agent_message", "content": ""},
-            {"type": "agent_done", "exit_code": 1, "stderr": stderr_text},
+            {
+                "type": "agent_done",
+                "exit_code": 1,
+                "stderr": stderr_text,
+                "error_category": category,
+            },
         ]
     finally:
         instance.close()

@@ -4,6 +4,7 @@ Zero dependencies on infrastructure, application, or presentation layers.
 """
 
 from loopflow.domain.agent_def import (
+    ERROR_CATEGORIES,
     AgentDef,
     AgentError,
     ParamSpec,
@@ -21,6 +22,7 @@ from loopflow.domain.marshalling import (
 )
 
 __all__ = [
+    "ERROR_CATEGORIES",
     "AgentDef",
     "AgentError",
     "Capabilities",
