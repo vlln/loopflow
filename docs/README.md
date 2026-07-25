@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DEVELOP` |
-| **设计评估** | 0.21.0 TEST_INFRA 已闭环（0081：失败注入基建 + scheduling profile，已合并 develop）。DEVELOP 容器按依赖序串行：0082 队列状态 → 0083 失败分类 → 0084 熔断 → 0085 宽限期。 |
+| **设计评估** | 0.21.0 DEVELOP 进行中：0082 队列任务显式状态（AC-028）已闭环并合并 develop。剩余容器按依赖序串行：0083 失败分类 → 0084 熔断 → 0085 宽限期。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

@@ -2,7 +2,7 @@
 title: 队列任务显式状态 Plan
 description: 队列条目 status/status_reason/superseded_by 状态机 + enqueue --supersede + dispatch deferred/superseded 两桶 + Web 投影透传，AC-028 七场景
 type: plan
-status: in_progress
+status: done
 created: 2026-07-25T05:40:00Z
 ---
 
