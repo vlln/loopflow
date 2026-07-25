@@ -2,7 +2,7 @@
 title: mock ACP server 测试基建 Plan
 description: 基于 agent-client-protocol SDK agent-side 实现可脚本化 mock ACP server + 5 行为模式 + 基建自证
 type: plan
-status: pending
+status: done
 created: 2026-07-25T11:30:00Z
 ---
 

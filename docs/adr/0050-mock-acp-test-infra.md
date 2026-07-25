@@ -2,7 +2,7 @@
 title: ADR 0050 — mock ACP server 测试基础设施
 description: 用 agent-client-protocol SDK agent-side 实现可脚本化 mock ACP server（5 行为模式）作为 CI 可跑的 ACP 后端替身；自证落在 tests/infrastructure，不写 AC-030 业务用例
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-25T11:30:00Z
 ---
 
@@ -83,4 +83,29 @@ mock server 是独立 Python 脚本（`tests/agent_support/mock_acp_server.py`�
 
 ## Verification
 
-（搭建完成后回填）
+0088 容器搭建完成，自证通过回填（2026-07-25）：
+
+### 1. mock server 行为模式自证（12/12 PASS）
+
+`tests/infrastructure/test_mock_acp_support.py` 用 `spawn_agent_process` + `_NotificationCollector(Client)` 直接驱动 mock server：
+
+- **normal**：initialize 握手（protocol_version=1, loadSession=false, agentInfo=mock-acp）；streaming 多类通知（agent_thought_chunk + tool_call + tool_call_update + agent_message_chunk + usage_update）；message 回显用户文本；usage_update 携带 token 计数
+- **permission**：request_permission 到达 client（options ≥ 2）；auto-approve 放行不阻塞（AC-030-B-1 不死锁）；tool_call 通知在 request_permission 之前发出
+- **load_session**：initialize 声明 loadSession=true；session/new → prompt "Remember 42" → session/load 同 session_id → prompt "what" → 回答 "42"（上下文保留）
+- **startup_fail**：进程立即退出（returncode != 0），stderr 含 "startup_fail"（AC-030-E-1）
+- **context_prefix**：首条 agent_message_chunk 含 "[context]" 前缀；第二条 prompt 不重复前缀
+
+### 2. 门禁
+
+- `uv run pytest tests/ -q`：507 passed, 1 skipped（495 → 507，零回归）
+- `check-ac-manifest.py` 四 profile 全 ok：web(80) / recovery(69) / scheduling(32) / agent(21)
+- mr-gate 接入 `--profile agent` 检查（allow-planned + strict）
+- npm audit 既有失败（brace-expansion，与本次无关）
+
+### 3. 依赖落地
+
+`agent-client-protocol>=0.11.0` 落地主依赖区（`[project] dependencies`）。ADR-0049 §8 的可选 extra `[acp]` 是最终形态，0088 是实现阶段临时落地，最终 extra 划分留 DEVELOP/RELEASE。
+
+### 4. SDK discriminator 坑
+
+`UsageUpdate` 的 `session_update` 和 `AllowedOutcome` 的 `outcome` 字段虽为 `Literal` 但**无默认值**，创建时必须显式传入。spike 的 `_AutoApproveClient` 未传 `outcome="selected"` 但因从未触发真实权限请求而未暴露；0088 自证首次覆盖此路径。

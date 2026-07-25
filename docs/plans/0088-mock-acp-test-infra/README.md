@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [mock ACP server 测试基建](01-plan-mock-acp-test-infra.md) | [Report](01-report-mock-acp-test-infra.md) | pending |
+| 01 | [mock ACP server 测试基建](01-plan-mock-acp-test-infra.md) | [Report](01-report-mock-acp-test-infra.md) | done |
 
 ## 范围
 
