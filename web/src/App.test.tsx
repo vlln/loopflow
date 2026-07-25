@@ -27,6 +27,7 @@ type FetchOptions = boolean | {
   pickDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
   declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
+  detailOverride?: Record<string, unknown>;
   pausedLoop?: boolean;
 };
 
@@ -45,6 +46,7 @@ function installFetch(config: FetchOptions = true) {
   const metaStatus = typeof config === 'boolean' ? 200 : config.systemMeta?.status ?? 200;
   const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
   const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
+  const detailOverride = typeof config === 'boolean' ? null : config.detailOverride ?? null;
   const pausedLoop = typeof config === 'boolean' ? false : config.pausedLoop ?? false;
   const pausedFields = pausedLoop ? { paused: true, paused_reason: 'failure_streak:5', consecutive_failures: 5 } : {};
   const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : { ...loopSummary, ...pausedFields };
@@ -60,7 +62,7 @@ function installFetch(config: FetchOptions = true) {
       if (options?.method === 'POST') { calls.bodies.push(JSON.parse(String(options.body))); return response(runs[0], 201); }
       return response({ items: runs, next_cursor: null });
     }
-    if (path === '/api/v1/runs/run-live') return response(detail);
+    if (path === '/api/v1/runs/run-live') return response(detailOverride ? { ...detail, ...detailOverride } : detail);
     if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'], interventions: waitingInterventions });
     if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: waitingInterventions });
     if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[2], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
@@ -547,6 +549,61 @@ it('AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing', asy
   fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
   expect(await screen.findByText(/Unexpected token|JSON/)).toBeVisible();
   expect(calls.bodies).toHaveLength(0);
+});
+
+// --- AC-015: declared phases merge semantics (ADR-0040) ---
+
+it('AC-015-N-7: executed declared phase replaces its placeholder, others stay pending', async () => {
+  installFetch({
+    detailOverride: {
+      declared_phases: [{ title: '采集', detail: '' }, { title: '处理', detail: '' }],
+      graph: {
+        nodes: [{ phase: '采集', occurrence_count: 1, is_current: true }],
+        edges: [],
+        current_phase_id: 'caiji-1',
+      },
+      occurrences: [{ phase_id: 'caiji-1', phase: '采集', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: null, call_ids: ['call-a'] }],
+    },
+  });
+  render(<App />);
+
+  const executed = (await screen.findByText('采集', { selector: '.phase-node span' })).closest('.phase-node')!;
+  expect(executed.className).not.toContain('is-declared');
+  expect(executed.className).toContain('is-current');
+  expect(executed.textContent).toContain('1 occurrence');
+  const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
+  expect(pending.className).toContain('is-declared');
+  expect(pending.textContent).toContain('pending');
+});
+
+it('AC-015-N-8: undeclared runtime phase renders with the undeclared marker', async () => {
+  installFetch({
+    detailOverride: {
+      declared_phases: [{ title: '采集', detail: '' }, { title: '处理', detail: '' }],
+      graph: {
+        nodes: [
+          { phase: '采集', occurrence_count: 1, is_current: false },
+          { phase: '归档', occurrence_count: 1, is_current: true },
+        ],
+        edges: [{ from: '采集', to: '归档', count: 1, is_backedge: false }],
+        current_phase_id: 'guidang-1',
+      },
+      occurrences: [
+        { phase_id: 'caiji-1', phase: '采集', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-a'] },
+        { phase_id: 'guidang-1', phase: '归档', occurrence: 1, started_at: '2026-07-18T22:00:02Z', ended_at: null, call_ids: ['call-b'] },
+      ],
+    },
+  });
+  render(<App />);
+
+  const undeclared = (await screen.findByText('归档', { selector: '.phase-node span' })).closest('.phase-node')!;
+  expect(undeclared.className).toContain('is-undeclared');
+  expect(undeclared.className).not.toContain('is-declared');
+  const declared = screen.getByText('采集', { selector: '.phase-node span' }).closest('.phase-node')!;
+  expect(declared.className).not.toContain('is-undeclared');
+  expect(declared.className).not.toContain('is-declared');
+  const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
+  expect(pending.className).toContain('is-declared');
 });
 
 // --- AC-014: rail version sync / declared arguments prefill / AC-019: theme toggle ---

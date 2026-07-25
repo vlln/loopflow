@@ -15,14 +15,14 @@ created: 2026-07-18T00:00:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|---------|---------|---------|---------|
 | AC-010-N-1 | `~/.loopflow/loops/hello/loop.md` 存在，含 name、description，body 非空 | 执行 `loopflow list` | 输出中包含 hello loop，描述来自 loop.md | 自动化 |
-| AC-010-N-2 | `~/.loopflow/loops/hello/loop.md` 不存在，但 workflow.py 含 meta 字典 | 执行 `loopflow list` | 回退到读取 workflow.py meta，输出正常 | 自动化 |
+| AC-010-N-2 | `~/.loopflow/loops/hello/loop.md` 不存在（workflow.py 含 meta 字典） | 执行 `loopflow list` | 输出正常但不包含 hello——loop.md 是必选定义文件，无 workflow.py meta 回退（与 ADR-0031 一致）；其他 loop 不受影响 | 自动化 |
 
 ## 异常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|---------|---------|---------|---------|
 | AC-010-E-1 | loop.md frontmatter 缺少 name 字段 | 执行 `loopflow list` | 该 loop 被跳过，不影响其他 loop 扫描 | 自动化 |
-| AC-010-E-2 | loop.md 存在但 frontmatter 格式错误（非合法 YAML） | 执行 `loopflow list` | 回退到读取 workflow.py meta | 自动化 |
+| AC-010-E-2 | loop.md 存在但 frontmatter 格式错误（非合法 YAML） | 执行 `loopflow list` | 该 loop 被跳过，stderr 记录解析错误，不影响其他 loop 扫描——无 workflow.py meta 回退（与 ADR-0031 一致） | 自动化 |
 
 ---
 # AC-011: 队列与入队
