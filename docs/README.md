@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DESIGN` |
-| **设计评估** | 0.21.0 已发布（v0.21.0 tag 在 main，0081-0087 全部闭环）。下一轮迭代候选见 [backlog.md](backlog.md)：BL-005 evolve run、BL-006 loop 嵌套、BL-007~009 发布评估遗留、BL-011 npm audit、BL-012 SSE topic 隔离、BL-013 版本号单源化。 |
+| **设计评估** | 0.22.0 迭代选定 BL-014（采用官方 Python ACP SDK 替换手搓 ACP 管道，CLI 保留为主传输），进入 DESIGN：起草 ADR-0049 + spike 验证（pi-acp 后端实跑）。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
