@@ -2,7 +2,7 @@
 title: Agent 失败分类与重试/续接策略 Plan
 description: 失败五分类（auth/quota/transient/task/unknown）+ 结构化上报优先/stderr 兜底 + transient 既有退避不变、其余不重试 + agent_done/run.json 携带 error_category，AC-026 七场景
 type: plan
-status: doing
+status: done
 created: 2026-07-25T06:10:00Z
 ---
 

@@ -162,6 +162,13 @@ TEST_NODES = {
     "AC-023-F-1": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
     "AC-023-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
     "AC-023-F-3": "tests/integration/test_web_api.py::test_batch_intervention_endpoint_is_all_or_nothing",
+    "AC-026-N-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n1_transient_retries_then_succeeds",
+    "AC-026-N-2": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n2_structured_quota_beats_transient_stderr",
+    "AC-026-N-3": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n3_run_json_matches_agent_done_category",
+    "AC-026-B-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b1_auth_failure_fails_without_retry",
+    "AC-026-B-2": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b2_unmatched_failure_is_unknown_no_retry",
+    "AC-026-E-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_e1_transient_exhausts_backoff_then_fails",
+    "AC-026-F-1": "tests/unit/test_web_application.py::test_quota_failure_recover_continue_keeps_existing_boundaries",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {

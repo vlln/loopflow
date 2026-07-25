@@ -146,10 +146,14 @@ def execute_workflow(
         run_metadata["active_call_id"] = context._current_call_id
         run_metadata["failed_session_id"] = context.failed_session_id
         run_metadata["can_recover_continue"] = context.failed_can_continue
+        if context.failed_error_category is not None:
+            # ADR-0044 §3 / BR-049：与 error_summary 并列的失败分类
+            run_metadata["error_category"] = context.failed_error_category
     elif status == "done":
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
         run_metadata.pop("can_recover_continue", None)
+        run_metadata.pop("error_category", None)
         run_metadata.pop("cancel_point", None)
         run_metadata.pop("active_call_id", None)
         run_metadata.pop("active_worker_atomic", None)

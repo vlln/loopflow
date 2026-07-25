@@ -62,6 +62,7 @@ class RunContext:
         self.legacy_recovery = False
         self.failed_session_id: str | None = None
         self.failed_can_continue = False
+        self.failed_error_category: str | None = None  # ADR-0044 失败分类
         self.execution_options = dict(execution_options or {})
         self._counter = counter
         self._counter_lock = threading.Lock()
