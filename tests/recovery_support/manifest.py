@@ -17,6 +17,8 @@ HTTP_STATUS_BY_CODE = {
     "intervention_already_answered": 409,
     "validation_failed": 422,
     "atomic_write_failed": 500,
+    "run_in_grace": 409,
+    "run_not_stale": 409,
 }
 
 
@@ -87,6 +89,18 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-023-F-1", "unit:agent-control-output")
     assign("AC-023-F-2", "unit:session-intervention")
     assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
+
+    assign(
+        "AC-026-N-1 AC-026-N-2 AC-026-N-3 AC-026-B-1 AC-026-B-2 AC-026-E-1",
+        "unit:failure-classification",
+    )
+    assign("AC-026-F-1", "POST /api/v1/runs/{run_id}/recover")
+
+    assign("AC-029-N-1 AC-029-N-2 AC-029-E-1 AC-029-E-2", "GET /api/v1/runs/{run_id}")
+    assign(
+        "AC-029-B-1 AC-029-B-2 AC-029-F-1",
+        "POST /api/v1/runs/{run_id}/reconcile",
+    )
     return targets
 
 
@@ -214,6 +228,13 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-023-F-3": [{"kind": "http_status", "value": 200}],
+    "AC-029-N-1": [{"kind": "http_status", "value": 200}],
+    "AC-029-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-029-B-1": [{"kind": "http_status", "value": 409, "code": "run_in_grace"}],
+    "AC-029-B-2": [{"kind": "http_status", "value": 200}],
+    "AC-029-E-1": [{"kind": "http_status", "value": 200}],
+    "AC-029-E-2": [{"kind": "http_status", "value": 200}],
+    "AC-029-F-1": [{"kind": "http_status", "value": 409, "code": "run_not_stale"}],
 }
 
 
