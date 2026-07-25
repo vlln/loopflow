@@ -15,6 +15,10 @@
 | [0041](0041-sse-multi-topic-transport.md) | SSE 多 topic 传输层 | accepted | Spec v14 / ADR-0034 §5 / ADR-0039 |
 | [0042](0042-run-working-directory.md) | Run 显式工作目录 | accepted | Spec / AC-0013 / ADR-0039 |
 | [0043](0043-file-observation-baseline.md) | 文件观察基线快照语义 | accepted | Spec / AC-0012 / ADR-0039 |
+| [0044](0044-failure-classification.md) | Agent 失败分类与重试/续接策略 | accepted | Spec v15 / AC-026 |
+| [0045](0045-loop-failure-circuit-breaker.md) | Loop 失败熔断与 loop_state 存储 | accepted | Spec v15 / AC-027 |
+| [0046](0046-stale-grace-period.md) | stale 失联宽限期 | accepted | Spec v15 / AC-029 |
+| [0047](0047-queue-task-status.md) | 队列任务显式状态语义 | accepted | Spec v15 / AC-028 |
 
 ## 状态说明
 

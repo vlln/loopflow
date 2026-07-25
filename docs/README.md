@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 0.20.0 已发布（v0.20.0 tag 在 main，0070-0079 全部闭环）。新一轮迭代候选：web profile manifest 漂移修复（test 容器）、loop args schema 服务端校验、非 macOS 目录选择器。 |
+| **当前阶段** | `TEST_INFRA` |
+| **设计评估** | 0.21.0 DESIGN 已冻结：Spec v15 + ADR-0044~0047（accepted）+ AC-026~029（30 场景，planned manifest 已登记）。进入 TEST_INFRA 增量：落实 planned 测试节点。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
@@ -14,6 +14,7 @@
 
 | 路径 | 用途 |
 |------|------|
+| [backlog.md](backlog.md) | 工程需求池：迭代候选 |
 | [vision.md](vision.md) | 全局顶层愿景 |
 | [spec/](spec/) | Spec 需求规格（用户故事、模块划分、数据模型、非功能指标） |
 | [interface/](interface/) | 接口定义（入参/出参/错误码，适用有 API 时） |

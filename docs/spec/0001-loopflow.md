@@ -1,9 +1,9 @@
 ---
 title: loopflow Spec
-description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入及本地 WebUI 控制台。
+description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入、本地 WebUI 控制台、失败分类与熔断调度语义（0.21.0）。
 type: spec
 status: active
-version: 14
+version: 15
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -50,6 +50,10 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-027 | 开发者 | 在 WebUI 查看 run 工作目录内文件的内容 | 不离开控制台即可确认 agent 新建或修改的文件内容 | P1 |
 | US-028 | 开发者 | 创建 Run 时按 loop 声明预填 Arguments 键和默认值 | 不用记忆每个 loop 的参数字面量，降低输入错误 | P1 |
 | US-029 | 开发者 | 在白天和夜晚主题间切换 WebUI 外观 | 在不同光照环境下舒适使用 | P2 |
+| US-030 | 开发者 | agent 调用失败按类别（auth/quota、transient、task）区别处理 | auth/quota 立即失败不浪费重试，transient 自动退避重试并可续接 session，task 失败快速暴露给 workflow | P0 |
+| US-031 | 开发者 | loop 连续失败达到阈值时自动暂停调度 | 无人值守时防止故障 loop 反复消耗配额，恢复后手动解除暂停 | P1 |
+| US-032 | 开发者 | run 失联后先进入宽限期再判定失败 | 笔记本睡眠等场景不被误判失败，宽限期内进程恢复则自然调和 | P1 |
+| US-033 | 开发者 | 队列任务具有显式状态（pending/deferred/superseded） | 条件不满足挂起、被新任务取代都不计为失败，调度行为可观测 | P1 |
 
 ---
 
@@ -71,6 +75,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | Web API | 提供本机 HTTP 查询、命令接口和 Run 事件流，不直接实现领域逻辑 | `src/loopflow/presentation/web/` | P0 |
 | Web Frontend | 提供 Runs、Loops、Backends 三个主从工作区，消费 Web API 与事件流 | `web/` | P0 |
 | File Observation | phase 边界快照 diff，记录工作目录文件变化到 `file_changes.jsonl`，不参与业务事件流和重放 | `src/loopflow/file_observation.py` | P2 |
+| Loop State | per-loop 熔断状态（连续失败计数、暂停标记）的持久化与查询 | `src/loopflow/infrastructure/loop_state.py` | P1 |
 
 ---
 
@@ -142,6 +147,9 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | resources | object | — | 资源声明，key 为资源类型，value 为资源标识 |
 | priority | integer | NOT NULL | 优先级，数字越小越优先 |
 | created | ISO 8601 | NOT NULL | 创建时间 |
+| status | string | NOT NULL | pending / deferred / superseded；默认 pending（0.21.0 新增） |
+| status_reason | string | optional | deferred/superseded 的原因说明（0.21.0 新增） |
+| superseded_by | string | optional | 取代本任务的任务 uuid，仅 status=superseded 时存在（0.21.0 新增） |
 
 ### 资源锁（文件系统）
 
@@ -217,6 +225,8 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | cancel_point | string | optional | 最近一次取消点：worker_running / no_worker_running；仅用于派生恢复动作，不表示用户放弃 Run |
 | active_call_id | string | optional | 最近一次执行中的 Agent Call；worker_running 取消或 failed 时用于定位 retry/continue 目标 |
 | active_worker_atomic | boolean | optional | active worker 是否处于原子提交/隔离边界；true 时 recover_continue 不可用 |
+| error_category | string | optional | 失败分类：auth / quota / transient / task / unknown（0.21.0 新增） |
+| stale_since | ISO 8601 | optional | 首次判定 stale 的时间，宽限期计时起点；进程恢复或 reconcile 时清除（0.21.0 新增） |
 
 ### Intervention
 
@@ -359,6 +369,21 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 
 无 `file_changes.jsonl` 的 Run（legacy 或禁用）在 WebUI 显示空状态，不报错。
 
+### Loop 状态（文件系统，0.21.0 新增）
+
+```
+~/.loopflow/loop_state/
+└── <loop-name>.json          # 每个 loop 一个熔断状态文件
+```
+
+| 字段 | 类型 | 约束 | 说明 |
+|------|------|------|------|
+| consecutive_failures | integer | NOT NULL | 连续失败 run 数；该 loop 任一 run 进入 done 时归零 |
+| paused | boolean | NOT NULL | 熔断暂停标记；true 时 dispatch 不消费该 loop 的队列任务 |
+| paused_reason | string | optional | 暂停原因（如 `failure_streak:5`） |
+| paused_at | ISO 8601 | optional | 暂停时间 |
+| last_run_id | string | optional | 最近一次计入 streak 的 run |
+
 ---
 
 ## 五、业务规则
@@ -425,6 +450,11 @@ Agent 隔离层级体系（递进）：
 | BR-046 | Run 工作目录文件预览 | WebUI 点击文件 / `GET /runs/{run_id}/file` | 仅限 run 工作目录内的相对 POSIX 路径，resolve 越界拒绝（403 `path_forbidden`）；文本预览上限 1 MiB；只读；WebUI 在文件变化目录树中点击文件弹出只读预览 |
 | BR-047 | Loop args 声明预填 | loop.md `meta.args` 声明 `[{name, default, description, required}]` 时 | Loop summary/detail API 返回 `declared_args`（非法声明静默忽略）；New Run 对话框按声明预填键值行（default 填入，required 仅提示）；无声明时为空白起始 |
 | BR-048 | WebUI 主题 | 用户点击 rail 主题切换按钮 | 日夜主题切换（CSS 变量调色板）；选择持久化于 localStorage；未选择时跟随系统 `prefers-color-scheme` |
+| BR-049 | Agent 失败按类别处理 | `agent()` 后端调用失败 | 失败分类为 auth/quota/transient/task/unknown，来源优先级：后端结构化上报 > stderr 模式匹配。transient 按既有退避（3/9/27s）自动重试且 recover 可 continue；auth/quota 与 task 不自动重试，直接持久化失败。分类写入 agent_done 事件与 run.json `error_category` |
+| BR-050 | Loop 失败熔断 | run 进入 failed 终态 | 该 loop 的 `consecutive_failures` +1（done 时归零）；达到阈值（默认 5，loop.md frontmatter 可用 `failure_threshold` 覆盖）时置 `paused=true` 并写 `paused_reason`。paused 的 loop 其队列任务在 dispatch 中标记 deferred 留队，不计失败 |
+| BR-051 | 熔断解除手动显式 | 用户执行 loop 恢复操作（CLI/Web） | 清除 `paused` 与 `consecutive_failures`；不提供自动解除 |
+| BR-052 | stale 宽限期 | 读模型判定 stale / 显式 reconcile | 首次判定 stale 时记录 `stale_since`；宽限期（默认 24h）内 reconcile 返回 409 `run_in_grace`，宽限期满后按 BR-032 执行。宽限期内 worker 进程恢复并写入终态时以 worker 写入为准，清除 `stale_since`（对 BR-032 的补充约束） |
+| BR-053 | 队列任务显式状态 | enqueue / dispatch | 任务状态机 pending/deferred/superseded。资源锁不可得时任务标记 deferred 留队（BR-019 语义不变，仅显式化）；`enqueue --supersede` 将同 loop 的 pending/deferred 任务标记 superseded 并记录 `superseded_by`；deferred/superseded 不计入 dispatch errors。loopflow 无常驻调度器，misfire 补偿暂不适用 |
 
 Agent 结构化 intervention 控制结果固定为：
 
@@ -506,6 +536,8 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | 查询 / 回答 Intervention | run_id、request_id、JSON response | 请求详情；回答后 running Run 摘要 | 404 请求不存在；409 已回答或状态冲突；422 schema 不匹配 |
 | 修复 stale Run | run_id | status=failed 的 Run 摘要 | 404 run 不存在；409 Run 非 stale 或进程重新可用；500 原子写失败 |
 | 查询 / 诊断 Backends | 可选 backend 名 | Backend 摘要、能力和诊断日志 | 404 backend 不存在；503 诊断进程不可启动 |
+| 暂停解除 / 恢复 Loop | loop 名 | 更新后的 Loop 摘要（含 paused 状态） | 404 loop 不存在 |
+| 修复 stale Run（宽限期约束） | run_id | 同既有 reconcile | 宽限期内返回 409 `run_in_grace`，其余同既有 |
 
 ---
 
@@ -560,3 +592,8 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | Intervention | workflow 或 Agent 发出的结构化人工输入请求；持久化后 Run 等待回答且不保留 worker |
 | Backend | Agent 后端的抽象层，适配不同的 CLI Agent（kimi/claude/codex 等） |
 | Transport | 与 Backend 通信的方式：CLI（子进程）或 ACP（Agent Communication Protocol） |
+| 失败分类 | Agent 调用失败按原因归为 auth/quota/transient/task/unknown，决定重试与续接策略 |
+| 熔断 | loop 连续失败达阈值后自动暂停调度（paused），仅手动解除 |
+| 宽限期 | stale Run 从首次判定到允许 reconcile 为 failed 的时间窗口，窗口内进程恢复则调和 |
+| Deferred | 队列任务因条件不满足（如资源锁不可得）挂起留队，不计失败 |
+| Supersede | 新入队任务显式取代同 loop 的待执行任务，被取代任务不计失败 |
