@@ -874,3 +874,27 @@ def test_pick_directory_endpoint(api, monkeypatch):
     assert unsupported.json()["error"]["code"] == "not_supported"
 
     assert client.request("GET", "/api/v1/system/pick-directory").status == 404
+
+
+def test_loop_unpause_endpoint(api, tmp_path, monkeypatch):
+    """POST /api/v1/loops/{name}/unpause：解除熔断；loop 不存在返回 404。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    from loopflow.infrastructure import loop_state
+
+    client, _, _ = api
+    for i in range(5):
+        loop_state.record_failure("hello", f"run-{i}")
+    assert client.request("GET", "/api/v1/loops/hello").json()["paused"] is True
+
+    response = client.request("POST", "/api/v1/loops/hello/unpause")
+    assert response.status == 200
+    body = response.json()
+    assert body["name"] == "hello"
+    assert body["paused"] is False
+    state = loop_state.load("hello")
+    assert state["paused"] is False
+    assert state["consecutive_failures"] == 0
+
+    missing = client.request("POST", "/api/v1/loops/nonexistent/unpause")
+    assert missing.status == 404
+    assert missing.json()["error"]["code"] == "loop_not_found"

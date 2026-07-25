@@ -727,3 +727,62 @@ def test_pick_directory_not_supported_platforms(tmp_path, monkeypatch):
     with pytest.raises(ApplicationError) as missing_error:
         service.pick_directory()
     assert missing_error.value.code == "not_supported"
+
+
+def test_unpause_loop_clears_pause_and_returns_summary(tmp_path, monkeypatch):
+    """unpause_loop 清除 paused 与 streak，返回含 paused 状态的 Loop 摘要。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    from loopflow.infrastructure import loop_state
+
+    service, _, _ = app(tmp_path)
+    for i in range(5):
+        loop_state.record_failure("hello", f"run-{i}")
+    assert service.get_loop("hello")["paused"] is True
+
+    summary = service.unpause_loop("hello")
+    assert summary["name"] == "hello"
+    assert summary["paused"] is False
+    state = loop_state.load("hello")
+    assert state["paused"] is False
+    assert state["consecutive_failures"] == 0
+
+
+def test_unpause_loop_not_found(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    service, _, _ = app(tmp_path)
+    with pytest.raises(ApplicationError) as error:
+        service.unpause_loop("nonexistent")
+    assert error.value.code == "loop_not_found"
+
+
+def test_loop_summary_projects_circuit_breaker_state(tmp_path, monkeypatch):
+    """Loop 摘要投影 consecutive_failures / paused / paused_reason。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    from loopflow.infrastructure import loop_state
+
+    service, _, _ = app(tmp_path)
+    loop_state.record_failure("hello", "run-1")
+    summary = service.get_loop("hello")
+    assert summary["consecutive_failures"] == 1
+    assert summary["paused"] is False
+    assert summary["paused_reason"] is None
+
+
+def test_run_summary_projects_error_category(tmp_path, monkeypatch):
+    """Run 摘要投影 error_category（0083 落 run.json，读模型补齐）。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    service, factory, _ = app(tmp_path)
+    run = factory.runs / "run-failed"
+    run.mkdir()
+    factory.write_json(run / "run.json", {
+        "run_id": "run-failed",
+        "loop": "hello",
+        "status": "failed",
+        "created": "2026-07-25T00:00:00Z",
+        "error_summary": "boom",
+        "error_category": "quota",
+        "execution_epoch": 1,
+    })
+    summary = service.get_run("run-failed")
+    assert summary["error_summary"] == "boom"
+    assert summary["error_category"] == "quota"
