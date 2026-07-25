@@ -169,6 +169,13 @@ TEST_NODES = {
     "AC-026-B-2": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b2_unmatched_failure_is_unknown_no_retry",
     "AC-026-E-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_e1_transient_exhausts_backoff_then_fails",
     "AC-026-F-1": "tests/unit/test_web_application.py::test_quota_failure_recover_continue_keeps_existing_boundaries",
+    "AC-029-N-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n1_first_stale_detection_writes_stale_since",
+    "AC-029-N-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n2_worker_terminal_write_clears_stale_since",
+    "AC-029-B-1": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_returns_run_in_grace",
+    "AC-029-B-2": "tests/integration/test_web_api.py::test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since",
+    "AC-029-E-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e1_stale_since_is_not_refreshed",
+    "AC-029-E-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e2_legacy_run_records_stale_since_on_first_detection",
+    "AC-029-F-1": "tests/integration/test_web_api.py::test_ac029_f1_reconcile_live_run_returns_run_not_stale",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
