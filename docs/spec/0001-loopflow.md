@@ -1,9 +1,9 @@
 ---
 title: loopflow Spec
-description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入、本地 WebUI 控制台、失败分类与熔断调度语义（0.21.0）。
+description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入、本地 WebUI 控制台、失败分类与熔断调度语义（0.21.0）、ACP 可选传输路径（0.22.0，官方 SDK）。
 type: spec
 status: active
-version: 15
+version: 16
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -54,6 +54,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-031 | 开发者 | loop 连续失败达到阈值时自动暂停调度 | 无人值守时防止故障 loop 反复消耗配额，恢复后手动解除暂停 | P1 |
 | US-032 | 开发者 | run 失联后先进入宽限期再判定失败 | 笔记本睡眠等场景不被误判失败，宽限期内进程恢复则自然调和 | P1 |
 | US-033 | 开发者 | 队列任务具有显式状态（pending/deferred/superseded） | 条件不满足挂起、被新任务取代都不计为失败，调度行为可观测 | P1 |
+| US-034 | 开发者 | 用 `--transport acp` 选 ACP 后端运行 loop | 用原生 ACP 后端（pi-acp 等）跑 loopflow，ACP 路径可选可用，CLI 仍为默认 | P1 |
 
 ---
 
@@ -76,6 +77,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | Web Frontend | 提供 Runs、Loops、Backends 三个主从工作区，消费 Web API 与事件流 | `web/` | P0 |
 | File Observation | phase 边界快照 diff，记录工作目录文件变化到 `file_changes.jsonl`，不参与业务事件流和重放 | `src/loopflow/file_observation.py` | P2 |
 | Loop State | per-loop 熔断状态（连续失败计数、暂停标记）的持久化与查询 | `src/loopflow/infrastructure/loop_state.py` | P1 |
+| ACP Transport | 用官方 Python ACP SDK 承载 ACP 协议管道（stdio JSON-RPC、async 桥接到 sync runner、permission auto-approve、notification 映射）；可选依赖，仅 --transport acp 加载 | `src/loopflow/infrastructure/transports/acp_sdk.py` | P1 |
 
 ---
 
@@ -455,6 +457,10 @@ Agent 隔离层级体系（递进）：
 | BR-051 | 熔断解除手动显式 | 用户执行 loop 恢复操作（CLI/Web） | 清除 `paused` 与 `consecutive_failures`；不提供自动解除 |
 | BR-052 | stale 宽限期 | 读模型判定 stale / 显式 reconcile | 首次判定 stale 时记录 `stale_since`；宽限期（默认 24h）内 reconcile 返回 409 `run_in_grace`，宽限期满后按 BR-032 执行。宽限期内 worker 进程恢复并写入终态时以 worker 写入为准，清除 `stale_since`（对 BR-032 的补充约束） |
 | BR-053 | 队列任务显式状态 | enqueue / dispatch | 任务状态机 pending/deferred/superseded。资源锁不可得时任务标记 deferred 留队（BR-019 语义不变，仅显式化）；`enqueue --supersede` 将同 loop 的 pending/deferred 任务标记 superseded 并记录 `superseded_by`；deferred/superseded 不计入 dispatch errors。loopflow 无常驻调度器，misfire 补偿暂不适用 |
+| BR-054 | ACP 传输可选 | `loopflow run`/`enqueue` 携带 `--transport acp` | 路由到 ACP 后端（AcpSdkBackend）；默认 CLI 不变。ACP 路径加载可选依赖 agent-client-protocol，缺失时报错提示安装 extra |
+| BR-055 | ACP permission auto-approve | ACP 后端发 `request_permission` | fire-and-forget 模型下统一 auto-approve-all（对应 acpx approve-all，不做读写分级），消除 ADR-0018 的授权死锁 |
+| BR-056 | ACP notification 全量映射 | ACP 后端 `session/update` | `agent_message_chunk`→agent_message、`agent_thought_chunk`→thought、`tool_call_*`（信息性，不要求 client 响应）、`usage_update` 全映射到 loopflow 事件，补齐 ADR-0021 的 stub |
+| BR-057 | ACP 上的 continue | failed/cancelled Run 用 `--mode continue` 恢复且后端声明 `loadSession`/`resume` | 声明能力的 ACP 后端可 continue（session/load 续接）；不声明则 continue_not_supported，best-effort（与 BL-001 能力门控一致） |
 
 Agent 结构化 intervention 控制结果固定为：
 
@@ -576,6 +582,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | rich | — | TTY 进度渲染 |
 | pytest | — | 测试框架（开发依赖） |
 | subagent-skills 后端层 | — | 多 Agent 后端的适配器代码（claude/kimi/codex 等），复制到 src/loopflow/backends/ 下 |
+| agent-client-protocol | 可选（extra `[acp]`） | ACP 协议管道（Pydantic schema + asyncio stdio transport）；仅 --transport acp 时 import，默认 CLI 路径不加载 |
 | Python 标准库 | 3.10+ | 所有运行时能力（subprocess/threading/json/pathlib/importlib） |
 
 ---
@@ -603,3 +610,4 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | 宽限期 | stale Run 从首次判定到允许 reconcile 为 failed 的时间窗口，窗口内进程恢复则调和 |
 | Deferred | 队列任务因条件不满足（如资源锁不可得）挂起留队，不计失败 |
 | Supersede | 新入队任务显式取代同 loop 的待执行任务，被取代任务不计失败 |
+| ACP Transport | 用官方 Python ACP SDK 承载的 ACP 协议传输，可选路径，--transport acp 启用 |
