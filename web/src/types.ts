@@ -16,6 +16,8 @@ export interface RunSummary {
   error_category?: string | null;
   parse_error: string | null;
   execution_epoch?: number | null;
+  stale_since?: string | null;
+  stale_grace_remaining_seconds?: number | null;
   allowed_actions: string[];
 }
 

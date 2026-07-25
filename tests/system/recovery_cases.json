@@ -1019,7 +1019,7 @@
       "fixture": "run 状态 running，其 pid/process_started_at 探活失败（首次判定 stale）",
       "action": "通过 API 读取该 run",
       "assertion": "读模型返回 stale；run.json 原子写入 stale_since（首次判定时间）",
-      "test_node": "planned::ac-029-n-1",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n1_first_stale_detection_writes_stale_since",
       "targets": [
         "GET /api/v1/runs/{run_id}"
       ],
@@ -1035,7 +1035,7 @@
       "fixture": "AC-029-N-1 之后，宽限期内 worker 进程恢复并写入终态（done/failed）",
       "action": "读取 run.json",
       "assertion": "以 worker 写入的终态为准，stale_since 已清除",
-      "test_node": "planned::ac-029-n-2",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n2_worker_terminal_write_clears_stale_since",
       "targets": [
         "GET /api/v1/runs/{run_id}"
       ],
@@ -1051,7 +1051,7 @@
       "fixture": "run 处于 stale 且 stale_since 距今不足 24h（宽限期内）",
       "action": "`POST /api/v1/runs/{id}/reconcile`",
       "assertion": "返回 409，错误码 run_in_grace；run.json 未被修改",
-      "test_node": "planned::ac-029-b-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_returns_run_in_grace",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile"
       ],
@@ -1068,7 +1068,7 @@
       "fixture": "run 处于 stale 且 stale_since 距今超过 24h",
       "action": "`POST /api/v1/runs/{id}/reconcile`",
       "assertion": "按既有 reconcile 流程：status=failed、写 error_summary、清除 pid 字段与 stale_since",
-      "test_node": "planned::ac-029-b-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile"
       ],
@@ -1084,7 +1084,7 @@
       "fixture": "run.json 已含 stale_since，再次读取仍为 stale",
       "action": "连续两次读取该 run",
       "assertion": "stale_since 保持首次值不被刷新",
-      "test_node": "planned::ac-029-e-1",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e1_stale_since_is_not_refreshed",
       "targets": [
         "GET /api/v1/runs/{run_id}"
       ],
@@ -1100,7 +1100,7 @@
       "fixture": "legacy run（无 stale_since 字段）判定 stale",
       "action": "读取该 run",
       "assertion": "按首次判定处理：写入 stale_since，行为与 AC-029-N-1 一致",
-      "test_node": "planned::ac-029-e-2",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e2_legacy_run_records_stale_since_on_first_detection",
       "targets": [
         "GET /api/v1/runs/{run_id}"
       ],
@@ -1116,7 +1116,7 @@
       "fixture": "run 状态非 stale（进程存活）",
       "action": "`POST /api/v1/runs/{id}/reconcile`",
       "assertion": "返回 409 run_not_stale（既有行为不变）",
-      "test_node": "planned::ac-029-f-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_f1_reconcile_live_run_returns_run_not_stale",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile"
       ],

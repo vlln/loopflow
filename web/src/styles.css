@@ -203,6 +203,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .run-row code { overflow: hidden; color: var(--quiet); font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
 .run-row.is-selected code, .run-row.is-selected .row-meta { color: var(--muted); }
 .row-meta { color: var(--muted); font-size: 10px; }
+.row-grace { color: var(--muted); font-size: 10px; }
 .row-error, .form-error { color: var(--danger); font-size: 10px; }
 
 .status { display: inline-flex; min-height: 24px; flex: 0 0 auto; align-items: center; gap: 5px; padding: 0 8px; border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: 9px; font-weight: 650; text-transform: capitalize; }

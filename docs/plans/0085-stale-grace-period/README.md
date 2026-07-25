@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [stale 失联宽限期](01-plan-stale-grace-period.md) | [Report](01-report-stale-grace-period.md) | pending |
+| 01 | [stale 失联宽限期](01-plan-stale-grace-period.md) | [Report](01-report-stale-grace-period.md) | done |
 
 ## 范围
 

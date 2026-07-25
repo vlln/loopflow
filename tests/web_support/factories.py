@@ -33,6 +33,7 @@ class WebFixtureFactory:
         pid: int | None = None,
         process_started_at: str | None = None,
         process_group_id: int | None = None,
+        stale_since: str | None = None,
         working_directory: str | None = None,
     ) -> Path:
         run_dir = self.runs / run_id
@@ -53,6 +54,8 @@ class WebFixtureFactory:
         }
         if working_directory is not None:
             metadata["working_directory"] = working_directory
+        if stale_since is not None:
+            metadata["stale_since"] = stale_since
         self.write_json(run_dir / "run.json", metadata)
         if state is not None:
             self.write_json(run_dir / "state.json", state)

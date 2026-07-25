@@ -65,6 +65,7 @@ function installFetch(config: FetchOptions = true) {
     if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: waitingInterventions });
     if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[2], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
     if (path === '/api/v1/runs/run-cancelled') return response({ ...detail, ...runs[3], allowed_actions: ['recover_retry', 'respond', 'rerun'] });
+    if (path === '/api/v1/runs/run-stale') return response({ ...detail, ...runs.find((run) => run.run_id === 'run-stale'), allowed_actions: ['reconcile'] });
     if (path === '/api/v1/runs/run-cancelled/interventions') return response({ items: [{ request_id: 'approve-2', key: 'approve', prompt: 'Approve after cancel?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T20:00:00Z', responded_at: null }] });
     if (path === '/api/v1/runs/run-waiting/interventions/responses') {
       calls.bodies.push(JSON.parse(String(options?.body)).responses);
@@ -635,6 +636,16 @@ it('renders run error summary and failure category in list and detail', async ()
   const banner = await screen.findByRole('alert');
   expect(banner).toHaveTextContent('quota');
   expect(banner).toHaveTextContent('Agent failed');
+});
+
+it('renders stale grace period with remaining time in list and detail', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('Unreachable (grace period) · 23h 0m left')).toBeVisible();
+  fireEvent.click(screen.getByText('run-stale'));
+  expect(await screen.findByRole('heading', { name: 'run-stale' })).toBeVisible();
+  expect(screen.getAllByText('Unreachable (grace period) · 23h 0m left').length).toBe(2);
+  expect(screen.getByRole('button', { name: 'Reconcile run' })).toBeEnabled();
 });
 
 it('shows paused loop badge with streak and unpauses via API', async () => {

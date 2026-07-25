@@ -35,6 +35,7 @@ def _finish_run(metadata: dict, status: str) -> None:
     metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
     metadata.pop("pid", None)
     metadata.pop("process_started_at", None)
+    metadata.pop("stale_since", None)
 
 
 def _runs_dir() -> Path:
