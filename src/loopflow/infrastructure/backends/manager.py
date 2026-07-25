@@ -75,7 +75,11 @@ def _run_mock_auto(schema: dict | None) -> tuple[str, int]:
 def _make_backend(backend: str | None = None, transport: str | None = None,
                   text_handler=None, thought_handler=None, session_handler=None,
                   cwd: str | None = None):
-    """Create a backend instance. Detects available backend if not specified."""
+    """Create a backend instance. Detects available backend if not specified.
+
+    When transport="acp", routes to AcpSdkBackend (ADR-0049).
+    CLI-only backends (claude, codex) have no ACP transport — raise error.
+    """
     from loopflow.infrastructure.backends.base import BaseBackend
     from loopflow.infrastructure.backends.claude import ClaudeBackend
     from loopflow.infrastructure.backends.codex import CodexBackend
@@ -98,6 +102,48 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         "gemini": GeminiBackend,
         "grok": GrokBackend,
     }
+
+    # ADR-0049: transport="acp" routes to AcpSdkBackend
+    if transport == "acp":
+        if backend is None:
+            backend = "pi"  # default ACP backend
+        from loopflow.infrastructure.backends.acp_sdk_backend import (
+            ACP_COMMANDS,
+            ACP_NOT_INSTALLED_ERROR,
+            _CLI_ONLY_BACKENDS,
+        )
+
+        # CLI-only backends have no ACP transport
+        if backend in _CLI_ONLY_BACKENDS:
+            print(
+                f"Error: backend '{backend}' has no ACP transport",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        # Look up ACP command for this backend
+        command = ACP_COMMANDS.get(backend)
+        if command is None:
+            print(
+                f"Error: backend '{backend}' has no ACP transport",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
+        try:
+            from loopflow.infrastructure.backends.acp_sdk_backend import AcpSdkBackend
+        except ImportError:
+            print(f"Error: {ACP_NOT_INSTALLED_ERROR}", file=sys.stderr)
+            sys.exit(1)
+
+        kwargs: dict = {"command": command}
+        if text_handler:
+            kwargs["text_handler"] = text_handler
+        if thought_handler:
+            kwargs["thought_handler"] = thought_handler
+        if session_handler:
+            kwargs["session_handler"] = session_handler
+        return AcpSdkBackend(**kwargs)
 
     if backend is None:
         from loopflow.infrastructure.backends.diagnostics import list_available_backends
@@ -159,6 +205,7 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         thought_handler=thought_handler,
         session_handler=session_handler,
         cwd=cwd,
+        transport=getattr(_ctx, "execution_options", {}) and _ctx.execution_options.get("transport"),
     )
     try:
         _emit_log(f"Calling agent via {backend or 'auto'}...")
