@@ -534,6 +534,80 @@ def test_sse_no_file_changes_jsonl_silently_empty(api):
     assert event_types[-1] == "stream_end"
 
 
+def test_sse_stream_end_waits_for_file_changes_terminal():
+    """AC-016-B-3: run_event terminal but file_changes not — stream_end withheld until both terminal."""
+    class LaggingFileChangesApp:
+        def __init__(self):
+            self.fc_calls = 0
+
+        def replay_events(self, run_id, cursor):
+            return ([{"version": 2, "event_id": 1, "type": "log", "ts": "now", "run_id": run_id, "payload": {}}], 1, True)
+
+        def replay_file_changes(self, run_id, cursor):
+            self.fc_calls += 1
+            if self.fc_calls == 1:
+                return ([{"seq": 1, "phase": "采集", "phase_id": "p1", "ts": "now", "changes": []}], 1, False)
+            return ([{"seq": 2, "phase": "处理", "phase_id": "p2", "ts": "now", "changes": []}], 2, True)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(LaggingFileChangesApp(), poll_interval=0.01))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+        connection.request("GET", "/api/v1/runs/run-1/events")
+        response = connection.getresponse()
+        events = parse_sse(response.readlines())
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert response.status == 200
+    # file_changes kept flowing after run_event went terminal; stream_end only at the very end
+    assert [item["event"] for item in events] == ["run_event", "file_changes", "file_changes", "stream_end"]
+    assert json.loads(events[-1]["data"]) == {"last_event_id": 1, "last_file_changes_id": 2}
+
+
+def test_sse_file_changes_read_failure_emits_stream_error_and_closes():
+    """AC-016-F-3: file_changes OSError → stream_error event_read_failed (no topic), connection closes."""
+    class FailingFileChangesApp:
+        def __init__(self):
+            self.fc_calls = 0
+
+        def replay_events(self, run_id, cursor):
+            if cursor == 0:
+                return ([{"version": 2, "event_id": 1, "type": "log", "ts": "now", "run_id": run_id, "payload": {}}], 1, False)
+            return ([], 1, False)
+
+        def replay_file_changes(self, run_id, cursor):
+            self.fc_calls += 1
+            if self.fc_calls == 1:
+                return ([{"seq": 1, "phase": "采集", "phase_id": "p1", "ts": "now", "changes": []}], 1, False)
+            raise OSError("fixture-read-failed")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(FailingFileChangesApp(), poll_interval=0.01))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+        connection.request("GET", "/api/v1/runs/run-1/events")
+        response = connection.getresponse()
+        events = parse_sse(response.readlines())
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert response.status == 200
+    # data pushed before the failure is delivered exactly once, then a single stream_error
+    assert [item["event"] for item in events] == ["run_event", "file_changes", "stream_error"]
+    error_data = json.loads(events[-1]["data"])
+    assert error_data == {"code": "event_read_failed", "last_event_id": 1}
+    assert "topic" not in error_data
+
+
 # --- Declared phases pre-display tests (ADR-0040) ---
 
 
@@ -613,6 +687,40 @@ def test_run_detail_without_declared_phases_returns_none(api):
     client = JsonHttpClient("127.0.0.1", port)
     detail = client.request("GET", "/api/v1/runs/legacy-run").json()
     assert detail.get("declared_phases") is None
+
+
+class StartFailingExecutor:
+    """Mirrors BackgroundRunExecutor when the child dies before run.json (e.g. syntax-error workflow.py)."""
+
+    def start(self, loop, args, options, run_id=None, working_directory=None):
+        raise RuntimeError("run_process_start_failed")
+
+
+def test_workflow_syntax_error_run_start_fails_without_placeholders(tmp_path):
+    """AC-015-F-3: syntax-error workflow.py → run start fails, no run/placeholders, service stays up."""
+    factory = WebFixtureFactory(tmp_path)
+    loop_dir = factory.create_loop("broken", phases=[{"title": "采集", "detail": "数据采集"}])
+    (loop_dir / "workflow.py").write_text("def run(:\n", encoding="utf-8")
+    runs = RunRepository(factory.runs, Probe())
+    app = WebApplication(runs, LoopRepository(factory.loops, runs), QueueRepository(tmp_path / "queue"), DiagnosticBackend(), StartFailingExecutor(), {"kimi"})
+    server = create_server("127.0.0.1", 0, application=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = JsonHttpClient("127.0.0.1", server.server_port)
+        created = client.request("POST", "/api/v1/runs", {"loop": "broken", "args": {}})
+        assert created.status == 500 and created.json()["error"]["code"] == "internal_error"
+        # no run persisted → nothing to render placeholder nodes from
+        assert client.request("GET", "/api/v1/runs").json()["items"] == []
+        # declared phases come from loop.md frontmatter — loop detail is unaffected
+        detail = client.request("GET", "/api/v1/loops/broken")
+        assert detail.status == 200
+        assert detail.json()["valid"] is True
+        assert detail.json()["declared_phases"] == [{"title": "采集", "detail": "数据采集"}]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 # --- Declared args pre-fill tests (BR-047) ---
