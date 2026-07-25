@@ -263,6 +263,9 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         _write_run(run_dir / "run.json", run_meta)
         if live:
             live.stop()
+        # Circuit breaker (ADR-0045 §2 / BR-050): manual run failures count too
+        from loopflow.infrastructure import loop_state
+        loop_state.record_failure(name, run_id, threshold=loop_state.failure_threshold(meta))
         sys.exit(1)
 
     if live:
@@ -271,6 +274,10 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
     _write_run(run_dir / "run.json", run_meta)
+
+    # Circuit breaker (ADR-0045 §2): a done run resets the failure streak
+    from loopflow.infrastructure import loop_state
+    loop_state.record_success(name)
 
     if result is not None:
         if isinstance(result, str):
@@ -605,3 +612,26 @@ def dispatch():
           f"{summary['deferred']} deferred, {summary['superseded']} superseded, "
           f"{summary['errors']} errors",
           file=sys.stderr)
+
+
+@main.command()
+@click.argument("name")
+def unpause(name: str) -> None:
+    """Clear a loop's circuit-breaker pause (manual release, BR-051)."""
+    from loopflow.application.web import ApplicationError, WebApplication
+    from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
+    from loopflow.infrastructure.web_storage import RunRepository
+
+    runs_root = _runs_dir()
+    loops_root = Path(os.environ.get("LOOPFLOW_LOOPS_DIR", Path.home() / ".loopflow" / "loops"))
+    service = WebApplication(
+        runs=RunRepository(runs_root),
+        loops=LoopRepository(loops_root, RunRepository(runs_root)),
+        queue=QueueRepository(Path(os.environ.get("LOOPFLOW_QUEUE_DIR", Path.home() / ".loopflow" / "queue"))),
+        backends=BackendRepository(),
+    )
+    try:
+        result = service.unpause_loop(name)
+    except ApplicationError as error:
+        raise click.ClickException(f"{error.code}: {error.message}") from error
+    click.echo(f"[loopflow] Unpaused: {result['name']}", err=True)

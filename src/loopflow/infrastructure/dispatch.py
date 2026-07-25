@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Callable
 
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.queue import (
     list_queue, dequeue, queue_size, mark_status, effective_status,
 )
@@ -47,6 +48,15 @@ def dispatch(run_func: Callable[[str, dict], None] | None = None) -> dict:
         if effective_status(entry) == "superseded":
             dequeue(path)
             summary["superseded"] += 1
+            continue
+
+        # Circuit breaker (ADR-0045 §3 / BR-050): a paused loop's tasks are
+        # marked deferred and stay in the queue; they do not count as errors.
+        state = loop_state.load(loop_name)
+        if state["paused"]:
+            reason = state["paused_reason"] or "paused"
+            mark_status(path, "deferred", reason=f"loop paused: {reason}")
+            summary["deferred"] += 1
             continue
 
         # Try to acquire all resource locks

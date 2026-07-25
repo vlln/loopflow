@@ -261,6 +261,7 @@ class RunRepository:
                 "duration_ms": None,
                 "iteration_count": 0,
                 "error_summary": None,
+                "error_category": None,
                 "parse_error": parse_error_summary(error),
                 "execution_epoch": None,
                 "allowed_actions": [],
@@ -284,6 +285,7 @@ class RunRepository:
             "duration_ms": _duration_ms(metadata, now_iso()),
             "iteration_count": sum(edge["count"] for edge in projection.graph["edges"] if edge["is_backedge"]),
             "error_summary": metadata.get("error_summary"),
+            "error_category": metadata.get("error_category"),
             "parse_error": None,
             "execution_epoch": metadata.get("execution_epoch"),
             "allowed_actions": allowed_actions(

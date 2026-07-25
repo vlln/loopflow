@@ -24,7 +24,7 @@ def lf_home(tmp_path, monkeypatch):
 
 def _create_loop(loops: Path, name: str = "hello", *, fails: bool = False, frontmatter_extra: str = "") -> Path:
     loop = loops / name
-    loop.mkdir(parents=True)
+    loop.mkdir(parents=True, exist_ok=True)
     extra = f"\n{frontmatter_extra}" if frontmatter_extra else ""
     (loop / "loop.md").write_text(f"---\nname: {name}{extra}\n---\n\n# {name}\n")
     if fails:
