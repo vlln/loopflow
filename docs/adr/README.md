@@ -19,6 +19,7 @@
 | [0045](0045-loop-failure-circuit-breaker.md) | Loop 失败熔断与 loop_state 存储 | accepted | Spec v15 / AC-027 |
 | [0046](0046-stale-grace-period.md) | stale 失联宽限期 | accepted | Spec v15 / AC-029 |
 | [0047](0047-queue-task-status.md) | 队列任务显式状态语义 | accepted | Spec v15 / AC-028 |
+| [0048](0048-failure-injection-test-infra.md) | 失败注入测试基础设施 | proposed | ADR-0044~0047 / AC-026~029 |
 
 ## 状态说明
 
