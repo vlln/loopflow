@@ -1,0 +1,343 @@
+{
+  "version": 1,
+  "profile": "agent",
+  "source": "docs/ac/0003-agent-layer.md",
+  "cases": [
+    {
+      "ac_id": "AC-001-N-1",
+      "fixture": "Agent 创建并调用",
+      "action": "`ad = parse_agent(...)`; `agent = Agent(ad)`; `agent.call(\"task\", backend)`",
+      "assertion": "返回 agent 执行结果，行为与当前 `agent()` 一致",
+      "test_node": "planned::ac-001-n-1",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-001-N-2",
+      "fixture": "无 agent_def 时",
+      "action": "`Agent(None).call(\"task\", backend)`",
+      "assertion": "直接调用 backend，无额外能力注入",
+      "test_node": "planned::ac-001-n-2",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-001-N-3",
+      "fixture": "Agent 携带 skills",
+      "action": "ad 声明 `skills: [paperutils]`，backend 不支持 native skill",
+      "assertion": "skills 文本注入到 system prompt",
+      "test_node": "planned::ac-001-n-3",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-001-B-1",
+      "fixture": "空 skills 列表",
+      "action": "`skills: []`",
+      "assertion": "不注入任何 skill 内容",
+      "test_node": "planned::ac-001-b-1",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-001-B-2",
+      "fixture": "无 output schema",
+      "action": "ad 无 `output` 字段",
+      "assertion": "不注入 schema hint，返回原始文本",
+      "test_node": "planned::ac-001-b-2",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-001-F-1",
+      "fixture": "Skill 文件不存在",
+      "action": "ad 声明 `skills: [nonexistent]`",
+      "assertion": "抛 RuntimeError（与当前行为一致）",
+      "test_node": "planned::ac-001-f-1",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-002-N-1",
+      "fixture": "Goal 原生支持",
+      "action": "backend 支持 native goal",
+      "assertion": "注入 `/goal ...` 到 prompt，单次调用",
+      "test_node": "planned::ac-002-n-1",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-002-N-2",
+      "fixture": "Goal 降级",
+      "action": "backend 不支持 native goal",
+      "assertion": "loopflow goal 循环，`__goal` schema wrapper",
+      "test_node": "planned::ac-002-n-2",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-002-N-3",
+      "fixture": "Schema 原生支持",
+      "action": "backend 支持 structured output",
+      "assertion": "传 schema 给 backend，不注入文本 hint",
+      "test_node": "planned::ac-002-n-3",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-002-N-4",
+      "fixture": "Schema 降级",
+      "action": "backend 不支持 structured output",
+      "assertion": "注入 schema hint 文本到 prompt",
+      "test_node": "planned::ac-002-n-4",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-003-N-1",
+      "fixture": "agent() 调用等价",
+      "action": "任意参数组合",
+      "assertion": "行为与重构前完全一致",
+      "test_node": "planned::ac-003-n-1",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-003-N-2",
+      "fixture": "agent() 函数签名不变",
+      "action": "现有 workflow 代码",
+      "assertion": "所有现有 workflow 无需修改",
+      "test_node": "planned::ac-003-n-2",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-004-N-1",
+      "fixture": "全量测试通过",
+      "action": "195 tests",
+      "assertion": "全部 pass",
+      "test_node": "planned::ac-004-n-1",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-004-N-2",
+      "fixture": "Goal mode 功能不变",
+      "action": "loopflow goal + native goal",
+      "assertion": "均正常工作",
+      "test_node": "planned::ac-004-n-2",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-004-N-3",
+      "fixture": "Skills 功能不变",
+      "action": "声明 skills 的 agent",
+      "assertion": "注入行为不变",
+      "test_node": "planned::ac-004-n-3",
+      "targets": [
+        "unit:agent"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-030-N-1",
+      "fixture": "环境装了 agent-client-protocol（extra acp），pi-acp 可用",
+      "action": "`loopflow run <简单 loop> --backend pi --transport acp`",
+      "assertion": "run 正常完成（done），events.jsonl 含 agent_start→agent_session→agent_message→agent_done(exit_code=0)",
+      "test_node": "planned::ac-030-n-1",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-030-N-2",
+      "fixture": "ACP 后端 session/update 发 thought/tool_call/usage 多类通知",
+      "action": "同上运行",
+      "assertion": "events.jsonl 对应映射出 thought/tool_call/usage 事件，无通知类型被静默丢弃",
+      "test_node": "planned::ac-030-n-2",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-030-B-1",
+      "fixture": "ACP 后端发 request_permission",
+      "action": "同上运行",
+      "assertion": "auto-approve-all 放行，不阻塞、不死锁，run 继续",
+      "test_node": "planned::ac-030-b-1",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-030-B-2",
+      "fixture": "未安装 agent-client-protocol extra",
+      "action": "`loopflow run <loop> --transport acp`",
+      "assertion": "报错退出，stderr 提示安装 extra（如 `pip install loopflow[acp]`），不 crash",
+      "test_node": "planned::ac-030-b-2",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-030-E-1",
+      "fixture": "ACP 后端进程启动失败或 initialize 超时",
+      "action": "同上运行",
+      "assertion": "run failed，error_summary 含后端不可用信息",
+      "test_node": "planned::ac-030-e-1",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-030-F-1",
+      "fixture": "failed 的 ACP run，后端声明 loadSession/resume",
+      "action": "`loopflow recover --mode continue`",
+      "assertion": "session/load 续接成功，run 恢复继续；后端不声明时返回 continue_not_supported",
+      "test_node": "planned::ac-030-f-1",
+      "targets": [
+        "process:cli-recover"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    }
+  ]
+}
