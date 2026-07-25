@@ -31,7 +31,34 @@ def _targets() -> dict[str, list[str]]:
 
 TARGETS = _targets()
 
-TEST_NODES: dict[str, str] = {}
+TEST_NODES: dict[str, str] = {
+    # AC-001: Agent 类基本功能
+    "AC-001-N-1": "tests/unit/test_runtime.py::TestAgent::test_agent_returns_text",
+    "AC-001-N-2": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_default",
+    "AC-001-N-3": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_skill_found_no_error",
+    "AC-001-B-1": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_no_skills_no_warning",
+    "AC-001-B-2": "tests/unit/test_runtime.py::TestOutputSchema::test_no_schema_injection_without_output",
+    "AC-001-F-1": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_missing_skills_blocks",
+    # AC-002: 能力 Marshalling
+    "AC-002-N-1": "tests/unit/test_runtime.py::TestGoalMode::test_goal_completes_in_one_iteration",
+    "AC-002-N-2": "tests/unit/test_runtime.py::TestGoalMode::test_goal_completes_after_multiple_iterations",
+    "AC-002-N-3": "tests/unit/test_runtime.py::TestOutputSchema::test_auto_schema_from_agent_def",
+    "AC-002-N-4": "tests/unit/test_runtime.py::TestOutputSchema::test_schema_injected_into_prompt",
+    # AC-003: runtime.py 简化
+    "AC-003-N-1": "tests/unit/test_runtime.py::TestAgent::test_agent_returns_text",
+    "AC-003-N-2": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_default",
+    # AC-004: 向后兼容
+    "AC-004-N-1": "tests/unit/test_smoke.py::test_import",
+    "AC-004-N-2": "tests/unit/test_runtime.py::TestGoalMode::test_goal_does_not_affect_existing_agent_call",
+    "AC-004-N-3": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_skill_found_no_error",
+    # AC-030: ACP 后端 loop 端到端
+    "AC-030-N-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_n_1_acp_backend_loop_end_to_end",
+    "AC-030-N-2": "tests/integration/test_acp_sdk_backend.py::test_ac_030_n_2_notification_full_mapping",
+    "AC-030-B-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_b_1_permission_auto_approve",
+    "AC-030-B-2": "tests/integration/test_acp_sdk_backend.py::test_ac_030_b_2_missing_acp_extra_error",
+    "AC-030-E-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_e_1_backend_startup_failure",
+    "AC-030-F-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_f_1_continue_with_session_load",
+}
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {}
 

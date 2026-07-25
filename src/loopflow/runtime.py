@@ -63,6 +63,12 @@ def agent(
     backend = backend or getattr(ctx, "default_backend", None)
     model = model or getattr(ctx, "default_model", None)
 
+    # ADR-0049: read transport/backend from execution_options (CLI --transport / --backend)
+    exec_opts = getattr(ctx, "execution_options", {}) or {}
+    transport = exec_opts.get("transport") or kwargs.pop("transport", None)
+    if backend is None:
+        backend = exec_opts.get("backend")
+
     # --from-phase: skip agent calls before the target phase
     if ctx.from_phase and not ctx._reached_from_phase:
         return AgentResult(status="complete", turns=0, reason="skipped")
@@ -80,7 +86,7 @@ def agent(
             except (ValueError, FileNotFoundError):
                 ad = None
 
-    backend_instance = None if _backend_manager._mock_mode else _make_backend(backend)
+    backend_instance = None if _backend_manager._mock_mode else _make_backend(backend, transport=transport)
     try:
         def _invoke(prompt_str, session_name, **kw):
             return _run_subagent(
