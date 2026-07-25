@@ -161,6 +161,37 @@ def test_cancelled_recover_retry_and_continue_boundaries(tmp_path):
     assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "continue"}
 
 
+def test_quota_failure_recover_continue_keeps_existing_boundaries(tmp_path):
+    """AC-026-F-1: quota 失败分类不改变 recover --mode continue 边界（BR-033）。"""
+    service, factory, _ = app(tmp_path)
+    durable = factory.create_run("quota-failed", status="failed")
+    metadata = json.loads((durable / "run.json").read_text())
+    metadata.update({
+        "error_category": "quota",
+        "failed_call_id": "0001",
+        "active_call_id": "0001",
+        "can_recover_continue": True,
+    })
+    factory.write_json(durable / "run.json", metadata)
+
+    continued = service.recover_run("quota-failed", {"mode": "continue"})
+    assert continued["status"] == "running"
+    assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "continue"}
+
+    no_durable = factory.create_run("quota-no-durable", status="failed")
+    metadata = json.loads((no_durable / "run.json").read_text())
+    metadata.update({
+        "error_category": "quota",
+        "failed_call_id": "0001",
+        "active_call_id": "0001",
+        "can_recover_continue": False,
+    })
+    factory.write_json(no_durable / "run.json", metadata)
+    with pytest.raises(ApplicationError) as error:
+        service.recover_run("quota-no-durable", {"mode": "continue"})
+    assert error.value.code == "continue_not_supported"
+
+
 def test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun(tmp_path):
     service, factory, probe = app(tmp_path)
     factory.create_run("running", status="running", pid=7, process_started_at="same", process_group_id=70)

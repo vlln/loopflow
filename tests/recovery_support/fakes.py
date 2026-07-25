@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from threading import Event
+from types import SimpleNamespace
 from typing import Any, Callable, Iterator
 
 
@@ -107,6 +108,22 @@ class SessionBackendFake:
         self._apply_behavior(behavior)
         self.results.append(attempt)
         return attempt.exit_code
+
+    def close(self) -> None:
+        """与真实后端实例契约对齐（manager finally 分支调用）。"""
+
+    @property
+    def error_category(self) -> str | None:
+        """ADR-0044 结构化上报通道：最近一次调用的分类（未上报为 None）。"""
+        if not self.results:
+            return None
+        return self.results[-1].error_category
+
+    @property
+    def _transport(self) -> Any:
+        """manager 读取 instance._transport.stderr_text 的契约桩。"""
+        stderr = self.results[-1].stderr if self.results else ""
+        return SimpleNamespace(stderr_text=stderr)
 
 
 @dataclass
