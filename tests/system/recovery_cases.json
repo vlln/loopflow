@@ -907,7 +907,7 @@
       "fixture": "mock 后端第 1 次调用返回 transient 失败（stderr 含 \"rate_limit\"），第 2 次成功",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "自动退避重试后成功返回；events.jsonl 含 agent_retry 事件（attempt/reason/delay）；agent_done 的 error_category 缺省或 transient",
-      "test_node": "planned::ac-026-n-1",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n1_transient_retries_then_succeeds",
       "targets": [
         "unit:failure-classification"
       ],
@@ -923,7 +923,7 @@
       "fixture": "后端结构化上报 error_category=quota，同时 stderr 含 \"timeout\" 字样",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "按 quota 处理：不自动重试（无 agent_retry 事件），结构化上报优先于 stderr 模式匹配",
-      "test_node": "planned::ac-026-n-2",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n2_structured_quota_beats_transient_stderr",
       "targets": [
         "unit:failure-classification"
       ],
@@ -939,7 +939,7 @@
       "fixture": "agent 调用失败（任意类别）",
       "action": "run 失败后检查 run.json 与 agent_done 事件",
       "assertion": "run.json 的 error_category 与 agent_done payload 的分类一致，值为 auth/quota/transient/task/unknown 之一",
-      "test_node": "planned::ac-026-n-3",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n3_run_json_matches_agent_done_category",
       "targets": [
         "unit:failure-classification"
       ],
@@ -955,7 +955,7 @@
       "fixture": "后端上报 auth 失败（如凭证过期）",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "不自动重试，run 直接 failed，error_category=auth",
-      "test_node": "planned::ac-026-b-1",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b1_auth_failure_fails_without_retry",
       "targets": [
         "unit:failure-classification"
       ],
@@ -971,7 +971,7 @@
       "fixture": "失败信息无法匹配任何已知类别",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "error_category=unknown，按 task 处理：不自动重试",
-      "test_node": "planned::ac-026-b-2",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b2_unmatched_failure_is_unknown_no_retry",
       "targets": [
         "unit:failure-classification"
       ],
@@ -987,7 +987,7 @@
       "fixture": "transient 失败连续 3 次重试均失败",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "抛 AgentError（含 category=transient），run failed；agent_retry 事件共 3 条，退避间隔 3/9/27s",
-      "test_node": "planned::ac-026-e-1",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_e1_transient_exhausts_backoff_then_fails",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1003,7 +1003,7 @@
       "fixture": "后端上报 quota 失败",
       "action": "run 失败后尝试 recover --mode continue",
       "assertion": "按既有 continue 规则处理（durable session 满足则可续接），分类不改变恢复边界",
-      "test_node": "planned::ac-026-f-1",
+      "test_node": "tests/unit/test_web_application.py::test_quota_failure_recover_continue_keeps_existing_boundaries",
       "targets": [
         "POST /api/v1/runs/{run_id}/recover"
       ],
