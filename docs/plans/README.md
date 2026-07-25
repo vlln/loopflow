@@ -51,6 +51,8 @@
 | [0080](0080-hotfix-0.20.1/) | Hotfix 0.20.1（recover mock / 启动信号 / spawn） | done | 2026-07-24 |
 | [0081](0081-failure-injection-infra/) | 失败注入测试基础设施 | done | 2026-07-25 |
 | [0082](0082-queue-task-status/) | 队列任务显式状态（AC-028） | done | 2026-07-25 |
+| [0083](0083-failure-classification/) | Agent 失败分类与重试/续接策略（AC-026） | done | 2026-07-25 |
+| [0084](0084-loop-failure-circuit-breaker/) | Loop 失败熔断与 loop_state（AC-027） | pending | 2026-07-25 |
 
 ## 状态说明
 
