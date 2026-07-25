@@ -1,0 +1,519 @@
+{
+  "version": 1,
+  "profile": "scheduling",
+  "source": "docs/ac/0004-scheduling.md",
+  "cases": [
+    {
+      "ac_id": "AC-010-N-1",
+      "fixture": "`~/.loopflow/loops/hello/loop.md` 存在，含 name、description，body 非空",
+      "action": "执行 `loopflow list`",
+      "assertion": "输出中包含 hello loop，描述来自 loop.md",
+      "test_node": "tests/integration/test_cli.py::TestCLIRun::test_list_loops_and_runs",
+      "targets": [
+        "process:cli-list"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-010-N-2",
+      "fixture": "`~/.loopflow/loops/hello/loop.md` 不存在，但 workflow.py 含 meta 字典",
+      "action": "执行 `loopflow list`",
+      "assertion": "回退到读取 workflow.py meta，输出正常",
+      "test_node": "planned::ac-010-n-2",
+      "targets": [
+        "process:cli-list"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-010-E-1",
+      "fixture": "loop.md frontmatter 缺少 name 字段",
+      "action": "执行 `loopflow list`",
+      "assertion": "该 loop 被跳过，不影响其他 loop 扫描",
+      "test_node": "tests/unit/test_discovery.py::TestLoopMd::test_loop_md_missing_name",
+      "targets": [
+        "unit:discovery"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-010-E-2",
+      "fixture": "loop.md 存在但 frontmatter 格式错误（非合法 YAML）",
+      "action": "执行 `loopflow list`",
+      "assertion": "回退到读取 workflow.py meta",
+      "test_node": "planned::ac-010-e-2",
+      "targets": [
+        "process:cli-list"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-011-N-1",
+      "fixture": "loop hello 存在",
+      "action": "执行 `loopflow enqueue hello --args '{\"key\":\"val\"}'`",
+      "assertion": "`~/.loopflow/queue/` 下生成一个 JSON 文件，含 loop=hello、args、priority、created，stdout 输出队列文件路径",
+      "test_node": "tests/unit/test_queue.py::TestEnqueue::test_creates_queue_file",
+      "targets": [
+        "process:cli-enqueue"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-011-N-2",
+      "fixture": "队列中已有 2 个任务",
+      "action": "执行 `loopflow list --queue`",
+      "assertion": "输出 2 个待执行任务，按 priority 排序",
+      "test_node": "tests/unit/test_queue.py::TestEnqueue::test_multiple_entries_sorted_by_priority",
+      "targets": [
+        "process:cli-list"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-011-E-1",
+      "fixture": "loop 名称不存在",
+      "action": "执行 `loopflow enqueue nonexistent --args '{}'`",
+      "assertion": "CLI 报错退出，stderr 提示 loop 未找到",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestSchedulingE2E::test_enqueue_nonexistent_loop",
+      "targets": [
+        "process:cli-enqueue"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-012-N-1",
+      "fixture": "队列中有 1 个任务（loop hello），资源锁空闲",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "任务从队列移除，loopflow run hello 执行，完成后 stdout 输出 dispatch 结果",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestSchedulingE2E::test_enqueue_then_dispatch",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-012-N-2",
+      "fixture": "队列中有 2 个任务，不同资源",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "两个任务都执行，按优先级顺序",
+      "test_node": "tests/unit/test_dispatch.py::TestDispatchScan::test_priority_ordering",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-012-N-3",
+      "fixture": "队列为空",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "正常退出，无报错，stdout 输出\"no tasks\"",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestSchedulingE2E::test_dispatch_empty_queue",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-012-B-1",
+      "fixture": "队列中有 2 个任务，声明同一资源（repo=/same/path）",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "优先级高的先执行，第二个任务因资源锁跳过，留在队列",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestSchedulingE2E::test_dispatch_resource_conflict",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-012-F-1",
+      "fixture": "队列中任务执行时 loopflow run 失败（exit_code != 0）",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "任务从队列移除（不重试），stderr 记录失败原因，dispatch 继续处理下一个任务",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestSchedulingE2E::test_dispatch_failed_task_removed",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-013-N-1",
+      "fixture": "无锁",
+      "action": "dispatch 对资源 repo=/path/to/project 加锁",
+      "assertion": "`~/.loopflow/locks/repo-<hash>.lock` 创建，含 PID 和时间戳",
+      "test_node": "tests/unit/test_resource_lock.py::TestResourceLock::test_acquire_creates_lock_file",
+      "targets": [
+        "unit:resource-lock"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-013-N-2",
+      "fixture": "同 AC-013-N-1，loop 执行完成",
+      "action": "检查锁文件",
+      "assertion": "锁文件已删除",
+      "test_node": "tests/unit/test_resource_lock.py::TestResourceLock::test_release_deletes_lock_file",
+      "targets": [
+        "unit:resource-lock"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-013-B-1",
+      "fixture": "锁文件存在但超过 30 分钟",
+      "action": "执行 `loopflow dispatch`，尝试对同一资源加锁",
+      "assertion": "旧锁被清理，新锁成功创建",
+      "test_node": "tests/unit/test_resource_lock.py::TestResourceLock::test_stale_lock_cleanup",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-013-F-1",
+      "fixture": "进程 A 持有资源锁，进程 B 的 dispatch 尝试对同一资源加锁",
+      "action": "进程 B 执行 `loopflow dispatch`",
+      "assertion": "对应任务被跳过，留在队列，stderr 提示资源被占用",
+      "test_node": "tests/unit/test_resource_lock.py::TestResourceLock::test_conflict_detection",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-N-1",
+      "fixture": "loop hello 的 run 执行失败（failed 终态）",
+      "action": "run 结束后检查 `~/.loopflow/loop_state/hello.json`",
+      "assertion": "consecutive_failures=1，paused=false，last_run_id 为该 run",
+      "test_node": "planned::ac-027-n-1",
+      "targets": [
+        "unit:loop-state"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-N-2",
+      "fixture": "AC-027-N-1 之后 loop hello 的 run 执行成功（done）",
+      "action": "检查 loop_state/hello.json",
+      "assertion": "consecutive_failures=0，paused=false",
+      "test_node": "planned::ac-027-n-2",
+      "targets": [
+        "unit:loop-state"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-N-3",
+      "fixture": "loop hello 连续 5 次 run 失败",
+      "action": "第 5 次失败后检查 loop_state/hello.json",
+      "assertion": "paused=true，paused_reason 含 `failure_streak:5`，paused_at 非空",
+      "test_node": "planned::ac-027-n-3",
+      "targets": [
+        "unit:loop-state"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-N-4",
+      "fixture": "loop hello 已 paused，队列中有 hello 的任务",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "该任务标记 deferred 留队（status_reason 含暂停原因），不计入 dispatch errors",
+      "test_node": "planned::ac-027-n-4",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-B-1",
+      "fixture": "loop hello 的 loop.md frontmatter 声明 `failure_threshold: 2`",
+      "action": "连续 2 次 run 失败后检查 loop_state/hello.json",
+      "assertion": "第 2 次失败即 paused=true（阈值覆盖默认值 5）",
+      "test_node": "planned::ac-027-b-1",
+      "targets": [
+        "unit:loop-state"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-B-2",
+      "fixture": "loop hello 已 paused",
+      "action": "执行 loop 恢复操作（CLI/Web 解除暂停）后检查 loop_state/hello.json",
+      "assertion": "paused=false，consecutive_failures=0，dispatch 恢复消费该 loop 任务",
+      "test_node": "planned::ac-027-b-2",
+      "targets": [
+        "unit:loop-state"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-B-3",
+      "fixture": "loop hello 已 paused",
+      "action": "执行 `loopflow run hello`（手动触发）",
+      "assertion": "run 正常执行，不被熔断拦截",
+      "test_node": "planned::ac-027-b-3",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-E-1",
+      "fixture": "loop_state/hello.json 内容损坏（非法 JSON）或不存在",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "按初始状态（consecutive_failures=0、paused=false）处理，dispatch 正常执行，不报错退出",
+      "test_node": "planned::ac-027-e-1",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-027-F-1",
+      "fixture": "loop hello 的 run 由 `loopflow run` 手动触发并失败（非 dispatch）",
+      "action": "检查 loop_state/hello.json",
+      "assertion": "手动触发的失败同样计入 consecutive_failures（熔断与触发方式无关）",
+      "test_node": "planned::ac-027-f-1",
+      "targets": [
+        "unit:loop-state"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-N-1",
+      "fixture": "loop hello 存在",
+      "action": "执行 `loopflow enqueue hello` 后检查队列文件",
+      "assertion": "任务 JSON 含 status=pending",
+      "test_node": "planned::ac-028-n-1",
+      "targets": [
+        "process:cli-enqueue"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-N-2",
+      "fixture": "队列中有任务声明资源 repo=/same/path，该资源锁被持有",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "任务标记 status=deferred、status_reason 非空，留在队列；锁释放后再次 dispatch 该任务被正常执行",
+      "test_node": "planned::ac-028-n-2",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-N-3",
+      "fixture": "队列中有 loop hello 的 pending 任务 A",
+      "action": "执行 `loopflow enqueue hello --supersede`（生成任务 B）",
+      "assertion": "任务 A 标记 status=superseded、superseded_by=B 的 uuid；任务 B 为 pending",
+      "test_node": "planned::ac-028-n-3",
+      "targets": [
+        "process:cli-enqueue"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-N-4",
+      "fixture": "队列中有 superseded 任务 A 和 pending 任务 B（同 loop）",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "A 被跳过并清理（文件删除），仅 B 执行；dispatch summary 含 superseded 计数且不计入 errors",
+      "test_node": "planned::ac-028-n-4",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-B-1",
+      "fixture": "队列中没有 loop hello 的任务",
+      "action": "执行 `loopflow enqueue hello --supersede`",
+      "assertion": "与正常入队一致：新任务 pending，无 supersede 动作",
+      "test_node": "planned::ac-028-b-1",
+      "targets": [
+        "process:cli-enqueue"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-E-1",
+      "fixture": "队列文件含未知 status 值（如 \"unknown_state\"）或缺失 status 字段",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "按 pending 处理，任务正常消费，不阻塞 dispatch",
+      "test_node": "planned::ac-028-e-1",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-028-F-1",
+      "fixture": "队列中同时存在 deferred 和 superseded 任务",
+      "action": "执行 `loopflow dispatch`",
+      "assertion": "两者均不计入 dispatch errors；summary 中 deferred、superseded 分别计数",
+      "test_node": "planned::ac-028-f-1",
+      "targets": [
+        "process:cli-dispatch"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    }
+  ]
+}
