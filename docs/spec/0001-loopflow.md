@@ -539,6 +539,12 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | 暂停解除 / 恢复 Loop | loop 名 | 更新后的 Loop 摘要（含 paused 状态） | 404 loop 不存在 |
 | 修复 stale Run（宽限期约束） | run_id | 同既有 reconcile | 宽限期内返回 409 `run_in_grace`，其余同既有 |
 
+### 失败与熔断呈现（0.21.0 新增）
+
+- Run 列表与详情呈现 `error_summary` 与失败分类（`error_category`），失败原因不得只能翻事件时间线。
+- 熔断呈现分级：streak 首次失败在 Loop 摘要醒目呈现；连续重复失败聚合为一条（streak 计数），不逐条刷屏。
+- paused 的 Loop 在 Loops 工作区显示暂停徽标、原因与恢复操作。
+
 ---
 
 # 约束
