@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [失败注入测试基建](01-plan-failure-injection-infra.md) | [Report](01-report-failure-injection-infra.md) | in_progress |
+| 01 | [失败注入测试基建](01-plan-failure-injection-infra.md) | [Report](01-report-failure-injection-infra.md) | done |
 
 ## 范围
 

@@ -2,7 +2,7 @@
 title: ADR 0048 — 失败注入测试基础设施
 description: 为 0.21.0 四特性（ADR-0044~0047）搭建测试基建：SessionBackendFake 脚本化 per-attempt 失败注入与结构化 error_category 上报替身、stale_since 相对偏移 run.json 工厂、loop_state 与队列状态 fixtures；自证落在 tests/infrastructure，不写 AC-026~029 业务用例
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-25T04:50:00Z
 ---
 
@@ -60,4 +60,11 @@ run.json fixture 生成器支持 `stale_since` 相对偏移（秒），直接构
 
 ## Verification
 
-待验证：基建搭建完成后以 tests/infrastructure 自证测试通过回填（自证测试名称与结果）。
+非技术选型类 ADR：全部为 tests/ 内基建，无新依赖、无生产代码改动，豁免 spike 验证。正确性由 0081 容器的基建自证直接证明——`tests/infrastructure/test_failure_injection_support.py` 13 条全部通过（2026-07-25）：
+
+- 脚本序列消费与耗尽回退：`test_scripted_attempts_consumed_in_order_then_fall_back_to_fixed_fields`、`test_scripted_transient_failures_then_success_sequence`、`test_resume_script_is_independent_of_create_script`、`test_script_behavior_overrides_fixed_behavior_per_attempt`
+- 四类失败上报：`test_agent_done_payload_reports_all_four_failure_categories`
+- 结构化-vs-stderr 冲突优先级：`test_structured_category_wins_over_conflicting_stderr`、`test_unreported_and_unmatched_failure_resolves_to_unknown`、`test_transient_patterns_copy_matches_production_runner`（模式表漂移守卫）
+- stale/grace 工厂：`test_run_factory_stale_since_relative_offset`、`test_run_metadata_carries_error_category_when_failed`
+- loop_state/queue fixture 往返：`test_loop_state_factory_roundtrip`、`test_queue_entry_factory_status_roundtrip`
+- 既有行为回归：`test_existing_fake_behavior_regression`（既有 `test_recovery_support.py` 12 条亦零修改通过）

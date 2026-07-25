@@ -2,7 +2,7 @@
 title: 失败注入测试基础设施 Plan
 description: SessionBackendFake 脚本化失败注入 + 结构化 error_category 通道 + stale_since/loop_state/queue fixtures + 基建自证
 type: plan
-status: in_progress
+status: done
 created: 2026-07-25T04:55:00Z
 ---
 
