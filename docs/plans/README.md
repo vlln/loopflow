@@ -54,6 +54,7 @@
 | [0083](0083-failure-classification/) | Agent 失败分类与重试/续接策略（AC-026） | done | 2026-07-25 |
 | [0084](0084-loop-failure-circuit-breaker/) | Loop 失败熔断与 loop_state（AC-027） | done | 2026-07-25 |
 | [0085](0085-stale-grace-period/) | stale 失联宽限期（AC-029） | done | 2026-07-25 |
+| [0086](0086-manifest-debt-cleanup/) | manifest strict 欠账清理（AC-010 + web 6 场景） | in_progress | 2026-07-25 |
 
 ## 状态说明
 
