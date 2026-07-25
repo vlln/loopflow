@@ -5,6 +5,7 @@ import json
 import subprocess
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -112,7 +113,13 @@ def test_run_lifecycle_commands_preserve_contract(api):
     running = factory.create_run("running", status="running", pid=7, process_started_at="same", process_group_id=70)
     failed = factory.create_run("failed", status="failed", args={"attempt": 2})
     done = factory.create_run("done-source", status="done", args={"x": 1})
-    stale = factory.create_run("stale", status="running", pid=9, process_started_at="gone")
+    stale = factory.create_run(
+        "stale",
+        status="running",
+        pid=9,
+        process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(),
+    )
 
     stopped = client.request("POST", "/api/v1/runs/running/stop")
     assert stopped.status == 200 and stopped.json()["status"] == "cancelled"
@@ -136,6 +143,50 @@ def test_run_lifecycle_commands_preserve_contract(api):
     assert reconciled.status == 200 and reconciled.json()["status"] == "failed"
     conflict = client.request("POST", "/api/v1/runs/done-source/stop")
     assert conflict.status == 409 and conflict.json()["error"]["code"] == "invalid_run_transition"
+
+
+def test_ac029_b1_reconcile_within_grace_returns_run_in_grace(api):
+    client, factory, _ = api
+    stale = factory.create_run(
+        "stale-grace",
+        status="running",
+        pid=9,
+        process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+    before = (stale / "run.json").read_bytes()
+
+    response = client.request("POST", "/api/v1/runs/stale-grace/reconcile")
+
+    assert response.status == 409 and response.json()["error"]["code"] == "run_in_grace"
+    assert (stale / "run.json").read_bytes() == before
+
+
+def test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since(api):
+    client, factory, _ = api
+    stale = factory.create_run(
+        "stale-expired",
+        status="running",
+        pid=9,
+        process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(),
+    )
+
+    response = client.request("POST", "/api/v1/runs/stale-expired/reconcile")
+
+    assert response.status == 200 and response.json()["status"] == "failed"
+    metadata = json.loads((stale / "run.json").read_text())
+    assert "stale_since" not in metadata and "pid" not in metadata
+    assert metadata["error_summary"] and metadata["finished_at"]
+
+
+def test_ac029_f1_reconcile_live_run_returns_run_not_stale(api):
+    client, factory, _ = api
+    factory.create_run("active", status="running", pid=7, process_started_at="same", process_group_id=70)
+
+    response = client.request("POST", "/api/v1/runs/active/reconcile")
+
+    assert response.status == 409 and response.json()["error"]["code"] == "run_not_stale"
 
 
 def test_intervention_endpoints_list_validate_and_respond(api):

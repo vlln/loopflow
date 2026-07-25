@@ -1,5 +1,6 @@
 import json
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -655,7 +656,8 @@ def test_loop_queries_preview_queue_pages_and_not_found(tmp_path):
 
 def test_reconcile_and_validation_edges(tmp_path):
     service, factory, _ = app(tmp_path)
-    factory.create_run("stale", status="running", pid=99, process_started_at="gone")
+    stale_since = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    factory.create_run("stale", status="running", pid=99, process_started_at="gone", stale_since=stale_since)
     assert service.reconcile("stale")["status"] == "failed"
     with pytest.raises(ApplicationError) as error:
         service.reconcile("stale")
