@@ -264,7 +264,7 @@
       "fixture": "loop hello 的 run 执行失败（failed 终态）",
       "action": "run 结束后检查 `~/.loopflow/loop_state/hello.json`",
       "assertion": "consecutive_failures=1，paused=false，last_run_id 为该 run",
-      "test_node": "planned::ac-027-n-1",
+      "test_node": "tests/unit/test_loop_state.py::TestCircuitBreakerScenarios::test_ac027_n1_failed_run_increments_streak",
       "targets": [
         "unit:loop-state"
       ],
@@ -280,7 +280,7 @@
       "fixture": "AC-027-N-1 之后 loop hello 的 run 执行成功（done）",
       "action": "检查 loop_state/hello.json",
       "assertion": "consecutive_failures=0，paused=false",
-      "test_node": "planned::ac-027-n-2",
+      "test_node": "tests/unit/test_loop_state.py::TestCircuitBreakerScenarios::test_ac027_n2_done_run_resets_streak",
       "targets": [
         "unit:loop-state"
       ],
@@ -296,7 +296,7 @@
       "fixture": "loop hello 连续 5 次 run 失败",
       "action": "第 5 次失败后检查 loop_state/hello.json",
       "assertion": "paused=true，paused_reason 含 `failure_streak:5`，paused_at 非空",
-      "test_node": "planned::ac-027-n-3",
+      "test_node": "tests/unit/test_loop_state.py::TestCircuitBreakerScenarios::test_ac027_n3_five_failures_pause_loop",
       "targets": [
         "unit:loop-state"
       ],
@@ -312,7 +312,7 @@
       "fixture": "loop hello 已 paused，队列中有 hello 的任务",
       "action": "执行 `loopflow dispatch`",
       "assertion": "该任务标记 deferred 留队（status_reason 含暂停原因），不计入 dispatch errors",
-      "test_node": "planned::ac-027-n-4",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestLoopCircuitBreaker::test_ac027_n4_paused_loop_task_deferred_not_error",
       "targets": [
         "process:cli-dispatch"
       ],
@@ -328,7 +328,7 @@
       "fixture": "loop hello 的 loop.md frontmatter 声明 `failure_threshold: 2`",
       "action": "连续 2 次 run 失败后检查 loop_state/hello.json",
       "assertion": "第 2 次失败即 paused=true（阈值覆盖默认值 5）",
-      "test_node": "planned::ac-027-b-1",
+      "test_node": "tests/unit/test_loop_state.py::TestCircuitBreakerScenarios::test_ac027_b1_threshold_frontmatter_override",
       "targets": [
         "unit:loop-state"
       ],
@@ -344,7 +344,7 @@
       "fixture": "loop hello 已 paused",
       "action": "执行 loop 恢复操作（CLI/Web 解除暂停）后检查 loop_state/hello.json",
       "assertion": "paused=false，consecutive_failures=0，dispatch 恢复消费该 loop 任务",
-      "test_node": "planned::ac-027-b-2",
+      "test_node": "tests/unit/test_loop_state.py::TestUnpauseCli::test_ac027_b2_unpause_clears_and_dispatch_resumes",
       "targets": [
         "unit:loop-state"
       ],
@@ -360,7 +360,7 @@
       "fixture": "loop hello 已 paused",
       "action": "执行 `loopflow run hello`（手动触发）",
       "assertion": "run 正常执行，不被熔断拦截",
-      "test_node": "planned::ac-027-b-3",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestLoopCircuitBreaker::test_ac027_b3_manual_run_not_blocked_by_pause",
       "targets": [
         "process:cli-run"
       ],
@@ -376,7 +376,7 @@
       "fixture": "loop_state/hello.json 内容损坏（非法 JSON）或不存在",
       "action": "执行 `loopflow dispatch`",
       "assertion": "按初始状态（consecutive_failures=0、paused=false）处理，dispatch 正常执行，不报错退出",
-      "test_node": "planned::ac-027-e-1",
+      "test_node": "tests/e2e/test_scheduling_e2e.py::TestLoopCircuitBreaker::test_ac027_e1_corrupted_loop_state_treated_as_initial",
       "targets": [
         "process:cli-dispatch"
       ],
@@ -392,7 +392,7 @@
       "fixture": "loop hello 的 run 由 `loopflow run` 手动触发并失败（非 dispatch）",
       "action": "检查 loop_state/hello.json",
       "assertion": "手动触发的失败同样计入 consecutive_failures（熔断与触发方式无关）",
-      "test_node": "planned::ac-027-f-1",
+      "test_node": "tests/unit/test_loop_state.py::TestCircuitBreakerScenarios::test_ac027_f1_manual_run_failure_counts",
       "targets": [
         "unit:loop-state"
       ],
