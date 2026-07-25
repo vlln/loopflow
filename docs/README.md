@@ -4,7 +4,7 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
+| **当前阶段** | `RELEASE` |
 | **设计评估** | 0.21.0 DEVELOP 全部闭环：0082 队列状态（AC-028）、0083 失败分类（AC-026）、0084 失败熔断（AC-027）、0085 宽限期（AC-029）已合并 develop。提测门禁通过（492 passed，覆盖率 82%，recovery/web/scheduling profile 核验）。BL-001~004 done。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
