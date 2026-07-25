@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `TEST_INFRA` |
-| **设计评估** | 0.21.0 DESIGN 已冻结：Spec v15 + ADR-0044~0047（accepted）+ AC-026~029（30 场景，planned manifest 已登记）。进入 TEST_INFRA 增量：落实 planned 测试节点。 |
+| **当前阶段** | `DEVELOP` |
+| **设计评估** | 0.21.0 TEST_INFRA 已闭环（0081：失败注入基建 + scheduling profile，已合并 develop）。DEVELOP 容器按依赖序串行：0082 队列状态 → 0083 失败分类 → 0084 熔断 → 0085 宽限期。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
