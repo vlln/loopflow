@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` |
-| **设计评估** | 0.21.0 DEVELOP 全部闭环：0082 队列状态（AC-028）、0083 失败分类（AC-026）、0084 失败熔断（AC-027）、0085 宽限期（AC-029）已合并 develop。提测门禁通过（492 passed，覆盖率 82%，recovery/web/scheduling profile 核验）。BL-001~004 done。 |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | 0.21.0 已发布（v0.21.0 tag 在 main，0081-0087 全部闭环）。下一轮迭代候选见 [backlog.md](backlog.md)：BL-005 evolve run、BL-006 loop 嵌套、BL-007~009 发布评估遗留、BL-011 npm audit、BL-012 SSE topic 隔离、BL-013 版本号单源化。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
