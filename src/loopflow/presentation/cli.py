@@ -573,7 +573,9 @@ def stop(run_id):
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--priority", default=5, help="Task priority (lower = higher priority)")
-def enqueue(name, wf_args, priority):
+@click.option("--supersede", is_flag=True, default=False,
+              help="Mark existing pending/deferred tasks of this loop as superseded")
+def enqueue(name, wf_args, priority, supersede):
     """Add a task to the dispatch queue."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.infrastructure.queue import enqueue as queue_enqueue
@@ -589,7 +591,7 @@ def enqueue(name, wf_args, priority):
             print(f"Error: invalid --args JSON: {e}", file=sys.stderr)
             sys.exit(1)
 
-    path = queue_enqueue(name, args=args_dict, priority=priority)
+    path = queue_enqueue(name, args=args_dict, priority=priority, supersede=supersede)
     print(f"[loopflow] Enqueued: {name} → {path}", file=sys.stderr)
 
 
@@ -600,5 +602,6 @@ def dispatch():
 
     summary = run_dispatch()
     print(f"[loopflow] Dispatch: {summary['processed']} processed, "
-          f"{summary['skipped']} skipped, {summary['errors']} errors",
+          f"{summary['deferred']} deferred, {summary['superseded']} superseded, "
+          f"{summary['errors']} errors",
           file=sys.stderr)

@@ -93,6 +93,9 @@ QUEUE_ITEM_SCHEMA = {
         "resources",
         "priority",
         "created",
+        "status",
+        "status_reason",
+        "superseded_by",
         "blocked_resources",
     ],
     "properties": {
@@ -102,6 +105,9 @@ QUEUE_ITEM_SCHEMA = {
         "resources": {"type": "object", "additionalProperties": {"type": "string"}},
         "priority": {"type": "integer", "minimum": 0, "maximum": 100},
         "created": {"type": "string"},
+        "status": {"type": "string", "enum": ["pending", "deferred", "superseded"]},
+        "status_reason": NULLABLE_STRING,
+        "superseded_by": NULLABLE_STRING,
         "blocked_resources": {"type": "array", "items": {"type": "string"}},
     },
 }
@@ -266,6 +272,9 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "resources": {},
             "priority": 5,
             "created": "2026-07-18T22:00:00Z",
+            "status": "pending",
+            "status_reason": None,
+            "superseded_by": None,
             "blocked_resources": [],
         },
         "backend": {

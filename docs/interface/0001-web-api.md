@@ -440,7 +440,7 @@ AgentDefinitionSummary：`name:string`、`description:string`、`path:string`，
 
 ### `GET /queue`
 
-Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queue items，字段为 `task_id:string`、`loop:string`、`args:object`、`resources:object`、`priority:integer`、`created:string`、`blocked_resources:string[]`，全部必填；外层为 `items` 和 `next_cursor`。
+Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queue items，字段为 `task_id:string`、`loop:string`、`args:object`、`resources:object`、`priority:integer`、`created:string`、`status:string`（pending/deferred/superseded）、`status_reason:string|null`、`superseded_by:string|null`、`blocked_resources:string[]`，全部必填；外层为 `items` 和 `next_cursor`。
 
 错误：422 `validation_failed`。
 

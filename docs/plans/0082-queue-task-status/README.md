@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [队列任务显式状态](01-plan-queue-task-status.md) | [Report](01-report-queue-task-status.md) | in_progress |
+| 01 | [队列任务显式状态](01-plan-queue-task-status.md) | [Report](01-report-queue-task-status.md) | done |
 
 ## 范围
 
