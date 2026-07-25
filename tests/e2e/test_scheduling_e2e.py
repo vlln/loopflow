@@ -337,3 +337,81 @@ class TestQueueTaskStatus:
         entries = list_queue()
         assert len(entries) == 1
         assert entries[0]["status"] == "deferred"
+
+
+class TestLoopCircuitBreaker:
+    """AC-027 调度链路场景：paused loop 的 dispatch 语义与手动 run 不拦截。"""
+
+    def test_ac027_n4_paused_loop_task_deferred_not_error(self, scheduling_env):
+        """paused loop 的队列任务 mark deferred 留队，status_reason 含暂停原因，不计 errors。"""
+        from loopflow.infrastructure import loop_state
+        from loopflow.infrastructure.dispatch import dispatch
+        from loopflow.infrastructure.queue import enqueue, list_queue
+
+        _create_test_loop(scheduling_env / "loops")
+        for i in range(5):
+            loop_state.record_failure("hello", f"run-{i}")
+        assert loop_state.load("hello")["paused"] is True
+
+        enqueue("hello", priority=1)
+
+        calls = []
+        summary = dispatch(run_func=lambda loop, args: calls.append(loop))
+        assert summary["processed"] == 0
+        assert summary["errors"] == 0
+        assert summary["deferred"] == 1
+        assert calls == []
+
+        entries = list_queue()
+        assert len(entries) == 1
+        assert entries[0]["status"] == "deferred"
+        assert "failure_streak:5" in entries[0]["status_reason"]
+
+    def test_ac027_e1_corrupted_loop_state_treated_as_initial(self, scheduling_env):
+        """loop_state 损坏或缺失按初始状态处理，dispatch 正常执行不报错。"""
+        from loopflow.infrastructure.dispatch import dispatch
+        from loopflow.infrastructure.queue import enqueue, list_queue
+
+        _create_test_loop(scheduling_env / "loops")
+        state_dir = scheduling_env / "loop_state"
+        state_dir.mkdir(exist_ok=True)
+        (state_dir / "hello.json").write_text("{corrupted", encoding="utf-8")
+
+        enqueue("hello", priority=1)
+
+        calls = []
+        summary = dispatch(run_func=lambda loop, args: calls.append(loop))
+        assert summary["processed"] == 1
+        assert summary["errors"] == 0
+        assert calls == ["hello"]
+        assert list_queue() == []
+
+    def test_ac027_b3_manual_run_not_blocked_by_pause(self, scheduling_env):
+        """paused 时手动 `loopflow run hello` 正常执行，不被熔断拦截。"""
+        from loopflow.infrastructure import loop_state
+        from loopflow.presentation.cli import main as cli_main
+
+        loops_dir = scheduling_env / "loops"
+        loop_dir = loops_dir / "hello"
+        loop_dir.mkdir(parents=True)
+        (loop_dir / "loop.md").write_text("""---
+name: hello
+description: Manual run while paused
+---
+
+# hello
+""")
+        (loop_dir / "workflow.py").write_text(
+            "def run(**kwargs):\n"
+            "    return 'ok'\n"
+        )
+        for i in range(5):
+            loop_state.record_failure("hello", f"run-{i}")
+        assert loop_state.load("hello")["paused"] is True
+
+        result = CliRunner().invoke(cli_main, ["run", "hello"])
+        assert result.exit_code == 0
+        # 手动 done 归零 streak 但不自动解除 paused（ADR-0045 §4）
+        state = loop_state.load("hello")
+        assert state["consecutive_failures"] == 0
+        assert state["paused"] is True

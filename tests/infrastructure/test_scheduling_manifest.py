@@ -43,8 +43,8 @@ def test_scheduling_manifest_pins_implemented_nodes_and_rejects_planned_in_stric
     manifest = generate_manifest(AC_PATH)
     implemented = [case for case in manifest["cases"] if case["ac_id"] in TEST_NODES]
     planned = [case for case in manifest["cases"] if case["ac_id"] not in TEST_NODES]
-    assert len(implemented) == len(TEST_NODES) == 21
-    assert len(planned) == 11
+    assert len(implemented) == len(TEST_NODES) == 30
+    assert len(planned) == 2
 
     implemented[0]["test_node"] = "tests/unit/test_queue.py::bogus"
 

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loopflow import __version__
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
 from loopflow.infrastructure.web_events import project_events, replay_file_changes, replay_v2
 from loopflow.infrastructure.intervention import (
@@ -327,6 +328,14 @@ class WebApplication:
         loop_dir = self.loops.find(name)
         if loop_dir is None:
             raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
+        return self.loops.detail(loop_dir)
+
+    def unpause_loop(self, name: str) -> dict[str, Any]:
+        """Manual circuit-breaker release (BR-051): clear paused and the streak."""
+        loop_dir = self.loops.find(name)
+        if loop_dir is None:
+            raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
+        loop_state.unpause(name)
         return self.loops.detail(loop_dir)
 
     def preview_loop_file(self, name: str, relative: str) -> dict[str, Any]:

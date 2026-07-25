@@ -206,6 +206,15 @@ def handler_for(
                     self._error(404, "run_not_found", "Run endpoint was not found")
                 return
 
+            match = re.fullmatch(r"/loops/([^/]+)/unpause", path)
+            if match:
+                if method == "POST":
+                    self._require_empty_body()
+                    self._json(200, self.app.unpause_loop(match.group(1)))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
+                return
+
             match = re.fullmatch(r"/loops/([^/]+)(?:/file)?", path)
             if match and method == "GET":
                 name = match.group(1)

@@ -27,6 +27,7 @@ type FetchOptions = boolean | {
   pickDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
   declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
+  pausedLoop?: boolean;
 };
 
 function installFetch(config: FetchOptions = true) {
@@ -44,10 +45,13 @@ function installFetch(config: FetchOptions = true) {
   const metaStatus = typeof config === 'boolean' ? 200 : config.systemMeta?.status ?? 200;
   const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
   const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
-  const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : loopSummary;
+  const pausedLoop = typeof config === 'boolean' ? false : config.pausedLoop ?? false;
+  const pausedFields = pausedLoop ? { paused: true, paused_reason: 'failure_streak:5', consecutive_failures: 5 } : {};
+  const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : { ...loopSummary, ...pausedFields };
   const calls = [] as unknown as string[] & { bodies: unknown[] };
   calls.bodies = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
+  let loopUnpaused = false;
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
     const path = String(input);
     calls.push(`${options?.method ?? 'GET'} ${path}`);
@@ -79,8 +83,9 @@ function installFetch(config: FetchOptions = true) {
       return response(runFileBody ?? { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true }, runFileStatus);
     }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
-    if (path === '/api/v1/loops') return response({ items: [declaredLoop, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
-    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : loopDetail);
+    if (path === '/api/v1/loops') return response({ items: [{ ...declaredLoop, ...(loopUnpaused ? { paused: false, paused_reason: null, consecutive_failures: 0 } : {}) }, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
+    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : { ...loopDetail, ...pausedFields });
+    if (path === '/api/v1/loops/review-loop/unpause') { loopUnpaused = true; return response({ ...loopDetail, paused: false, paused_reason: null, consecutive_failures: 0 }); }
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
     if (path.includes('/api/v1/loops/review-loop/file')) return response({ content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
     if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
@@ -619,4 +624,27 @@ it('AC-019-N-5: theme toggle switches data-theme and persists across renders', a
   fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
   expect(document.documentElement.dataset.theme).toBe('dark');
   expect(localStorage.getItem('lf-theme')).toBe('dark');
+});
+
+
+it('renders run error summary and failure category in list and detail', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('[quota] Agent failed')).toBeVisible();
+  fireEvent.click(screen.getByText('run-failed'));
+  const banner = await screen.findByRole('alert');
+  expect(banner).toHaveTextContent('quota');
+  expect(banner).toHaveTextContent('Agent failed');
+});
+
+it('shows paused loop badge with streak and unpauses via API', async () => {
+  const calls = installFetch({ pausedLoop: true });
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  expect(await screen.findByText('failure_streak:5')).toBeVisible();
+  expect(screen.getAllByText('paused').length).toBe(2);
+  expect(screen.getAllByText(/streak ×5/).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Unpause loop' }));
+  await waitFor(() => expect(calls).toContain('POST /api/v1/loops/review-loop/unpause'));
+  await waitFor(() => expect(screen.queryByText('failure_streak:5')).not.toBeInTheDocument());
 });

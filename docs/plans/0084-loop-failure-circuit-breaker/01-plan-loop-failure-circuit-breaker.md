@@ -2,7 +2,7 @@
 title: Loop 失败熔断与 loop_state Plan
 description: per-loop loop_state 存储 + 连续失败达阈值自动熔断 paused + dispatch deferred 留队 + 手动 unpause（CLI/Web）+ UI 失败与熔断呈现，AC-027 九场景
 type: plan
-status: pending
+status: done
 created: 2026-07-25T06:20:00Z
 ---
 

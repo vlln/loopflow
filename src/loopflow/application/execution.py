@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.context import RunContext, State, set_context
 from loopflow.infrastructure.discovery import load_loop
 from loopflow.infrastructure.web_storage import SystemProcessProbe, append_run_index, atomic_write_json, now_iso, read_json
@@ -168,6 +169,13 @@ def execute_workflow(
         and current.get("status") == "running"
     ):
         atomic_write_json(run_dir / "run.json", run_metadata)
+    # Circuit breaker (ADR-0045 §2 / BR-050): count terminal failures per loop
+    # and pause at the threshold; a done run resets the streak. Manual and
+    # dispatch-triggered runs alike land here, so both are counted.
+    if status == "failed":
+        loop_state.record_failure(loop, run_id, threshold=loop_state.failure_threshold(metadata))
+    elif status == "done":
+        loop_state.record_success(loop)
 
 
 def _execute_workflow_process(
