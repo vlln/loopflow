@@ -21,10 +21,10 @@
     },
     {
       "ac_id": "AC-010-N-2",
-      "fixture": "`~/.loopflow/loops/hello/loop.md` 不存在，但 workflow.py 含 meta 字典",
+      "fixture": "`~/.loopflow/loops/hello/loop.md` 不存在（workflow.py 含 meta 字典）",
       "action": "执行 `loopflow list`",
-      "assertion": "回退到读取 workflow.py meta，输出正常",
-      "test_node": "planned::ac-010-n-2",
+      "assertion": "输出正常但不包含 hello——loop.md 是必选定义文件，无 workflow.py meta 回退（与 ADR-0031 一致）；其他 loop 不受影响",
+      "test_node": "tests/unit/test_discovery.py::TestListLoops::test_no_loop_md_not_discoverable",
       "targets": [
         "process:cli-list"
       ],
@@ -55,8 +55,8 @@
       "ac_id": "AC-010-E-2",
       "fixture": "loop.md 存在但 frontmatter 格式错误（非合法 YAML）",
       "action": "执行 `loopflow list`",
-      "assertion": "回退到读取 workflow.py meta",
-      "test_node": "planned::ac-010-e-2",
+      "assertion": "该 loop 被跳过，stderr 记录解析错误，不影响其他 loop 扫描——无 workflow.py meta 回退（与 ADR-0031 一致）",
+      "test_node": "tests/unit/test_discovery.py::TestLoopMd::test_loop_md_bad_yaml",
       "targets": [
         "process:cli-list"
       ],

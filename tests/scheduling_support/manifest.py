@@ -48,6 +48,8 @@ TARGETS = _targets()
 TEST_NODES = {
     "AC-010-N-1": "tests/integration/test_cli.py::TestCLIRun::test_list_loops_and_runs",
     "AC-010-E-1": "tests/unit/test_discovery.py::TestLoopMd::test_loop_md_missing_name",
+    "AC-010-N-2": "tests/unit/test_discovery.py::TestListLoops::test_no_loop_md_not_discoverable",
+    "AC-010-E-2": "tests/unit/test_discovery.py::TestLoopMd::test_loop_md_bad_yaml",
     "AC-011-N-1": "tests/unit/test_queue.py::TestEnqueue::test_creates_queue_file",
     "AC-011-N-2": "tests/unit/test_queue.py::TestEnqueue::test_multiple_entries_sorted_by_priority",
     "AC-011-E-1": "tests/e2e/test_scheduling_e2e.py::TestSchedulingE2E::test_enqueue_nonexistent_loop",
