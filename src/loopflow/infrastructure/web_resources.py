@@ -17,6 +17,7 @@ import yaml
 from loopflow.domain.capabilities import Capabilities
 from loopflow.infrastructure.backends.diagnostics import BACKEND_META
 from loopflow.infrastructure.backends.manager import _make_backend
+from loopflow.infrastructure.queue import effective_status
 from loopflow.infrastructure.repository import parse_agent
 from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json
 
@@ -236,7 +237,7 @@ class QueueRepository:
 
     def enqueue(self, loop: str, args: dict[str, Any], resources: dict[str, str], priority: int) -> dict[str, Any]:
         task_id = uuid.uuid4().hex
-        value = {"loop": loop, "args": args, "resources": resources, "priority": priority, "created": datetime.now(timezone.utc).isoformat()}
+        value = {"loop": loop, "args": args, "resources": resources, "priority": priority, "created": datetime.now(timezone.utc).isoformat(), "status": "pending"}
         atomic_write_json(self.root / f"{task_id}.json", value)
         return self._project(self.root / f"{task_id}.json", value)
 
@@ -249,6 +250,9 @@ class QueueRepository:
             "resources": resources,
             "priority": value.get("priority", 5),
             "created": value.get("created", ""),
+            "status": effective_status(value),
+            "status_reason": value.get("status_reason") if isinstance(value.get("status_reason"), str) else None,
+            "superseded_by": value.get("superseded_by") if isinstance(value.get("superseded_by"), str) else None,
             "blocked_resources": [name for name in resources if not self.resource_available(name)],
         }
 
