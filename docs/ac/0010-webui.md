@@ -100,8 +100,8 @@ created: 2026-07-18T21:00:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-015-N-6 | Loop 含 `meta.phases = [{"title":"采集","detail":"从数据源拉取"},{"title":"处理","detail":"清洗转换"}]` | 在 WebUI 启动该 Loop 的 Run | Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件 | 自动化 |
-| AC-015-N-7 | 同 AC-015-N-6，SSE 推送 phase("采集") 事件 | 观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
-| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | 观察 phase graph | 归档作为 undeclared 节点出现，带 "undeclared" badge；采集、处理按实际状态显示 | 自动化 + 截图 |
+| AC-015-N-7 | 同 AC-015-N-6，runtime 已产生 phase("采集") 事件 | （重新）加载 Run 详情，观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
+| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | （重新）加载 Run 详情，观察 phase graph | 归档作为 undeclared 节点出现，带 undeclared 视觉标记（is-undeclared 类，accent 边框色）；采集、处理按实际状态显示 | 自动化 + 截图 |
 
 ## 边界场景
 
@@ -120,7 +120,7 @@ created: 2026-07-18T21:00:00Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-015-F-3 | workflow.py 语法错误，无法提取 meta.phases | 在 WebUI 启动 Run | 报错退出或显示加载错误，不渲染占位节点，不崩溃 | 自动化 |
+| AC-015-F-3 | workflow.py 语法错误（loop.md 正常；declared phases 来自 loop.md frontmatter，不受影响） | 在 WebUI 启动 Run | API 返回错误（run 进程启动失败，500 internal_error），不创建 Run、不渲染占位节点；Loop 详情与 declared phases 不受影响，服务不崩溃 | 自动化 |
 
 ---
 
@@ -161,7 +161,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-F-1 | run_id 不存在 | 订阅 SSE | 返回 404，连接不进入重试循环 | 自动化 |
 | AC-016-F-2 | 注入 event reader，使订阅已发送 event_id=5 后下一次读取抛 `OSError("fixture-read-failed")` | 保持 SSE 连接并触发下一次读取 | 服务发送 `event: stream_error`，data.code=`event_read_failed`、data.last_event_id=5，随后关闭；不发送 event_id>5 | 自动化 |
-| AC-016-F-3 | file_changes.jsonl 读取抛 `OSError("fixture-read-failed")`，events.jsonl 正常 | 保持 SSE 连接 | file_changes topic 发送 `event: stream_error`（topic=file_changes）；run_event topic 不受影响，继续推送 | 自动化 |
+| AC-016-F-3 | file_changes.jsonl 读取抛 `OSError("fixture-read-failed")`，events.jsonl 正常 | 保持 SSE 连接 | 服务发送 `event: stream_error`（data.code=`event_read_failed`、data.last_event_id=当前 run_event 游标，无 topic 字段），随后关闭连接；失败前已推送的 run_event/file_changes 数据不重复 | 自动化 |
 
 ---
 

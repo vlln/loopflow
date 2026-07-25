@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | 0077 SYSTEM_TEST 重新认证通过（含 0076：401 pytest + 24 vitest + e2e + manifest strict + wheel 冒烟），无阻塞级缺陷；web profile manifest 漂移判定非阻塞基建缺口（另立 test 容器）。0075 继续执行 0.20.0（内容 0070-0072 + 0074 + 0076）。 |
+| **设计评估** | 0.21.0 DEVELOP 全部闭环：0082 队列状态（AC-028）、0083 失败分类（AC-026）、0084 失败熔断（AC-027）、0085 宽限期（AC-029）已合并 develop。提测门禁通过（492 passed，覆盖率 82%，recovery/web/scheduling profile 核验）。BL-001~004 done。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
@@ -14,6 +14,7 @@
 
 | 路径 | 用途 |
 |------|------|
+| [backlog.md](backlog.md) | 工程需求池：迭代候选 |
 | [vision.md](vision.md) | 全局顶层愿景 |
 | [spec/](spec/) | Spec 需求规格（用户故事、模块划分、数据模型、非功能指标） |
 | [interface/](interface/) | 接口定义（入参/出参/错误码，适用有 API 时） |

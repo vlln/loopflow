@@ -13,8 +13,11 @@ export interface RunSummary {
   duration_ms: number | null;
   iteration_count: number;
   error_summary: string | null;
+  error_category?: string | null;
   parse_error: string | null;
   execution_epoch?: number | null;
+  stale_since?: string | null;
+  stale_grace_remaining_seconds?: number | null;
   allowed_actions: string[];
 }
 
@@ -58,9 +61,9 @@ export interface InterventionSummary {
 
 export interface DeclaredArg { name: string; default?: unknown; description?: string; required?: boolean }
 export interface SystemMeta { version: string }
-export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[] }
+export interface LoopSummary { name: string; description: string; agent_count: number; triggers: unknown[]; valid: boolean; error_summary: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[]; consecutive_failures?: number; paused?: boolean; paused_reason?: string | null }
 export interface LoopFile { path: string; media_type: string | null; size: number; previewable: boolean }
-export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[]; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }
+export interface LoopDetail { name: string; description: string; valid: boolean; error_summary: string | null; triggers: unknown[]; resources: unknown[]; environment: string | null; declared_phases?: { title: string; detail: string }[]; declared_args?: DeclaredArg[]; consecutive_failures?: number; paused?: boolean; paused_reason?: string | null; files: LoopFile[]; agents: { name: string; description: string; path: string }[]; runs: RunSummary[] }
 export interface Backend { name: string; status: string; reason: string | null; cli_path: string | null; version: string | null; transport: string; capabilities: Record<string, boolean>; diagnosed_at: string | null }
 export interface Diagnostic { name: string; status: string; reason: string | null; exit_code: number | null; stdout: string; stderr: string; diagnosed_at: string }
 

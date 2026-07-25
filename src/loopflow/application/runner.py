@@ -12,6 +12,7 @@ import time
 from typing import Any, Callable
 
 from loopflow.domain import (
+    ERROR_CATEGORIES,
     AgentDef,
     AgentError,
     Capabilities,
@@ -61,6 +62,37 @@ def _transient_reason(stderr: str) -> str:
     return "unknown"
 
 
+# ADR-0044 §1: auth/quota 模式表（stderr 兜底）。保守原则：宁可 unknown
+# 不可误判 transient——本表先于 _TRANSIENT_PATTERNS 匹配。
+_AUTH_QUOTA_PATTERNS: list[tuple[str, str]] = [
+    ("401", "auth"),
+    ("unauthorized", "auth"),
+    ("invalid api key", "auth"),
+    ("authentication failed", "auth"),
+    ("insufficient_quota", "quota"),
+    ("quota exceeded", "quota"),
+    ("quota", "quota"),
+]
+
+
+def _classify_error(reported: str | None, stderr: str) -> str:
+    """按 ADR-0044 §1 优先级解析失败分类。
+
+    后端结构化上报（agent_done payload error_category）优先；
+    未上报时 stderr 模式匹配兜底（auth/quota 先于 transient）；
+    两者皆无按 unknown（策略上视同 task）。
+    """
+    if reported in ERROR_CATEGORIES:
+        return reported
+    stderr_lower = stderr.lower()
+    for pattern, category in _AUTH_QUOTA_PATTERNS:
+        if pattern in stderr_lower:
+            return category
+    if _is_transient_error(stderr):
+        return "transient"
+    return "unknown"
+
+
 def _extract_exit_code(events: list[dict]) -> int:
     for evt in events:
         if evt.get("type") == "agent_done":
@@ -88,6 +120,14 @@ def _extract_session_id(events: list[dict]) -> str | None:
     for evt in events:
         if evt.get("type") == "agent_done":
             return evt.get("session_id")
+    return None
+
+
+def _extract_error_category(events: list[dict]) -> str | None:
+    """ADR-0044 结构化上报通道：agent_done payload 的 error_category。"""
+    for evt in events:
+        if evt.get("type") == "agent_done":
+            return evt.get("error_category")
     return None
 
 
@@ -546,7 +586,8 @@ class AgentRunner:
                 return text, exit_code, backend_sid
 
             stderr = _extract_stderr(events)
-            if infra_attempt < len(INFRA_BACKOFF) and _is_transient_error(stderr):
+            category = _classify_error(_extract_error_category(events), stderr)
+            if infra_attempt < len(INFRA_BACKOFF) and category == "transient":
                 delay = INFRA_BACKOFF[infra_attempt]
                 reason = _transient_reason(stderr)
                 self._write_event({
@@ -567,7 +608,7 @@ class AgentRunner:
             msg = f"Agent call failed with exit code {exit_code}"
             if stderr:
                 msg += f"\nStderr: {stderr}"
-            if infra_attempt >= len(INFRA_BACKOFF):
+            if category == "transient" and infra_attempt >= len(INFRA_BACKOFF):
                 msg = (
                     f"Agent call failed after {len(INFRA_BACKOFF)} "
                     f"infra retries: {msg}"
@@ -583,13 +624,14 @@ class AgentRunner:
                 session_id=backend_sid,
             )
             self.ctx.failed_session_id = backend_sid
+            self.ctx.failed_error_category = category
             caps = self.backend.capabilities if self.backend else Capabilities()
             self.ctx.failed_can_continue = bool(
                 backend_sid
                 and getattr(caps, "resume_session", False)
                 and getattr(caps, "durable_session_id", False)
             )
-            error = AgentError(msg)
+            error = AgentError(msg, category=category)
             error.backend_sid = backend_sid
             raise error
 

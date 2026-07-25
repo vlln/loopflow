@@ -1,5 +1,6 @@
 import json
 import subprocess
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -159,6 +160,37 @@ def test_cancelled_recover_retry_and_continue_boundaries(tmp_path):
     continued = service.recover_run("durable-cancelled", {"mode": "continue"})
     assert continued["status"] == "running"
     assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "continue"}
+
+
+def test_quota_failure_recover_continue_keeps_existing_boundaries(tmp_path):
+    """AC-026-F-1: quota 失败分类不改变 recover --mode continue 边界（BR-033）。"""
+    service, factory, _ = app(tmp_path)
+    durable = factory.create_run("quota-failed", status="failed")
+    metadata = json.loads((durable / "run.json").read_text())
+    metadata.update({
+        "error_category": "quota",
+        "failed_call_id": "0001",
+        "active_call_id": "0001",
+        "can_recover_continue": True,
+    })
+    factory.write_json(durable / "run.json", metadata)
+
+    continued = service.recover_run("quota-failed", {"mode": "continue"})
+    assert continued["status"] == "running"
+    assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "continue"}
+
+    no_durable = factory.create_run("quota-no-durable", status="failed")
+    metadata = json.loads((no_durable / "run.json").read_text())
+    metadata.update({
+        "error_category": "quota",
+        "failed_call_id": "0001",
+        "active_call_id": "0001",
+        "can_recover_continue": False,
+    })
+    factory.write_json(no_durable / "run.json", metadata)
+    with pytest.raises(ApplicationError) as error:
+        service.recover_run("quota-no-durable", {"mode": "continue"})
+    assert error.value.code == "continue_not_supported"
 
 
 def test_stop_escalates_to_kill_result_and_legacy_stopped_has_only_rerun(tmp_path):
@@ -624,7 +656,8 @@ def test_loop_queries_preview_queue_pages_and_not_found(tmp_path):
 
 def test_reconcile_and_validation_edges(tmp_path):
     service, factory, _ = app(tmp_path)
-    factory.create_run("stale", status="running", pid=99, process_started_at="gone")
+    stale_since = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    factory.create_run("stale", status="running", pid=99, process_started_at="gone", stale_since=stale_since)
     assert service.reconcile("stale")["status"] == "failed"
     with pytest.raises(ApplicationError) as error:
         service.reconcile("stale")
@@ -696,3 +729,62 @@ def test_pick_directory_not_supported_platforms(tmp_path, monkeypatch):
     with pytest.raises(ApplicationError) as missing_error:
         service.pick_directory()
     assert missing_error.value.code == "not_supported"
+
+
+def test_unpause_loop_clears_pause_and_returns_summary(tmp_path, monkeypatch):
+    """unpause_loop 清除 paused 与 streak，返回含 paused 状态的 Loop 摘要。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    from loopflow.infrastructure import loop_state
+
+    service, _, _ = app(tmp_path)
+    for i in range(5):
+        loop_state.record_failure("hello", f"run-{i}")
+    assert service.get_loop("hello")["paused"] is True
+
+    summary = service.unpause_loop("hello")
+    assert summary["name"] == "hello"
+    assert summary["paused"] is False
+    state = loop_state.load("hello")
+    assert state["paused"] is False
+    assert state["consecutive_failures"] == 0
+
+
+def test_unpause_loop_not_found(tmp_path, monkeypatch):
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    service, _, _ = app(tmp_path)
+    with pytest.raises(ApplicationError) as error:
+        service.unpause_loop("nonexistent")
+    assert error.value.code == "loop_not_found"
+
+
+def test_loop_summary_projects_circuit_breaker_state(tmp_path, monkeypatch):
+    """Loop 摘要投影 consecutive_failures / paused / paused_reason。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    from loopflow.infrastructure import loop_state
+
+    service, _, _ = app(tmp_path)
+    loop_state.record_failure("hello", "run-1")
+    summary = service.get_loop("hello")
+    assert summary["consecutive_failures"] == 1
+    assert summary["paused"] is False
+    assert summary["paused_reason"] is None
+
+
+def test_run_summary_projects_error_category(tmp_path, monkeypatch):
+    """Run 摘要投影 error_category（0083 落 run.json，读模型补齐）。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    service, factory, _ = app(tmp_path)
+    run = factory.runs / "run-failed"
+    run.mkdir()
+    factory.write_json(run / "run.json", {
+        "run_id": "run-failed",
+        "loop": "hello",
+        "status": "failed",
+        "created": "2026-07-25T00:00:00Z",
+        "error_summary": "boom",
+        "error_category": "quota",
+        "execution_epoch": 1,
+    })
+    summary = service.get_run("run-failed")
+    assert summary["error_summary"] == "boom"
+    assert summary["error_category"] == "quota"

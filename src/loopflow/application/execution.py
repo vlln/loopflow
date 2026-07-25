@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.context import RunContext, State, set_context
 from loopflow.infrastructure.discovery import load_loop
 from loopflow.infrastructure.web_storage import SystemProcessProbe, append_run_index, atomic_write_json, now_iso, read_json
@@ -146,10 +147,14 @@ def execute_workflow(
         run_metadata["active_call_id"] = context._current_call_id
         run_metadata["failed_session_id"] = context.failed_session_id
         run_metadata["can_recover_continue"] = context.failed_can_continue
+        if context.failed_error_category is not None:
+            # ADR-0044 §3 / BR-049：与 error_summary 并列的失败分类
+            run_metadata["error_category"] = context.failed_error_category
     elif status == "done":
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
         run_metadata.pop("can_recover_continue", None)
+        run_metadata.pop("error_category", None)
         run_metadata.pop("cancel_point", None)
         run_metadata.pop("active_call_id", None)
         run_metadata.pop("active_worker_atomic", None)
@@ -158,12 +163,22 @@ def execute_workflow(
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)
     run_metadata.pop("process_group_id", None)
+    # Stale grace (BR-052): the worker's terminal write is authoritative and
+    # clears stale_since recorded by the read model while it was unreachable
+    run_metadata.pop("stale_since", None)
     current = read_json(run_dir / "run.json")
     if (
         current.get("execution_epoch") == run_metadata.get("execution_epoch")
         and current.get("status") == "running"
     ):
         atomic_write_json(run_dir / "run.json", run_metadata)
+    # Circuit breaker (ADR-0045 §2 / BR-050): count terminal failures per loop
+    # and pause at the threshold; a done run resets the streak. Manual and
+    # dispatch-triggered runs alike land here, so both are counted.
+    if status == "failed":
+        loop_state.record_failure(loop, run_id, threshold=loop_state.failure_threshold(metadata))
+    elif status == "done":
+        loop_state.record_success(loop)
 
 
 def _execute_workflow_process(

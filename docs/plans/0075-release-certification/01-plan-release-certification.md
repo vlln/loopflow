@@ -2,7 +2,7 @@
 title: Release 0.20.0 Certification Plan
 description: 执行 0.20.0 RELEASE 阶段的版本确认、CHANGELOG、release gate、Gitflow 合并和 tag
 type: plan
-status: pending
+status: done
 created: 2026-07-24T05:20:00Z
 ---
 

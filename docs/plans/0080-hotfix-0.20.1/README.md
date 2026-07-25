@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Hotfix 0.20.1](01-plan-hotfix-0.20.1.md) | [Report](01-report-hotfix-0.20.1.md) | pending |
+| 01 | [Hotfix 0.20.1](01-plan-hotfix-0.20.1.md) | [Report](01-report-hotfix-0.20.1.md) | done |
 
 ## 范围
 

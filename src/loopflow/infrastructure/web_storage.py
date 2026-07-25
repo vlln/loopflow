@@ -19,6 +19,25 @@ def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+STALE_GRACE_SECONDS = 24 * 60 * 60
+
+
+def stale_grace_remaining(stale_since: Any) -> int | None:
+    """Seconds left in the stale grace period (BR-052).
+
+    Returns None when stale_since is missing or unparseable; clamps at 0
+    once the grace period has expired.
+    """
+    if not isinstance(stale_since, str) or not stale_since:
+        return None
+    try:
+        since = datetime.fromisoformat(stale_since.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    elapsed = (datetime.now(timezone.utc) - since).total_seconds()
+    return max(0, int(STALE_GRACE_SECONDS - elapsed))
+
+
 def atomic_write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
@@ -261,13 +280,18 @@ class RunRepository:
                 "duration_ms": None,
                 "iteration_count": 0,
                 "error_summary": None,
+                "error_category": None,
                 "parse_error": parse_error_summary(error),
                 "execution_epoch": None,
+                "stale_since": None,
+                "stale_grace_remaining_seconds": None,
                 "allowed_actions": [],
             }
         status = str(metadata.get("status", "unreadable"))
         if status == "running" and not self._identity_matches(metadata):
             status = "stale"
+            if not metadata.get("stale_since"):
+                metadata["stale_since"] = self._record_stale_since(run_dir, metadata)
         projection = project_events(run_dir / "events.jsonl")
         return {
             "run_id": str(metadata.get("run_id") or run_dir.name),
@@ -284,8 +308,11 @@ class RunRepository:
             "duration_ms": _duration_ms(metadata, now_iso()),
             "iteration_count": sum(edge["count"] for edge in projection.graph["edges"] if edge["is_backedge"]),
             "error_summary": metadata.get("error_summary"),
+            "error_category": metadata.get("error_category"),
             "parse_error": None,
             "execution_epoch": metadata.get("execution_epoch"),
+            "stale_since": metadata.get("stale_since") if status == "stale" else None,
+            "stale_grace_remaining_seconds": stale_grace_remaining(metadata.get("stale_since")) if status == "stale" else None,
             "allowed_actions": allowed_actions(
                 status,
                 can_recover_retry=self._can_recover_retry(status, metadata, run_dir),
@@ -333,6 +360,14 @@ class RunRepository:
             raise ValueError("run_not_stale")
         if self._identity_matches(metadata):
             raise RuntimeError("process_alive")
+        stale_since = metadata.get("stale_since")
+        if not stale_since:
+            # First stale detection happens on the reconcile path: record the
+            # timestamp, the grace period starts now (BR-052 / ADR-0046 §2)
+            stale_since = self._record_stale_since(run_dir, metadata)
+        remaining = stale_grace_remaining(stale_since)
+        if remaining is None or remaining > 0:
+            raise ValueError("run_in_grace")
         finished = now_iso()
         metadata.update(
             {
@@ -345,8 +380,37 @@ class RunRepository:
         metadata.pop("pid", None)
         metadata.pop("process_started_at", None)
         metadata.pop("process_group_id", None)
+        metadata.pop("stale_since", None)
         atomic_write_json(run_dir / "run.json", metadata)
         return self.read_summary(run_dir)
+
+    def _record_stale_since(self, run_dir: Path, metadata: dict[str, Any]) -> str:
+        """Persist first stale detection in run.json (BR-052), once.
+
+        Re-reads and only writes when the run is still running, has no
+        stale_since yet, and pid/process_started_at/execution_epoch are
+        unchanged — narrowing the race with the worker's terminal write
+        (epoch+status optimistic lock keeps the worker authoritative). When
+        another reader won the race, the already-recorded value is returned.
+        """
+        recorded = now_iso()
+        try:
+            current = read_json(run_dir / "run.json")
+        except (OSError, json.JSONDecodeError):
+            return recorded
+        if not isinstance(current, dict):
+            return recorded
+        if current.get("stale_since"):
+            return str(current["stale_since"])
+        if (
+            current.get("status") == "running"
+            and current.get("pid") == metadata.get("pid")
+            and current.get("process_started_at") == metadata.get("process_started_at")
+            and current.get("execution_epoch") == metadata.get("execution_epoch")
+        ):
+            current["stale_since"] = recorded
+            atomic_write_json(run_dir / "run.json", current)
+        return recorded
 
     def _identity_matches(self, metadata: dict[str, Any]) -> bool:
         pid = metadata.get("pid")

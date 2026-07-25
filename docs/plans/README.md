@@ -43,11 +43,18 @@
 | [0072](0072-file-change-observation/) | 工作目录文件变化观察 | done | 2026-07-23 |
 | [0073](0073-system-test-certification/) | SYSTEM_TEST 认证 | done | 2026-07-24 |
 | [0074](0074-webui-ia/) | WebUI 信息架构收敛 | done | 2026-07-24 |
-| [0075](0075-release-certification/) | RELEASE 认证（0.20.0） | pending | 2026-07-24 |
+| [0075](0075-release-certification/) | RELEASE 认证（0.20.0） | done | 2026-07-24 |
 | [0076](0076-run-working-directory/) | Run 显式工作目录与观察语义 | done | 2026-07-24 |
 | [0077](0077-system-test-recertification/) | SYSTEM_TEST 认证（含 0076） | done | 2026-07-24 |
 | [0078](0078-new-run-dialog-ux/) | New Run 对话框 UX（目录选择器 + Arguments 编辑器） | done | 2026-07-24 |
 | [0079](0079-ui-version-args-theme/) | 版本同步 / Args 声明预填 / 日夜主题 | done | 2026-07-24 |
+| [0080](0080-hotfix-0.20.1/) | Hotfix 0.20.1（recover mock / 启动信号 / spawn） | done | 2026-07-24 |
+| [0081](0081-failure-injection-infra/) | 失败注入测试基础设施 | done | 2026-07-25 |
+| [0082](0082-queue-task-status/) | 队列任务显式状态（AC-028） | done | 2026-07-25 |
+| [0083](0083-failure-classification/) | Agent 失败分类与重试/续接策略（AC-026） | done | 2026-07-25 |
+| [0084](0084-loop-failure-circuit-breaker/) | Loop 失败熔断与 loop_state（AC-027） | done | 2026-07-25 |
+| [0085](0085-stale-grace-period/) | stale 失联宽限期（AC-029） | done | 2026-07-25 |
+| [0086](0086-manifest-debt-cleanup/) | manifest strict 欠账清理（AC-010 + web 6 场景） | done | 2026-07-25 |
 
 ## 状态说明
 

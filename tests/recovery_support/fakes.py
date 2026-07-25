@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from threading import Event
+from types import SimpleNamespace
 from typing import Any, Callable, Iterator
 
 
@@ -10,6 +11,20 @@ from typing import Any, Callable, Iterator
 class SessionCapabilities:
     resume_session: bool = True
     durable_session_id: bool = True
+
+
+@dataclass(frozen=True)
+class AttemptResult:
+    """单次 create/resume 调用的脚本化结果（ADR-0048）。
+
+    behavior 为 None 时沿用 fake 的固定 behavior 字段；
+    error_category 为 None 表示后端未做结构化上报（ADR-0044 尽力而为通道）。
+    """
+
+    exit_code: int = 0
+    stderr: str = ""
+    error_category: str | None = None
+    behavior: str | None = None
 
 
 @dataclass
@@ -21,7 +36,10 @@ class SessionBackendFake:
     session_id: str = "session-1"
     create_behavior: str = "success"
     resume_behavior: str = "success"
+    create_script: list[AttemptResult] = field(default_factory=list)
+    resume_script: list[AttemptResult] = field(default_factory=list)
     calls: list[tuple[str, str, str | None]] = field(default_factory=list)
+    results: list[AttemptResult] = field(default_factory=list)
     blocked: Event = field(default_factory=Event)
     release_block: Event = field(default_factory=Event)
 
@@ -34,6 +52,29 @@ class SessionBackendFake:
         elif behavior != "success":
             raise ValueError(f"unknown backend behavior: {behavior}")
 
+    def _consume_attempt(
+        self, script: list[AttemptResult], fixed_exit_code: int, fixed_behavior: str
+    ) -> tuple[AttemptResult, str]:
+        if script:
+            attempt = script.pop(0)
+            return attempt, attempt.behavior or fixed_behavior
+        return AttemptResult(exit_code=fixed_exit_code), fixed_behavior
+
+    def agent_done_payload(self) -> dict[str, Any]:
+        """按 ADR-0044 契约产出 agent_done 事件 payload（基于最近一次调用结果）。"""
+        if not self.results:
+            raise RuntimeError("no session attempt recorded yet")
+        last = self.results[-1]
+        payload: dict[str, Any] = {
+            "type": "agent_done",
+            "exit_code": last.exit_code,
+            "stderr": last.stderr,
+            "session_id": self.session_id,
+        }
+        if last.error_category is not None:
+            payload["error_category"] = last.error_category
+        return payload
+
     def create_session(
         self,
         user: str,
@@ -44,11 +85,15 @@ class SessionBackendFake:
         self.calls.append(("create", user, None))
         if self.session_timing == "early" and session_handler is not None:
             session_handler(self.session_id)
-        self._apply_behavior(self.create_behavior)
+        attempt, behavior = self._consume_attempt(
+            self.create_script, self.create_exit_code, self.create_behavior
+        )
+        self._apply_behavior(behavior)
         sid = self.session_id if self.session_timing != "never" else ""
         if self.session_timing == "complete" and session_handler is not None:
             session_handler(sid)
-        return sid, self.create_exit_code
+        self.results.append(attempt)
+        return sid, attempt.exit_code
 
     def resume_session(self, session_id: str, user: str, **_: Any) -> int:
         if not (
@@ -57,8 +102,28 @@ class SessionBackendFake:
         ):
             raise RuntimeError("durable resume_session unsupported")
         self.calls.append(("resume", user, session_id))
-        self._apply_behavior(self.resume_behavior)
-        return self.resume_exit_code
+        attempt, behavior = self._consume_attempt(
+            self.resume_script, self.resume_exit_code, self.resume_behavior
+        )
+        self._apply_behavior(behavior)
+        self.results.append(attempt)
+        return attempt.exit_code
+
+    def close(self) -> None:
+        """与真实后端实例契约对齐（manager finally 分支调用）。"""
+
+    @property
+    def error_category(self) -> str | None:
+        """ADR-0044 结构化上报通道：最近一次调用的分类（未上报为 None）。"""
+        if not self.results:
+            return None
+        return self.results[-1].error_category
+
+    @property
+    def _transport(self) -> Any:
+        """manager 读取 instance._transport.stderr_text 的契约桩。"""
+        stderr = self.results[-1].stderr if self.results else ""
+        return SimpleNamespace(stderr_text=stderr)
 
 
 @dataclass

@@ -901,6 +901,232 @@
           "value": 200
         }
       ]
+    },
+    {
+      "ac_id": "AC-026-N-1",
+      "fixture": "mock 后端第 1 次调用返回 transient 失败（stderr 含 \"rate_limit\"），第 2 次成功",
+      "action": "执行含该 agent() 的 workflow",
+      "assertion": "自动退避重试后成功返回；events.jsonl 含 agent_retry 事件（attempt/reason/delay）；agent_done 的 error_category 缺省或 transient",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n1_transient_retries_then_succeeds",
+      "targets": [
+        "unit:failure-classification"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-026-N-2",
+      "fixture": "后端结构化上报 error_category=quota，同时 stderr 含 \"timeout\" 字样",
+      "action": "执行含该 agent() 的 workflow",
+      "assertion": "按 quota 处理：不自动重试（无 agent_retry 事件），结构化上报优先于 stderr 模式匹配",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n2_structured_quota_beats_transient_stderr",
+      "targets": [
+        "unit:failure-classification"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-026-N-3",
+      "fixture": "agent 调用失败（任意类别）",
+      "action": "run 失败后检查 run.json 与 agent_done 事件",
+      "assertion": "run.json 的 error_category 与 agent_done payload 的分类一致，值为 auth/quota/transient/task/unknown 之一",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n3_run_json_matches_agent_done_category",
+      "targets": [
+        "unit:failure-classification"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-026-B-1",
+      "fixture": "后端上报 auth 失败（如凭证过期）",
+      "action": "执行含该 agent() 的 workflow",
+      "assertion": "不自动重试，run 直接 failed，error_category=auth",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b1_auth_failure_fails_without_retry",
+      "targets": [
+        "unit:failure-classification"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-026-B-2",
+      "fixture": "失败信息无法匹配任何已知类别",
+      "action": "执行含该 agent() 的 workflow",
+      "assertion": "error_category=unknown，按 task 处理：不自动重试",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b2_unmatched_failure_is_unknown_no_retry",
+      "targets": [
+        "unit:failure-classification"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-026-E-1",
+      "fixture": "transient 失败连续 3 次重试均失败",
+      "action": "执行含该 agent() 的 workflow",
+      "assertion": "抛 AgentError（含 category=transient），run failed；agent_retry 事件共 3 条，退避间隔 3/9/27s",
+      "test_node": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_e1_transient_exhausts_backoff_then_fails",
+      "targets": [
+        "unit:failure-classification"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-026-F-1",
+      "fixture": "后端上报 quota 失败",
+      "action": "run 失败后尝试 recover --mode continue",
+      "assertion": "按既有 continue 规则处理（durable session 满足则可续接），分类不改变恢复边界",
+      "test_node": "tests/unit/test_web_application.py::test_quota_failure_recover_continue_keeps_existing_boundaries",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-N-1",
+      "fixture": "run 状态 running，其 pid/process_started_at 探活失败（首次判定 stale）",
+      "action": "通过 API 读取该 run",
+      "assertion": "读模型返回 stale；run.json 原子写入 stale_since（首次判定时间）",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n1_first_stale_detection_writes_stale_since",
+      "targets": [
+        "GET /api/v1/runs/{run_id}"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-N-2",
+      "fixture": "AC-029-N-1 之后，宽限期内 worker 进程恢复并写入终态（done/failed）",
+      "action": "读取 run.json",
+      "assertion": "以 worker 写入的终态为准，stale_since 已清除",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n2_worker_terminal_write_clears_stale_since",
+      "targets": [
+        "GET /api/v1/runs/{run_id}"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-B-1",
+      "fixture": "run 处于 stale 且 stale_since 距今不足 24h（宽限期内）",
+      "action": "`POST /api/v1/runs/{id}/reconcile`",
+      "assertion": "返回 409，错误码 run_in_grace；run.json 未被修改",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_returns_run_in_grace",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/reconcile"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "run_in_grace"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-B-2",
+      "fixture": "run 处于 stale 且 stale_since 距今超过 24h",
+      "action": "`POST /api/v1/runs/{id}/reconcile`",
+      "assertion": "按既有 reconcile 流程：status=failed、写 error_summary、清除 pid 字段与 stale_since",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/reconcile"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-E-1",
+      "fixture": "run.json 已含 stale_since，再次读取仍为 stale",
+      "action": "连续两次读取该 run",
+      "assertion": "stale_since 保持首次值不被刷新",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e1_stale_since_is_not_refreshed",
+      "targets": [
+        "GET /api/v1/runs/{run_id}"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-E-2",
+      "fixture": "legacy run（无 stale_since 字段）判定 stale",
+      "action": "读取该 run",
+      "assertion": "按首次判定处理：写入 stale_since，行为与 AC-029-N-1 一致",
+      "test_node": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e2_legacy_run_records_stale_since_on_first_detection",
+      "targets": [
+        "GET /api/v1/runs/{run_id}"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-029-F-1",
+      "fixture": "run 状态非 stale（进程存活）",
+      "action": "`POST /api/v1/runs/{id}/reconcile`",
+      "assertion": "返回 409 run_not_stale（既有行为不变）",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_f1_reconcile_live_run_returns_run_not_stale",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/reconcile"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "run_not_stale"
+        }
+      ]
     }
   ]
 }

@@ -27,6 +27,8 @@ type FetchOptions = boolean | {
   pickDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
   declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
+  detailOverride?: Record<string, unknown>;
+  pausedLoop?: boolean;
 };
 
 function installFetch(config: FetchOptions = true) {
@@ -44,10 +46,14 @@ function installFetch(config: FetchOptions = true) {
   const metaStatus = typeof config === 'boolean' ? 200 : config.systemMeta?.status ?? 200;
   const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
   const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
-  const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : loopSummary;
+  const detailOverride = typeof config === 'boolean' ? null : config.detailOverride ?? null;
+  const pausedLoop = typeof config === 'boolean' ? false : config.pausedLoop ?? false;
+  const pausedFields = pausedLoop ? { paused: true, paused_reason: 'failure_streak:5', consecutive_failures: 5 } : {};
+  const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : { ...loopSummary, ...pausedFields };
   const calls = [] as unknown as string[] & { bodies: unknown[] };
   calls.bodies = [];
   const emptyLoop = { ...loopDetail, name: 'empty-loop', description: 'No agent files', agents: [], files: loopDetail.files.filter((item) => item.path === 'loop.md' || item.path === 'workflow.py') };
+  let loopUnpaused = false;
   vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL, options?: RequestInit) => {
     const path = String(input);
     calls.push(`${options?.method ?? 'GET'} ${path}`);
@@ -56,11 +62,12 @@ function installFetch(config: FetchOptions = true) {
       if (options?.method === 'POST') { calls.bodies.push(JSON.parse(String(options.body))); return response(runs[0], 201); }
       return response({ items: runs, next_cursor: null });
     }
-    if (path === '/api/v1/runs/run-live') return response(detail);
+    if (path === '/api/v1/runs/run-live') return response(detailOverride ? { ...detail, ...detailOverride } : detail);
     if (path === '/api/v1/runs/run-waiting') return response({ ...detail, ...runs[1], allowed_actions: ['respond', 'stop'], interventions: waitingInterventions });
     if (path === '/api/v1/runs/run-waiting/interventions') return response({ items: waitingInterventions });
     if (path === '/api/v1/runs/run-failed') return response({ ...detail, ...runs[2], allowed_actions: ['recover_retry', ...(durable ? ['recover_continue'] : []), 'rerun', 'reconcile'] });
     if (path === '/api/v1/runs/run-cancelled') return response({ ...detail, ...runs[3], allowed_actions: ['recover_retry', 'respond', 'rerun'] });
+    if (path === '/api/v1/runs/run-stale') return response({ ...detail, ...runs.find((run) => run.run_id === 'run-stale'), allowed_actions: ['reconcile'] });
     if (path === '/api/v1/runs/run-cancelled/interventions') return response({ items: [{ request_id: 'approve-2', key: 'approve', prompt: 'Approve after cancel?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T20:00:00Z', responded_at: null }] });
     if (path === '/api/v1/runs/run-waiting/interventions/responses') {
       calls.bodies.push(JSON.parse(String(options?.body)).responses);
@@ -79,8 +86,9 @@ function installFetch(config: FetchOptions = true) {
       return response(runFileBody ?? { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true }, runFileStatus);
     }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
-    if (path === '/api/v1/loops') return response({ items: [declaredLoop, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
-    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : loopDetail);
+    if (path === '/api/v1/loops') return response({ items: [{ ...declaredLoop, ...(loopUnpaused ? { paused: false, paused_reason: null, consecutive_failures: 0 } : {}) }, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
+    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : { ...loopDetail, ...pausedFields });
+    if (path === '/api/v1/loops/review-loop/unpause') { loopUnpaused = true; return response({ ...loopDetail, paused: false, paused_reason: null, consecutive_failures: 0 }); }
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
     if (path.includes('/api/v1/loops/review-loop/file')) return response({ content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
     if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
@@ -543,6 +551,61 @@ it('AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing', asy
   expect(calls.bodies).toHaveLength(0);
 });
 
+// --- AC-015: declared phases merge semantics (ADR-0040) ---
+
+it('AC-015-N-7: executed declared phase replaces its placeholder, others stay pending', async () => {
+  installFetch({
+    detailOverride: {
+      declared_phases: [{ title: '采集', detail: '' }, { title: '处理', detail: '' }],
+      graph: {
+        nodes: [{ phase: '采集', occurrence_count: 1, is_current: true }],
+        edges: [],
+        current_phase_id: 'caiji-1',
+      },
+      occurrences: [{ phase_id: 'caiji-1', phase: '采集', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: null, call_ids: ['call-a'] }],
+    },
+  });
+  render(<App />);
+
+  const executed = (await screen.findByText('采集', { selector: '.phase-node span' })).closest('.phase-node')!;
+  expect(executed.className).not.toContain('is-declared');
+  expect(executed.className).toContain('is-current');
+  expect(executed.textContent).toContain('1 occurrence');
+  const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
+  expect(pending.className).toContain('is-declared');
+  expect(pending.textContent).toContain('pending');
+});
+
+it('AC-015-N-8: undeclared runtime phase renders with the undeclared marker', async () => {
+  installFetch({
+    detailOverride: {
+      declared_phases: [{ title: '采集', detail: '' }, { title: '处理', detail: '' }],
+      graph: {
+        nodes: [
+          { phase: '采集', occurrence_count: 1, is_current: false },
+          { phase: '归档', occurrence_count: 1, is_current: true },
+        ],
+        edges: [{ from: '采集', to: '归档', count: 1, is_backedge: false }],
+        current_phase_id: 'guidang-1',
+      },
+      occurrences: [
+        { phase_id: 'caiji-1', phase: '采集', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-a'] },
+        { phase_id: 'guidang-1', phase: '归档', occurrence: 1, started_at: '2026-07-18T22:00:02Z', ended_at: null, call_ids: ['call-b'] },
+      ],
+    },
+  });
+  render(<App />);
+
+  const undeclared = (await screen.findByText('归档', { selector: '.phase-node span' })).closest('.phase-node')!;
+  expect(undeclared.className).toContain('is-undeclared');
+  expect(undeclared.className).not.toContain('is-declared');
+  const declared = screen.getByText('采集', { selector: '.phase-node span' }).closest('.phase-node')!;
+  expect(declared.className).not.toContain('is-undeclared');
+  expect(declared.className).not.toContain('is-declared');
+  const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
+  expect(pending.className).toContain('is-declared');
+});
+
 // --- AC-014: rail version sync / declared arguments prefill / AC-019: theme toggle ---
 
 it('AC-014-N-11: rail shows the version from system meta', async () => {
@@ -619,4 +682,37 @@ it('AC-019-N-5: theme toggle switches data-theme and persists across renders', a
   fireEvent.click(screen.getByRole('button', { name: 'Switch to dark theme' }));
   expect(document.documentElement.dataset.theme).toBe('dark');
   expect(localStorage.getItem('lf-theme')).toBe('dark');
+});
+
+
+it('renders run error summary and failure category in list and detail', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('[quota] Agent failed')).toBeVisible();
+  fireEvent.click(screen.getByText('run-failed'));
+  const banner = await screen.findByRole('alert');
+  expect(banner).toHaveTextContent('quota');
+  expect(banner).toHaveTextContent('Agent failed');
+});
+
+it('renders stale grace period with remaining time in list and detail', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('Unreachable (grace period) · 23h 0m left')).toBeVisible();
+  fireEvent.click(screen.getByText('run-stale'));
+  expect(await screen.findByRole('heading', { name: 'run-stale' })).toBeVisible();
+  expect(screen.getAllByText('Unreachable (grace period) · 23h 0m left').length).toBe(2);
+  expect(screen.getByRole('button', { name: 'Reconcile run' })).toBeEnabled();
+});
+
+it('shows paused loop badge with streak and unpauses via API', async () => {
+  const calls = installFetch({ pausedLoop: true });
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  expect(await screen.findByText('failure_streak:5')).toBeVisible();
+  expect(screen.getAllByText('paused').length).toBe(2);
+  expect(screen.getAllByText(/streak ×5/).length).toBeGreaterThan(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Unpause loop' }));
+  await waitFor(() => expect(calls).toContain('POST /api/v1/loops/review-loop/unpause'));
+  await waitFor(() => expect(screen.queryByText('failure_streak:5')).not.toBeInTheDocument());
 });

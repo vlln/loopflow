@@ -1,3 +1,4 @@
+import json
 import subprocess
 
 import pytest
@@ -77,7 +78,37 @@ def test_queue_projection_and_blocked_resources(tmp_path):
     item = repository.enqueue("demo", {}, {"repo": "/tmp/repo", "gpu": "1"}, 5)
 
     assert item["blocked_resources"] == ["gpu"]
+    assert item["status"] == "pending"
+    assert item["status_reason"] is None
+    assert item["superseded_by"] is None
     assert repository.list()[0]["task_id"] == item["task_id"]
+
+
+def test_queue_projection_passthroughs_status_fields(tmp_path):
+    """ADR-0047 §5: 投影透传 status/status_reason/superseded_by，未知 status 回退 pending。"""
+    repository = QueueRepository(tmp_path)
+    (tmp_path / "a.json").write_text(json.dumps({
+        "loop": "demo", "args": {}, "resources": {}, "priority": 5,
+        "created": "2026-07-25T00:00:00Z",
+        "status": "deferred", "status_reason": "repo locked",
+    }))
+    (tmp_path / "b.json").write_text(json.dumps({
+        "loop": "demo", "args": {}, "resources": {}, "priority": 6,
+        "created": "2026-07-25T00:01:00Z",
+        "status": "superseded", "superseded_by": "a",
+    }))
+    (tmp_path / "c.json").write_text(json.dumps({
+        "loop": "demo", "args": {}, "resources": {}, "priority": 7,
+        "created": "2026-07-25T00:02:00Z", "status": "unknown_state",
+    }))
+
+    items = {item["task_id"]: item for item in repository.list()}
+    assert items["a"]["status"] == "deferred"
+    assert items["a"]["status_reason"] == "repo locked"
+    assert items["a"]["superseded_by"] is None
+    assert items["b"]["status"] == "superseded"
+    assert items["b"]["superseded_by"] == "a"
+    assert items["c"]["status"] == "pending"
 
 
 def test_backend_diagnostic_redacts_and_decodes_invalid_utf8():

@@ -35,6 +35,7 @@ def _finish_run(metadata: dict, status: str) -> None:
     metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
     metadata.pop("pid", None)
     metadata.pop("process_started_at", None)
+    metadata.pop("stale_since", None)
 
 
 def _runs_dir() -> Path:
@@ -263,6 +264,9 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         _write_run(run_dir / "run.json", run_meta)
         if live:
             live.stop()
+        # Circuit breaker (ADR-0045 §2 / BR-050): manual run failures count too
+        from loopflow.infrastructure import loop_state
+        loop_state.record_failure(name, run_id, threshold=loop_state.failure_threshold(meta))
         sys.exit(1)
 
     if live:
@@ -271,6 +275,10 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
     _write_run(run_dir / "run.json", run_meta)
+
+    # Circuit breaker (ADR-0045 §2): a done run resets the failure streak
+    from loopflow.infrastructure import loop_state
+    loop_state.record_success(name)
 
     if result is not None:
         if isinstance(result, str):
@@ -573,7 +581,9 @@ def stop(run_id):
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--priority", default=5, help="Task priority (lower = higher priority)")
-def enqueue(name, wf_args, priority):
+@click.option("--supersede", is_flag=True, default=False,
+              help="Mark existing pending/deferred tasks of this loop as superseded")
+def enqueue(name, wf_args, priority, supersede):
     """Add a task to the dispatch queue."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.infrastructure.queue import enqueue as queue_enqueue
@@ -589,7 +599,7 @@ def enqueue(name, wf_args, priority):
             print(f"Error: invalid --args JSON: {e}", file=sys.stderr)
             sys.exit(1)
 
-    path = queue_enqueue(name, args=args_dict, priority=priority)
+    path = queue_enqueue(name, args=args_dict, priority=priority, supersede=supersede)
     print(f"[loopflow] Enqueued: {name} → {path}", file=sys.stderr)
 
 
@@ -600,5 +610,29 @@ def dispatch():
 
     summary = run_dispatch()
     print(f"[loopflow] Dispatch: {summary['processed']} processed, "
-          f"{summary['skipped']} skipped, {summary['errors']} errors",
+          f"{summary['deferred']} deferred, {summary['superseded']} superseded, "
+          f"{summary['errors']} errors",
           file=sys.stderr)
+
+
+@main.command()
+@click.argument("name")
+def unpause(name: str) -> None:
+    """Clear a loop's circuit-breaker pause (manual release, BR-051)."""
+    from loopflow.application.web import ApplicationError, WebApplication
+    from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
+    from loopflow.infrastructure.web_storage import RunRepository
+
+    runs_root = _runs_dir()
+    loops_root = Path(os.environ.get("LOOPFLOW_LOOPS_DIR", Path.home() / ".loopflow" / "loops"))
+    service = WebApplication(
+        runs=RunRepository(runs_root),
+        loops=LoopRepository(loops_root, RunRepository(runs_root)),
+        queue=QueueRepository(Path(os.environ.get("LOOPFLOW_QUEUE_DIR", Path.home() / ".loopflow" / "queue"))),
+        backends=BackendRepository(),
+    )
+    try:
+        result = service.unpause_loop(name)
+    except ApplicationError as error:
+        raise click.ClickException(f"{error.code}: {error.message}") from error
+    click.echo(f"[loopflow] Unpaused: {result['name']}", err=True)

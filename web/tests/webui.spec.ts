@@ -103,6 +103,44 @@ test('operates Runs without overflow and renders a nonblank phase graph', async 
   await page.screenshot({ path: testInfo.outputPath('runs.png'), fullPage: true });
 });
 
+test('light theme keeps panels and status badges legible', async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => localStorage.removeItem('lf-theme'));
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
+
+  const panels = page.locator('.panel:visible');
+  const panelCount = await panels.count();
+  expect(panelCount).toBeGreaterThan(0);
+  for (let index = 0; index < panelCount; index += 1) {
+    const style = await panels.nth(index).evaluate((element) => {
+      let node: Element | null = element;
+      let background = 'rgba(0, 0, 0, 0)';
+      while (node) {
+        const candidate = getComputedStyle(node).backgroundColor;
+        if (candidate !== 'rgba(0, 0, 0, 0)') { background = candidate; break; }
+        node = node.parentElement;
+      }
+      return { background, text: getComputedStyle(element).color };
+    });
+    expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(style.background).not.toBe(style.text);
+  }
+
+  const badges = page.locator('.status:visible');
+  const badgeCount = await badges.count();
+  expect(badgeCount).toBeGreaterThan(0);
+  for (let index = 0; index < badgeCount; index += 1) {
+    const style = await badges.nth(index).evaluate((element) => {
+      const computed = getComputedStyle(element);
+      return { background: computed.backgroundColor, text: computed.color };
+    });
+    expect(style.background).not.toBe(style.text);
+  }
+  await page.screenshot({ path: testInfo.outputPath('runs-light.png'), fullPage: true });
+});
+
 test('navigates Loops and Backends responsively', async ({ page }, testInfo) => {
   await page.getByRole('button', { name: 'Loops' }).click();
   await expect(page.getByRole('heading', { name: 'Review Loop' })).toBeVisible();
