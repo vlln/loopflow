@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [manifest strict 欠账清理](01-plan-manifest-debt-cleanup.md) | [Report](01-report-manifest-debt-cleanup.md) | in_progress |
+| 01 | [manifest strict 欠账清理](01-plan-manifest-debt-cleanup.md) | [Report](01-report-manifest-debt-cleanup.md) | done |
 
 ## 范围
 

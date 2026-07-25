@@ -2,7 +2,7 @@
 title: manifest strict 欠账清理 Plan
 description: AC-010-N-2/E-2 契约漂移按裁决修 AC 文本对齐 ADR-0031 现行实现；web profile 6 个历史 planned 场景（AC-015-F-3/N-7/N-8、AC-016-B-3/F-3、AC-019-B-3）补真实测试，漂移场景实证后修 AC 文本；三 profile manifest strict 全绿
 type: plan
-status: in_progress
+status: done
 created: 2026-07-25T07:40:00Z
 ---
 
