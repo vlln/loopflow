@@ -57,6 +57,7 @@
 | [0086](0086-manifest-debt-cleanup/) | manifest strict 欠账清理（AC-010 + web 6 场景） | done | 2026-07-25 |
 | [0091](0091-framework-robustness/) | 框架健壮性修复（BL-017/018/019） | done | 2026-07-26 |
 | [0092](0092-work-dir/) | CLI --work-dir 统一工作目录（BL-020） | done | 2026-07-26 |
+| [0093](0093-webui-display/) | WebUI call/occurrence 显示简化（BL-021） | done | 2026-07-26 |
 
 ## 状态说明
 
