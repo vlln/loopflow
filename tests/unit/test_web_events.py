@@ -100,5 +100,5 @@ def test_runtime_context_writes_v2_but_keeps_resume_cache_flat(tmp_path):
     flat = json.loads(cache.read_text())
 
     assert events[0]["phase"] == "Review" and events[0]["phase_id"] == "phase-1"
-    assert events[1]["call_id"] == session and events[1]["phase_id"] == "phase-1"
+    assert events[1]["call_id"] == "0001" and events[1]["phase_id"] == "phase-1"
     assert flat == {"type": "agent_done", "exit_code": 0}
