@@ -21,6 +21,33 @@ created: 2026-07-24T05:30:00Z
 | AC-025-N-5 | 同 AC-025-N-4，WebUI 已打开该 Run 且有文件变化记录 | 在文件变化目录树中点击 `src/main.py` | 弹出只读预览，显示 `/B/src/main.py` 的当前内容 | 自动化 |
 | AC-025-N-6 | server 运行于 macOS，WebUI 打开 New Run 对话框 | 点击 Browse 按钮，在系统目录选择器中选中 `/B` | `POST /api/v1/system/pick-directory` 返回 200 `{"path": "/B"}`；对话框 working directory 输入被填充为 `/B` | 自动化（端点 subprocess mock） |
 
+> 2026-07-26 追加（BL-020 / [ADR-0042 §5](../adr/0042-run-working-directory.md)）：CLI 暴露 `--work-dir` 参数，统一 workdir 概念（backend cwd = 产出目录）。CLI 路径不经过 REST API，`os.chdir` 直接在 CLI 进程内完成。新增 N-7、B-8、B-9、E-4、F-2 验证 CLI 路径。注意：CLI `--work-dir <path>` 对不存在路径执行 `mkdir -p`（创建），而 REST API 要求路径已存在（返回 422）——CLI 更宽松，符合命令行使用直觉。
+
+### 正常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-025-N-7 | CLI 进程 cwd 为 `/A`，无 `--work-dir` 参数 | `loop run hello --backend mock`（不传 `--work-dir`） | run 在 `/A` 执行；workflow 创建的文件出现在 `/A`；行为与 `cd /A && loop run` 一致（向后兼容） | 自动化 |
+
+### 边界场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-025-B-8 | CLI 进程 cwd 为 `/A` | `loop run hello --work-dir "" --backend mock` | 框架在 `run_dir/work` 下创建隔离工作目录并 chdir；workflow 创建的文件出现在 `run_dir/work` 而非 `/A` | 自动化 |
+| AC-025-B-9 | `/B` 为已存在目录 | `loop run hello --work-dir /B --backend mock` | 框架 chdir 到 `/B`；workflow 创建的文件出现在 `/B`；run.json 不含 working_directory 字段（CLI 路径不写 REST 字段） | 自动化 |
+
+### 异常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-025-E-4 | `/tmp/lf-new-project` 不存在 | `loop run hello --work-dir /tmp/lf-new-project --backend mock` | 框架 `mkdir -p` 创建该目录并 chdir；run status=done，exit_code=0，stderr 无错误（CLI 路径创建不存在路径，与 REST API 的 422 not_found 不同） | 自动化 |
+
+### 失败场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-025-F-2 | loop workflow 代码用相对路径（`Path("output.txt")`），`--work-dir /B` 已设置 | `loop run hello --work-dir /B --backend mock` | loop 函数不收 `work_dir` 参数；`Path("output.txt")` 解析为 `/B/output.txt`；agent 看到的 `Path.cwd()` 为 `/B` | 自动化 |
+
 ## 边界场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |

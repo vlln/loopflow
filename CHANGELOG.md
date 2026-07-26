@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.23.0] — 2026-07-26
+
+### Added
+- CLI `--work-dir` 统一工作目录（ADR-0042 §5）：`loop run --work-dir [path|""|缺省]`，框架 chdir，loop 用相对路径
+
+### Changed
+- `parse_agent` 剥离 frontmatter（ADR-0051）：body 只含 markdown 正文，不再含 frontmatter 元数据
+- webUI call-list 主显 call_id（数字），session 降 hover tooltip；phase 节点 "×N"、详情 "第 N 次执行"、EventTimeline "N 个事件"
+
+### Fixed
+- `render_template` 模板变量转 str：防 integer/None 致 `re.sub` TypeError
+- pi backend `_parse_line` 用 `text_end` 消息级 event：修 `_extract_text` `"\n".join` 在流式 delta 间插 `\n` 破坏 JSON 字符串值
+- event `call_id` 不再用 session fallback：runner agent_start 加 call_id，`_write_event` 删 session fallback
+
 ## [0.22.0] — 2026-07-25
 
 ### Added

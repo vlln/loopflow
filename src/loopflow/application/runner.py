@@ -403,6 +403,7 @@ class AgentRunner:
                 self._write_event({
                     "type": "agent_start",
                     "session": session,
+                    "call_id": call_id,
                     "phase": getattr(self.ctx, '_current_phase', None),
                 })
                 if self._mock_mode == "auto":
@@ -560,6 +561,7 @@ class AgentRunner:
             self._write_event({
                 "type": "agent_start",
                 "session": session,
+                "call_id": call_id,
                 "phase": getattr(self.ctx, '_current_phase', None),
             })
 

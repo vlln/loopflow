@@ -235,7 +235,7 @@ def _write_event(event: dict) -> None:
         event_type = str(event.get("type", "event"))
         phase = event.get("phase") or _ctx._current_phase
         phase_id = event.get("phase_id") or _ctx._current_phase_id
-        call_id = event.get("call_id") or event.get("session") or (
+        call_id = event.get("call_id") or (
             _ctx._current_call_id if event_type.startswith("agent_") else None
         )
         payload = {
