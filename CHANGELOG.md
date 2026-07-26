@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.22.0] — 2026-07-25
+
+### Added
+- Optional ACP transport via the official Python ACP SDK (ADR-0049, AC-030): `loopflow run --transport acp --backend <native-acp>` routes to an SDK-backed ACP transport; CLI remains the default. The hand-rolled JSON-RPC plumbing is replaced by `agent-client-protocol` (asyncio stdio transport + Pydantic schema), bridged to loopflow's sync runner via a dedicated daemon-thread event loop.
+- ACP notification full mapping (BR-056): `agent_message_chunk`, `agent_thought_chunk`, `tool_call_start`/`progress` (informational), and `usage_update` are all surfaced as loopflow events — completing the ADR-0021 stub.
+- ACP permission auto-approve (BR-055): `request_permission` is auto-approved (fire-and-forget model), eliminating the ADR-0018 authorization deadlock.
+- ACP continue (BR-057): backends declaring `loadSession`/`resume` expose continue recovery via `session/load`; best-effort and capability-gated, like the CLI path.
+- `--transport` / `--backend` CLI options and a `transport` field on `POST /api/v1/runs`.
+
+### Changed
+- `agent-client-protocol` (+ pydantic) added as a runtime dependency during implementation; the optional `[acp]` extra split is deferred to a later release (AC-030-B-2 verified via the error constant).
+- Mock ACP server test infrastructure (0088) enables CI-runnable ACP tests without real-backend quota; a new `agent` AC manifest profile covers AC-001~004 and AC-030 (21 scenarios, all strict-green).
+
 ## [0.21.0] — 2026-07-25
 
 ### Added
