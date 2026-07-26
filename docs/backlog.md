@@ -18,3 +18,5 @@
 | BL-010 | AC-010-N-2/E-2 契约漂移裁决 | AC 文本期望 loop.md 缺失/坏 YAML 时回退 workflow.py meta，但 ADR-0031 后实现为强制 loop.md 缺失即跳过；需 DESIGN 裁决对齐文档或实现 | 0081 scheduling profile 落地时发现 | done | 0.21.0 |
 | BL-011 | npm audit 既有失败修复 | brace-expansion 经 @vitest/coverage-v8 链 5 high，中断 mr-gate 链 | 0081 mr-gate 验证时发现 | candidate | — |
 | BL-012 | SSE file_changes OSError 未按 topic 隔离 | AC-016-F-3 实证发现：fc 读取 OSError 落入 server 通用 except，发无 topic 的 stream_error，与 AC-016-E-3 的 topic 隔离行为不一致；需裁决是缺陷还是可接受形态 | 0086 清理时发现 | candidate | — |
+| BL-013 | 版本号单源化 | 版本号双写（pyproject.toml + src/loopflow/__init__.py）易不同步，0.21.0 release 冒烟时暴露 | 0.21.0 复盘 | candidate | — |
+| BL-014 | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | acp.py/acp_backend.py 手搓 JSON-RPC 是未验证 stub（runtime 从不传 transport=acp，ACP 路径生产里是死的）；用官方 agent-client-protocol 替换协议管道，保留 loopflow 自己的 session/recovery/queue；CLI 保留为主传输，ACP 成为真正可用的可选路径 | 0.21.0 后架构调研（acpx 对比） | planned | 0.22.0 |

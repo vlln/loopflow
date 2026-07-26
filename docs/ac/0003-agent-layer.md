@@ -74,3 +74,35 @@ created: 2026-07-13T00:00:00Z
 | AC-004-N-1 | 全量测试通过 | 195 tests | 全部 pass |
 | AC-004-N-2 | Goal mode 功能不变 | loopflow goal + native goal | 均正常工作 |
 | AC-004-N-3 | Skills 功能不变 | 声明 skills 的 agent | 注入行为不变 |
+
+---
+
+# AC-030: ACP 后端 loop 端到端
+
+验证 ACP 后端通过官方 Python SDK 承载 loop 端到端运行，含 streaming 事件映射、permission auto-approve 和 continue 能力门控。对应 Spec v16 BR-054~057、ADR-0049。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-030-N-1 | 环境装了 agent-client-protocol（extra acp），pi-acp 可用 | `loopflow run <简单 loop> --backend pi --transport acp` | run 正常完成（done），events.jsonl 含 agent_start→agent_session→agent_message→agent_done(exit_code=0) | 自动化 |
+| AC-030-N-2 | ACP 后端 session/update 发 thought/tool_call/usage 多类通知 | 同上运行 | events.jsonl 对应映射出 thought/tool_call/usage 事件，无通知类型被静默丢弃 | 自动化 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-030-B-1 | ACP 后端发 request_permission | 同上运行 | auto-approve-all 放行，不阻塞、不死锁，run 继续 | 自动化 |
+| AC-030-B-2 | 未安装 agent-client-protocol extra | `loopflow run <loop> --transport acp` | 报错退出，stderr 提示安装 extra（如 `pip install loopflow[acp]`），不 crash | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-030-E-1 | ACP 后端进程启动失败或 initialize 超时 | 同上运行 | run failed，error_summary 含后端不可用信息 | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-030-F-1 | failed 的 ACP run，后端声明 loadSession/resume | `loopflow recover --mode continue` | session/load 续接成功，run 恢复继续；后端不声明时返回 continue_not_supported | 自动化 |

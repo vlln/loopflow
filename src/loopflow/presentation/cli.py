@@ -152,7 +152,9 @@ def web(host: str, port: int, allow_remote: bool) -> None:
 @click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
 @click.option("--from-phase", default=None, help="Start execution from this phase")
 @click.option("--only-phase", default=None, help="Stop execution after this phase")
-def run(name, wf_args, mock, watch, from_phase, only_phase):
+@click.option("--backend", default=None, help="Agent backend (pi, kimi, claude, codex, ...)")
+@click.option("--transport", default=None, help="Transport mode (cli, acp). ADR-0049")
+def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
@@ -190,6 +192,8 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
             "mock": mock,
             "from_phase": from_phase,
             "only_phase": only_phase,
+            "backend": backend,
+            "transport": transport,
         },
     }
     _write_run(run_dir / "run.json", run_meta)

@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `RELEASE` |
-| **设计评估** | 0.21.0 DEVELOP 全部闭环：0082 队列状态（AC-028）、0083 失败分类（AC-026）、0084 失败熔断（AC-027）、0085 宽限期（AC-029）已合并 develop。提测门禁通过（492 passed，覆盖率 82%，recovery/web/scheduling profile 核验）。BL-001~004 done。 |
+| **设计评估** | 0.22.0 系统测试全绿（0088 mock ACP 基建 + 0089 ACP SDK 真实实现，AC-030 落地）。CLI 保留为主传输，ACP 成为可选可用路径。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

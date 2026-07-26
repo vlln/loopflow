@@ -12,6 +12,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from tests.web_support import ac_manifest as web_manifest
 from tests.recovery_support import manifest as recovery_manifest
 from tests.scheduling_support import manifest as scheduling_manifest
+from tests.agent_support import manifest as agent_manifest
 
 PROFILES = {
     "web": (web_manifest, "docs/ac/0010-webui.md", "tests/system/cases.json"),
@@ -24,6 +25,11 @@ PROFILES = {
         scheduling_manifest,
         "docs/ac/0004-scheduling.md",
         "tests/system/scheduling_cases.json",
+    ),
+    "agent": (
+        agent_manifest,
+        "docs/ac/0003-agent-layer.md",
+        "tests/system/agent_cases.json",
     ),
 }
 

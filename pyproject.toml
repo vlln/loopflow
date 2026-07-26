@@ -1,6 +1,6 @@
 [project]
 name = "loopflow"
-version = "0.21.0"
+version = "0.22.0"
 description = "AI Agent loop orchestration tool"
 requires-python = ">=3.10"
 dependencies = [
@@ -8,6 +8,7 @@ dependencies = [
     "click>=8.0",
     "rich>=13.0",
     "jsonschema>=4.0",
+    "agent-client-protocol>=0.11.0",
 ]
 
 [project.optional-dependencies]
