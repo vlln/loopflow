@@ -65,9 +65,9 @@ def _targets() -> dict[str, list[str]]:
 
     for ac_id in (
         "AC-015-N-1 AC-015-N-2 AC-015-N-3 AC-015-N-4 AC-015-N-5 "
-        "AC-015-N-6 AC-015-N-7 AC-015-N-8 "
-        "AC-015-B-1 AC-015-B-2 AC-015-B-3 AC-015-B-4 "
-        "AC-015-E-2 AC-015-E-3 AC-015-F-1 AC-015-F-2 AC-015-F-3"
+        "AC-015-N-6 AC-015-N-7 AC-015-N-8 AC-015-N-9 "
+        "AC-015-B-1 AC-015-B-2 AC-015-B-3 AC-015-B-4 AC-015-B-5 "
+        "AC-015-E-2 AC-015-E-3 AC-015-E-4 AC-015-F-1 AC-015-F-2 AC-015-F-3 AC-015-F-4"
     ).split():
         targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:phase"]
     assign("AC-015-E-1", "GET /api/v1/runs/{run_id}/legacy-events", "ui:phase")
