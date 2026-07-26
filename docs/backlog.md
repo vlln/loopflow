@@ -19,4 +19,6 @@
 | BL-011 | npm audit 既有失败修复 | brace-expansion 经 @vitest/coverage-v8 链 5 high，中断 mr-gate 链 | 0081 mr-gate 验证时发现 | candidate | — |
 | BL-012 | SSE file_changes OSError 未按 topic 隔离 | AC-016-F-3 实证发现：fc 读取 OSError 落入 server 通用 except，发无 topic 的 stream_error，与 AC-016-E-3 的 topic 隔离行为不一致；需裁决是缺陷还是可接受形态 | 0086 清理时发现 | candidate | — |
 | BL-013 | 版本号单源化 | 版本号双写（pyproject.toml + src/loopflow/__init__.py）易不同步，0.21.0 release 冒烟时暴露 | 0.21.0 复盘 | candidate | — |
-| BL-014 | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | acp.py/acp_backend.py 手搓 JSON-RPC 是未验证 stub（runtime 从不传 transport=acp，ACP 路径生产里是死的）；用官方 agent-client-protocol 替换协议管道，保留 loopflow 自己的 session/recovery/queue；CLI 保留为主传输，ACP 成为真正可用的可选路径 | 0.21.0 后架构调研（acpx 对比） | planned | 0.22.0 |
+| BL-014 | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | acp.py/acp_backend.py 手搓 JSON-RPC 是未验证 stub（runtime 从不传 transport=acp，ACP 路径生产里是死的）；用官方 agent-client-protocol 替换协议管道，保留 loopflow 自己的 session/recovery/queue；CLI 保留为主传输，ACP 成为真正可用的可选路径 | 0.21.0 后架构调研（acpx 对比） | done | 0.22.0 |
+| BL-015 | agent-client-protocol 划为可选 extra [acp] | 0.22.0 实现阶段放主依赖区，ADR-0049 §8 定位为可选 extra 未落地；默认安装不应含 pydantic | 0.22.0 复盘 | candidate | — |
+| BL-016 | grok ACP `_meta` system prompt 在 SDK 路径的等价处理 | SDK session/new 不接受 _meta，0089 改走 prompt 文本拼接，需验证 grok 行为不回归 | 0.22.0 复盘 | candidate | — |
