@@ -89,6 +89,32 @@ created: 2026-07-18T21:00:00Z
 | AC-015-F-1 | events.jsonl 不存在 | 打开 Run | API 返回 Run 摘要和空事件集合；UI 显示无执行记录，不返回 500 | 自动化 |
 | AC-015-F-2 | events.jsonl 最后一行仅写入一半 | 运行期间读取事件 | 完整行全部返回；半行暂不返回且后续补全后只返回一次 | 自动化 |
 
+> 2026-07-26 追加（BL-021）：call/occurrence 显示简化。call-list 主显 call_id（逻辑编号），session 降 tooltip；节点显示 "×N"、详情显示 "第 N 次执行"、EventTimeline 显示 "N 个事件"。消除 call_id 重复（session 含 call_id 又单独显示）+ occurrence/events 措辞区分。新增 N-9、B-5、E-4、F-4。
+
+### 正常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-N-9 | Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id | 打开 Run，查看 Calls 列表 | call-list 主显 call_id（如 "call-1"）；session_id 降为 tooltip（hover 显示完整 session 值）；session_id 不作为独立行或列重复显示 | 自动化 |
+
+### 边界场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-B-5 | Call 有 call_id 但 session_id 缺失（如 mock backend 不产生 session） | 查看 Calls 列表 | 列表显示 call_id；tooltip 不显示 session 或显示 "no session"；不渲染空白行或报错 | 自动化 |
+
+### 异常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-E-4 | Phase 有 5 次 occurrence，当前选中第 3 次；EventTimeline 含 12 个事件 | 查看聚合节点、occurrence 详情和 EventTimeline | 聚合节点显示 "×5"；occurrence 详情显示 "第 3 次执行"；EventTimeline 标题显示 "12 个事件"；三处数字各自独立、不混淆 | 自动化 |
+
+### 失败场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-F-4 | legacy 事件缺少 call_id，无法关联到 Call | 查看 Calls 列表和原始 EventTimeline | 无法关联的事件不出现在任何 Call 详情中；原始 EventTimeline 仍可见（标记 unattributed）；call-list 不显示虚构 Call；页面不崩溃 | 自动化 |
+
 ---
 
 ## Declared Phases 预显示（BR-042）

@@ -20,18 +20,37 @@ created: 2026-07-13T00:00:00Z
 | AC-001-N-2 | 无 agent_def 时 | `Agent(None).call("task", backend)` | 直接调用 backend，无额外能力注入 |
 | AC-001-N-3 | Agent 携带 skills | ad 声明 `skills: [paperutils]`，backend 不支持 native skill | skills 文本注入到 system prompt |
 
+> 2026-07-26 追加（BL-018 / [ADR-0051](../adr/0051-agent-body-excludes-frontmatter.md)）：parse_agent 剥离 frontmatter，body 仅含 markdown 正文。新增 N-4、B-3、B-4、E-1、F-2 验证此行为变化。
+>
+> 2026-07-26 追加（BL-017）：`render_template` 的 `_replace` 返回 `str(value)`，防止 integer/None 模板变量致 `re.sub` TypeError。`{{ breadth }}` 传 `int` 时渲染为字符串 `"5"`；传 `None` 时渲染为空字符串 `""`，不抛异常。
+
+### 正常场景（追加）
+
+| 编号 | 场景 | 前置条件 | 预期结果 |
+|------|------|---------|---------|
+| AC-001-N-4 | parse_agent 剥离 frontmatter | agent `.md` 含 frontmatter（`name`/`description`/`input`）+ markdown 正文 | `AgentDef.body` 不含 frontmatter；Agent system prompt 以 markdown 正文首行开头，不含 `---` 分隔符和 `name`/`description`/`input` 等元数据字段 |
+
 ### 边界场景
 
 | 编号 | 场景 | 前置条件 | 预期结果 |
 |------|------|---------|---------|
 | AC-001-B-1 | 空 skills 列表 | `skills: []` | 不注入任何 skill 内容 |
 | AC-001-B-2 | 无 output schema | ad 无 `output` 字段 | 不注入 schema hint，返回原始文本 |
+| AC-001-B-3 | frontmatter 缺失 | agent `.md` 为纯 markdown 文件，无 `---` 分隔符 | `parse_agent` 抛 `ValueError`，消息含 "No YAML frontmatter found" 和文件路径 |
+| AC-001-B-4 | frontmatter YAML 损坏 | agent `.md` frontmatter 含 YAML 语法错误（如 `name: [unclosed`） | `parse_agent` 抛 `ValueError`，消息含 "Invalid YAML frontmatter" 和解析错误详情 |
+
+### 异常场景
+
+| 编号 | 场景 | 前置条件 | 预期结果 |
+|------|------|---------|---------|
+| AC-001-E-1 | body 正文含 `---`（markdown 水平线） | agent `.md` 含合法 frontmatter + body 正文首段以 `---` 开头（如 markdown 水平线） | parse_agent 返回的 body 不含 frontmatter 字段（name/description/input 等不出现）；body 中的 `---` 保留在 prompt 文本内；CLI backend(pi) 启动 exit_code=0，stderr 无 "Unknown option" |
 
 ### 失败场景
 
 | 编号 | 场景 | 前置条件 | 预期结果 |
 |------|------|---------|---------|
 | AC-001-F-1 | Skill 文件不存在 | ad 声明 `skills: [nonexistent]` | 抛 RuntimeError（与当前行为一致） |
+| AC-001-F-2 | CLI backend 误把 `---` 当 option | agent `.md` 含 frontmatter（修复前 body 以 `---` 开头），pi backend 以 prompt 作 argv | pi 不报 getopt unknown option 错误，run status=done，exit_code=0（frontmatter 已剥离，body 不以 `---` 开头） |
 
 ---
 
@@ -106,3 +125,5 @@ created: 2026-07-13T00:00:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-030-F-1 | failed 的 ACP run，后端声明 loadSession/resume | `loopflow recover --mode continue` | session/load 续接成功，run 恢复继续；后端不声明时返回 continue_not_supported | 自动化 |
+
+> 2026-07-26 追加（BL-019）：pi backend CLI 路径 `_parse_line` 改用 `text_end` 消息级 event（取完整 content），弃 `text_delta` token 级碎片。修复 `_extract_text` 的 `"\n".join` 在流式 delta 间插 `\n` 破坏 JSON 字符串值的问题。该修复仅影响 pi CLI backend（`--transport cli`，默认），ACP 路径（`--transport acp`）走 SDK 事件流，不受 text_delta 影响。
