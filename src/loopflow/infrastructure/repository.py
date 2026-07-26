@@ -22,7 +22,11 @@ def parse_agent(file_path: str | Path) -> AgentDef:
         raise ValueError(f"No YAML frontmatter found in {file_path}")
 
     frontmatter_text = parts[1].strip()
-    body = content.strip()
+    # body excludes frontmatter: frontmatter is metadata, not prompt content.
+    # Keeping it out prevents prompts from starting with `---` (which CLI
+    # backends that pass the prompt as a positional argv, e.g. pi, misparse
+    # as an unknown option).
+    body = parts[2].strip()
 
     try:
         fm = yaml.safe_load(frontmatter_text)

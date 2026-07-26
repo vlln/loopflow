@@ -172,6 +172,7 @@ def render_template(body: str, **kwargs: str) -> str:
             raise ValueError(
                 f"Template parameter '{{{name}}}' is required but not provided"
             )
-        return kwargs[name]
+        value = kwargs[name]
+        return "" if value is None else str(value)
 
     return re.sub(r"\{\{\s*(\w+)\s*\}\}", _replace, body)

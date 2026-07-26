@@ -35,6 +35,9 @@ class PiBackend(CliBackend):
             return (None, data.get("id") or None)
         if tp == "message_update":
             event = data.get("assistantMessageEvent", {})
-            if event.get("type") == "text_delta":
-                return (event.get("delta", ""), None)
+            if event.get("type") == "text_end":
+                # Emit the complete text block (message-level), not text_delta
+                # (token-level). text_delta fragments break _extract_text's
+                # "\n".join by inserting bare \n inside JSON string values.
+                return (event.get("content", ""), None)
         return (None, None)
