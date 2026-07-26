@@ -154,7 +154,11 @@ def web(host: str, port: int, allow_remote: bool) -> None:
 @click.option("--only-phase", default=None, help="Stop execution after this phase")
 @click.option("--backend", default=None, help="Agent backend (pi, kimi, claude, codex, ...)")
 @click.option("--transport", default=None, help="Transport mode (cli, acp). ADR-0049")
-def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport):
+@click.option("--work-dir", default=None,
+              help="Working directory for the loop: a path to chdir into; "
+                   "empty string to let the framework create one under run_dir; "
+                   "omitted to use the current directory.")
+def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, work_dir):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.presentation.graph import PhaseGraph
@@ -178,6 +182,17 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport):
     run_dir = _run_dir_for_pwd() / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     append_run_index(_runs_dir(), Path.cwd(), run_dir.parent, run_id)
+
+    # --work-dir: chdir to a loop working directory before execution.
+    #   omitted  → current dir (Path.cwd() stays the loop-run location)
+    #   ""       → framework-managed: run_dir/work (isolated from loopflow internals)
+    #   <path>   → that path
+    # The loop and its agents then see this as the current directory; the loop
+    # does not handle paths itself.
+    if work_dir is not None:
+        target = run_dir / "work" if work_dir == "" else Path(work_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        os.chdir(target)
 
     # Write run.json
     run_meta = {
