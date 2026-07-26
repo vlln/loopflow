@@ -120,7 +120,7 @@ it('operates the Runs master-detail workspace and stream', async () => {
 
   expect(await screen.findByText('run-live')).toBeVisible();
   expect(await screen.findByText('Phase graph')).toBeVisible();
-  expect(screen.getAllByText('wf-review-a').length).toBe(1);
+  expect(screen.getAllByText('call-a').length).toBe(1);
   expect(screen.getByText('1 malformed')).toBeVisible();
   fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
   expect(screen.getByText(/legacy/)).toBeVisible();
@@ -129,7 +129,7 @@ it('operates the Runs master-detail workspace and stream', async () => {
   fireEvent.click(screen.getByRole('tab', { name: /^Events/ }));
   expect(screen.getAllByText('workflow output').length).toBeGreaterThan(0);
   expect(screen.queryByText(/"content":/)).not.toBeInTheDocument();
-  fireEvent.click(screen.getByText('wf-review-b'));
+  fireEvent.click(screen.getByText('call-b'));
   expect(screen.getByText(/Default · exit 0/)).toBeVisible();
   expect(EventSourceMock.instances[0].url).toContain('last_event_id=3');
   act(() => {
@@ -166,7 +166,7 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   fireEvent.click(screen.getByRole('button', { name: 'Rerun run' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reconcile run' }));
   fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
-  fireEvent.click(screen.getByRole('button', { name: /wf-plan/ }));
+  fireEvent.click(screen.getByRole('button', { name: /call-plan/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Open file changes panel' }));
   fireEvent.click(screen.getByRole('button', { name: 'Close file changes panel' }));
   fireEvent.click(screen.getByRole('button', { name: 'Back to Runs' }));
@@ -570,7 +570,7 @@ it('AC-015-N-7: executed declared phase replaces its placeholder, others stay pe
   const executed = (await screen.findByText('采集', { selector: '.phase-node span' })).closest('.phase-node')!;
   expect(executed.className).not.toContain('is-declared');
   expect(executed.className).toContain('is-current');
-  expect(executed.textContent).toContain('1 occurrence');
+  expect(executed.textContent).toContain('×1');
   const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
   expect(pending.className).toContain('is-declared');
   expect(pending.textContent).toContain('pending');
