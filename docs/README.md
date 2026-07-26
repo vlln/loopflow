@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `TEST_INFRA` |
-| **设计评估** | 0.23.0 DESIGN 契约冻结（BL-017~021 planned,ADR 0051 accepted + ADR 0042 §5 + AC 0003/0010/0013 扩展）。本轮无新基建（CI/Mock/覆盖率沿用），TEST_INFRA 门禁沿用 0.22.0 已绿状态，推进 DEVELOP。 |
+| **当前阶段** | `SYSTEM_TEST` |
+| **设计评估** | 0.23.0 DEVELOP 完成（BL-017~021 合并 develop：fix/0091 框架健壮性 + feat/0092 --work-dir + feat/0093 webUI 显示，unit 364 + web 41 + kimi/pi/pi-acp 三后端实测）。进 SYSTEM_TEST 全量验证。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
