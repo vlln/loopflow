@@ -139,14 +139,13 @@ class LoopRepository:
             "consecutive_failures": state["consecutive_failures"],
             "paused": state["paused"],
             "paused_reason": state["paused_reason"],
+            "_resources": metadata.get("resources") if isinstance(metadata.get("resources"), list) else [],
+            "_environment": metadata.get("environment") if isinstance(metadata.get("environment"), str) else None,
         }
 
     def detail(self, loop_dir: Path) -> dict[str, Any]:
         summary = self.summary(loop_dir)
-        metadata: dict[str, Any] = {}
-        if summary["valid"]:
-            metadata = _frontmatter(loop_dir / "loop.md")
-        files = [self.file_summary(loop_dir, path) for path in sorted(loop_dir.rglob("*")) if path.is_file()]
+        files = [self.file_summary(loop_dir, path) for path in sorted(loop_dir.rglob("*")) if path.is_file() and not any(part.startswith(".") for part in path.relative_to(loop_dir).parts[:-1])]
         agents = []
         for path in sorted((loop_dir / "agents").glob("*.md")) if (loop_dir / "agents").is_dir() else []:
             if path.name.startswith("_"):
@@ -166,9 +165,9 @@ class LoopRepository:
             "description": summary["description"],
             "valid": summary["valid"],
             "error_summary": summary["error_summary"],
-            "triggers": metadata.get("triggers") if isinstance(metadata.get("triggers"), list) else [],
-            "resources": metadata.get("resources") if isinstance(metadata.get("resources"), list) else [],
-            "environment": metadata.get("environment") if isinstance(metadata.get("environment"), str) else None,
+            "triggers": summary["triggers"],
+            "resources": summary.get("_resources", []),
+            "environment": summary.get("_environment"),
             "declared_phases": summary.get("declared_phases", []),
             "declared_args": summary.get("declared_args", []),
             "consecutive_failures": summary["consecutive_failures"],

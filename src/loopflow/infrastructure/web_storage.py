@@ -292,7 +292,6 @@ class RunRepository:
             status = "stale"
             if not metadata.get("stale_since"):
                 metadata["stale_since"] = self._record_stale_since(run_dir, metadata)
-        projection = project_events(run_dir / "events.jsonl")
         return {
             "run_id": str(metadata.get("run_id") or run_dir.name),
             "working_directory": self._working_directory(run_dir),
