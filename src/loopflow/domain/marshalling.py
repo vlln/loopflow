@@ -142,11 +142,16 @@ def add_goal_to_schema(schema: dict | None) -> dict:
     }
 
 
-def extract_json(text: str, schema: dict) -> dict | None:
-    """Extract a JSON object matching schema from agent text response."""
+def extract_json(text: str, schema: dict) -> tuple[dict | None, str | None]:
+    """Extract a JSON object matching schema from agent text response.
+
+    Returns (parsed_obj, error_message). When extraction succeeds and the
+    object passes schema validation, returns (obj, None). When extraction
+    fails or schema validation fails, returns (None, error_detail).
+    """
     required_keys = set(schema.get("properties", {}).keys())
     if not required_keys:
-        return None
+        return None, None
 
     start = 0
     while True:
@@ -166,24 +171,129 @@ def extract_json(text: str, schema: dict) -> dict | None:
                         pass
                     else:
                         if isinstance(obj, dict) and required_keys.issubset(obj.keys()):
-                            if validate_json(obj, schema):
-                                return obj
+                            valid, err = validate_json(obj, schema)
+                            if valid:
+                                return obj, None
+                            # Schema validation failed — try coercion
+                            coerced, coercion_errors = coerce_json(obj, schema)
+                            if coerced is not None:
+                                re_valid, re_err = validate_json(coerced, schema)
+                                if re_valid:
+                                    return coerced, None
+                            return None, err
                     start = i + 1
                     break
         else:
             break
 
-    return None
+    return None, None
 
 
-def validate_json(obj: dict, schema: dict) -> bool:
-    """Validate obj against JSON Schema using jsonschema."""
+def validate_json(obj: dict, schema: dict) -> tuple[bool, str | None]:
+    """Validate obj against JSON Schema using jsonschema.
+
+    Returns (is_valid, error_message). When valid, returns (True, None).
+    When invalid, returns (False, formatted_error) where formatted_error
+    includes the field path, expected type, and actual value.
+    """
     try:
         import jsonschema
     except ImportError:
-        return False
+        return False, None
     try:
         jsonschema.validate(obj, schema)
-        return True
-    except jsonschema.ValidationError:
-        return False
+        return True, None
+    except jsonschema.ValidationError as e:
+        path = ".".join(str(p) for p in e.absolute_path) or "(root)"
+        expected = e.schema.get("type", e.schema.get("enum", "unknown"))
+        actual = repr(e.instance)[:100]
+        msg = f"Field '{path}': expected {expected}, got {actual}"
+        return False, msg
+
+
+def coerce_json(obj: dict, schema: dict) -> tuple[dict | None, list[str]]:
+    """Attempt safe type coercion to satisfy schema constraints.
+
+    Only top-level fields are coerced (no recursive nesting). Only safe
+    conversions are attempted (string→number, string→bool, number→string,
+    enum case-match, array-wrap).
+
+    Returns (coerced_obj | None, errors). coerced_obj is non-None when all
+    type conversions were applied successfully (but the caller MUST
+    re-validate, as value constraints like maximum/minimum are not checked
+    here). errors records all conversion attempts (success and failure).
+    """
+    import copy
+
+    properties = schema.get("properties", {})
+    if not properties:
+        return None, []
+
+    coerced = copy.deepcopy(obj)
+    errors: list[str] = []
+
+    for key, prop_schema in properties.items():
+        if key not in coerced:
+            continue
+
+        value = coerced[key]
+        expected_type = prop_schema.get("type")
+
+        # string → number
+        if expected_type == "number" and isinstance(value, str):
+            try:
+                coerced[key] = float(value)
+                errors.append(f"Field '{key}': string '{value}' → number {coerced[key]}")
+            except ValueError:
+                errors.append(f"Field '{key}': string '{value}' cannot convert to number")
+
+        # string → integer
+        elif expected_type == "integer" and isinstance(value, str):
+            if "." in value:
+                errors.append(f"Field '{key}': string '{value}' has decimal, cannot convert to integer")
+            else:
+                try:
+                    coerced[key] = int(value)
+                    errors.append(f"Field '{key}': string '{value}' → integer {coerced[key]}")
+                except ValueError:
+                    errors.append(f"Field '{key}': string '{value}' cannot convert to integer")
+
+        # string → boolean
+        elif expected_type == "boolean" and isinstance(value, str):
+            low = value.lower()
+            if low == "true":
+                coerced[key] = True
+                errors.append(f"Field '{key}': string '{value}' → boolean True")
+            elif low == "false":
+                coerced[key] = False
+                errors.append(f"Field '{key}': string '{value}' → boolean False")
+            else:
+                errors.append(f"Field '{key}': string '{value}' not 'true'/'false', cannot convert to boolean")
+
+        # number/bool → string
+        elif expected_type == "string" and isinstance(value, (int, float, bool)):
+            coerced[key] = str(value)
+            errors.append(f"Field '{key}': {type(value).__name__} {value} → string '{coerced[key]}'")
+
+        # single value → array wrap
+        elif expected_type == "array" and not isinstance(value, list):
+            min_items = prop_schema.get("minItems", 0)
+            if min_items <= 1:
+                coerced[key] = [value]
+                errors.append(f"Field '{key}': {type(value).__name__} {value} → array [{value!r}]")
+            else:
+                errors.append(f"Field '{key}': single value but minItems={min_items}, cannot wrap")
+
+        # enum case-insensitive match
+        elif "enum" in prop_schema and isinstance(value, str):
+            enum_values = prop_schema["enum"]
+            matches = [e for e in enum_values if isinstance(e, str) and e.lower() == value.lower()]
+            if len(matches) == 1:
+                coerced[key] = matches[0]
+                errors.append(f"Field '{key}': string '{value}' → enum '{matches[0]}'")
+            elif len(matches) > 1:
+                errors.append(f"Field '{key}': string '{value}' matches multiple enum values: {matches}")
+            else:
+                errors.append(f"Field '{key}': string '{value}' not in enum {enum_values}")
+
+    return coerced, errors
