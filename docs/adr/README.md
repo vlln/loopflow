@@ -10,11 +10,11 @@
 | [0036](0036-recovery-intervention.md) | 可校验恢复、可靠取消与人工介入 | accepted | Spec v13 / AC-0011 / Interface 0001 |
 | [0037](0037-recovery-test-infrastructure.md) | 恢复控制测试基础设施 | accepted | ADR 0036 / AC-0011 / Interface 0001 |
 | [0038](0038-grok-backend-transport.md) | Grok 后端传输策略 | accepted | AC-0001 AC-008 / ADR 0018 / ADR 0023 |
-| [0039](0039-file-change-observation.md) | 工作目录文件变化观察层 | accepted | Spec v14 / AC-0012 / ADR-0041 |
-| [0040](0040-declared-phases-predisplay.md) | Declared Phases 预显示与合并语义 | accepted | Spec v14 / AC-0009 / AC-0010 |
+| [0039](0039-file-change-observation.md) | 工作目录文件变化观察层 | superseded | ADR-0052 替代 |
+| [0040](0040-declared-phases-predisplay.md) | Declared Phases 预显示与合并语义 | superseded | ADR-0052 替代 |
 | [0041](0041-sse-multi-topic-transport.md) | SSE 多 topic 传输层 | accepted | Spec v14 / ADR-0034 §5 / ADR-0039 |
 | [0042](0042-run-working-directory.md) | Run 显式工作目录 | accepted | Spec / AC-0013 / ADR-0039 / BL-020 §5 |
-| [0043](0043-file-observation-baseline.md) | 文件观察基线快照语义 | accepted | Spec / AC-0012 / ADR-0039 |
+| [0043](0043-file-observation-baseline.md) | 文件观察基线快照语义 | superseded | ADR-0052 替代 |
 | [0044](0044-failure-classification.md) | Agent 失败分类与重试/续接策略 | accepted | Spec v15 / AC-026 |
 | [0045](0045-loop-failure-circuit-breaker.md) | Loop 失败熔断与 loop_state 存储 | accepted | Spec v15 / AC-027 |
 | [0046](0046-stale-grace-period.md) | stale 失联宽限期 | accepted | Spec v15 / AC-029 |
@@ -23,6 +23,7 @@
 | [0049](0049-adopt-python-acp-sdk.md) | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | accepted | BL-014 / spike 通过（pi-acp 实跑） |
 | [0050](0050-mock-acp-test-infra.md) | mock ACP server 测试基础设施 | accepted | ADR-0049 / AC-030 |
 | [0051](0051-agent-body-excludes-frontmatter.md) | Agent body 剥离 frontmatter | accepted | BL-018 / ADR-0025 / ADR-0026 |
+| [0052](0052-remove-phase.md) | 移除 Phase 抽象，改为 Agent 实例图 | proposed | ADR-0039 / ADR-0040 / ADR-0043 |
 
 ## 状态说明
 

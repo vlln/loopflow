@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0.23.0 DEVELOP 完成（BL-017~021 合并 develop：fix/0091 框架健壮性 + feat/0092 --work-dir + feat/0093 webUI 显示，unit 364 + web 41 + kimi/pi/pi-acp 三后端实测）。进 SYSTEM_TEST 全量验证。 |
+| **设计评估** | 0.24.0 迭代：移除 Phase 抽象 → Agent 实例图。DESIGN 完成（ADR-0052 accepted），DEVELOP 完成（Plan 0094 done），进 SYSTEM_TEST 全量验证。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
