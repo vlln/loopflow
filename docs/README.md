@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` — BL-009 Web 端跨平台目录选择器已合并 develop，全量测试通过（Python 508 passed / 前端 42 passed），待下一轮 RELEASE |
-| **设计评估** | BL-009 完成：GET /system/list-directory + 前端模态目录浏览器替代 macOS-only osascript（ADR-0053 accepted）。旧 POST /system/pick-directory 标注 deprecated，保留向后兼容。develop 上全量回归通过。 |
+| **当前阶段** | `DEVELOP` complete (BL-026 / 0097) — 待合并 develop |
+| **设计评估** | ADR-0054 accepted：WebUI/API 默认工作目录隔离。未提供 working_directory 时默认创建 run_dir/work 隔离目录，防止 file observer 误捕获外部进程文件变更。AC-0013 追加 N-9/B-1修订/B-12/E-5/F-3 场景。346 unit + 18 integration 全绿。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
