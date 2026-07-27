@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` (iter 0.25.0) |
-| **设计评估** | v0.25.0 迭代：BL-031 schema 兜底+retry hint（coerce_json + 二次校验）+ BL-032 error_banner 布局 + BL-033 runs 左栏显示目录名 + BL-011 vitest 升级 + BL-013 版本单源化。Plan 0099，4 个执行单元。AC-026 N-5/B-3/E-2/E-3 + AC-014 B-6 + AC-019 B-4。TEST_INFRA 增量检查通过（无增量搭建）。 |
+| **当前阶段** | `SYSTEM_TEST` complete → READY FOR RELEASE (iter 0.25.0) |
+| **设计评估** | v0.25.0 迭代完成：BL-031 schema 兜底+retry hint（coerce_json + 二次校验）+ BL-032 error_banner 布局 + BL-033 runs 左栏显示目录名 + BL-011 vitest 4.1.10 升级(0 vulnerabilities) + BL-013 版本单源化。PR #13 合并。520 Python + 42 前端全绿。CI 5/5。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
