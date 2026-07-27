@@ -382,7 +382,10 @@ class WebApplication:
         return {"version": __version__}
 
     def pick_directory(self) -> dict[str, Any]:
-        """Launch the OS-native folder picker on the server machine (ADR-0042).
+        """[Deprecated: ADR-0053] Launch the OS-native folder picker on the server machine (ADR-0042).
+
+        Superseded by ``list_directory()`` + Web modal picker. Retained for backward
+        compatibility — the frontend no longer calls this endpoint.
 
         macOS only: osascript `choose folder`. A user cancel (exit -128) or a
         timeout is reported as {"path": None, "cancelled": True}; other

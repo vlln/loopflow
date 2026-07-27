@@ -144,6 +144,7 @@ def handler_for(
             if method == "GET" and path == "/backends":
                 self._json(200, self.app.list_backends())
                 return
+            # Deprecated: ADR-0053 — frontend uses GET /system/list-directory instead
             if method == "POST" and path == "/system/pick-directory":
                 self._require_empty_body()
                 self._json(200, self.app.pick_directory())

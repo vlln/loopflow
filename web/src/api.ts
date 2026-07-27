@@ -34,6 +34,7 @@ export const api = {
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),
   fileChanges: (id: string) => request<{ items: FileChangeRecord[]; count: number }>(`/runs/${encodeURIComponent(id)}/file-changes`),
   runFile: (id: string, path: string) => request<RunFileContent>(`/runs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
+  /** @deprecated ADR-0053 — use listDirectory() instead */
   pickDirectory: () => request<{ path: string | null; cancelled: boolean }>('/system/pick-directory', { method: 'POST' }),
   listDirectory: (path?: string) => request<DirectoryListing>(`/system/list-directory${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   systemMeta: () => request<SystemMeta>('/system/meta'),
