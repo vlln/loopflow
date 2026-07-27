@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0.24.0 迭代：移除 Phase 抽象 → Agent 实例图。DESIGN 完成（ADR-0052 accepted），DEVELOP 完成（Plan 0094 done），进 SYSTEM_TEST 全量验证。 |
+| **当前阶段** | `RELEASE` (v0.24.0) |
+| **设计评估** | 0.24.0 发布完成：移除 Phase 抽象 → Agent 实例图（ADR-0052）。tag v0.24.0，main + develop 已同步。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
