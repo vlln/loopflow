@@ -146,15 +146,14 @@ function RunsWorkspace() {
         {hasIntervention && <InterventionPanel runId={detail.run_id} items={interventions} onAnswered={async () => { await loadRuns(); const next = await api.run(detail.run_id); setDetail(next); if (next.status === 'waiting_input' || next.allowed_actions.includes('respond') || next.interventions?.length) { const page = await api.interventions(detail.run_id); setInterventions(page.items); } else { setInterventions(next.interventions ?? []); } }} onError={setError} />}
         {detail.error_summary && <div className="run-error-banner" role="alert">{detail.error_category && <StatusBadge value={detail.error_category} />}<span>{detail.error_summary}</span></div>}
         <AgentGraph key={`${selectedId}-${mobilePane === 'list' ? 'hidden' : 'visible'}`} detail={detail} selectedCallId={selectedCallId} onSelect={(callId) => { setSelectedCallId(callId); }} />
-        {selectedCall && <section className="agent-detail-panel" data-testid="agent-detail-panel"><SectionHeader title={selectedNode?.label ?? selectedCall.call_id} meta={selectedCall.status} /><dl className="agent-meta"><div><dt>agent_def</dt><dd>{selectedNode?.agent_def ?? '—'}</dd></div><div><dt>backend</dt><dd>{selectedCall.backend ?? '—'}</dd></div><div><dt>model</dt><dd>{selectedCall.model ?? 'Default'}</dd></div><div><dt>exit</dt><dd>{selectedCall.exit_code === null ? '—' : selectedCall.exit_code}</dd></div><div><dt>started</dt><dd>{formatTime(selectedCall.started_at) || '—'}</dd></div><div><dt>finished</dt><dd>{formatTime(selectedCall.finished_at) || '—'}</dd></div></dl></section>}
         <section className="agent-detail"><div className="agent-detail-bar"><div className="agent-detail-title"><h3 className="section-title">Events</h3></div>
           <div className="event-scope-tabs" role="tablist"><button role="tab" aria-selected={eventScope === 'events'} onClick={() => setEventScope('events')}>Events</button>{detail.unattributed_count > 0 && <button role="tab" aria-selected={eventScope === 'unattributed'} onClick={() => setEventScope('unattributed')}>Unattributed {detail.unattributed_count}</button>}{detail.malformed_count > 0 && <button role="tab" aria-selected={eventScope === 'malformed'} onClick={() => setEventScope('malformed')}>Malformed {detail.malformed_count}</button>}</div>
           {detail.malformed_count > 0 && <span className="warning-text">{detail.malformed_count} malformed</span>}</div>
-          <div className={`call-event-grid ${detail.calls.length === 0 || eventScope !== 'events' ? 'events-only' : ''}`}>{detail.calls.length > 0 && eventScope === 'events' && <ScrollArea className="call-list"><SectionHeader title="Calls" />{detail.calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong title={call.session ?? undefined}>{call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small>{call.call_id === selectedCall?.call_id && <small className="call-facts">{call.model ?? 'Default'} · exit {call.exit_code === null ? '—' : call.exit_code}</small>}</span><ChevronRight size={14} /></button>)}</ScrollArea>}{eventScope === 'events' && <EventTimeline events={displayedEvents} title="Events" />}{eventScope === 'unattributed' && <EventTimeline events={detail.unattributed} title="Unattributed events" />}{eventScope === 'malformed' && <ScrollArea className="event-list"><SectionHeader title="Malformed events" meta={`${detail.malformed.length} 个事件`} />{detail.malformed.length ? detail.malformed.map((event, index) => <div className="event-row" key={`malformed-${index}`}><span className="event-marker" /><div className="event-body"><pre className="code-preview scroll-area">{JSON.stringify(event, null, 2)}</pre></div></div>) : <span className="muted">No malformed events</span>}</ScrollArea>}</div>
+          <div className={`call-event-grid ${detail.calls.length === 0 || eventScope !== 'events' ? 'events-only' : ''}`}>{detail.calls.length > 0 && eventScope === 'events' && <ScrollArea className="call-list"><SectionHeader title="Calls" />{detail.calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong title={call.session ?? undefined}>{call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small>{call.call_id === selectedCall?.call_id && <small className="call-facts">{call.backend ?? '—'} · {call.model ?? 'Default'} · exit {call.exit_code === null ? '—' : call.exit_code} · {formatTime(call.started_at) || '—'}</small>}</span><ChevronRight size={14} /></button>)}</ScrollArea>}{eventScope === 'events' && <EventTimeline events={displayedEvents} title="Events" />}{eventScope === 'unattributed' && <EventTimeline events={detail.unattributed} title="Unattributed events" />}{eventScope === 'malformed' && <ScrollArea className="event-list"><SectionHeader title="Malformed events" meta={`${detail.malformed.length} 个事件`} />{detail.malformed.length ? detail.malformed.map((event, index) => <div className="event-row" key={`malformed-${index}`}><span className="event-marker" /><div className="event-body"><pre className="code-preview scroll-area">{JSON.stringify(event, null, 2)}</pre></div></div>) : <span className="muted">No malformed events</span>}</ScrollArea>}</div>
         </section>
       </>}
     </section>
-    <div className="inspector-column">{selectedId && <FileChangesPanel records={fileChangeRecords} selectedCallId={selectedCallId} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
+    <div className="inspector-column">{selectedId && detail && <FileChangesPanel records={fileChangeRecords} selectedCallId={selectedCallId} callOrder={detail.calls.map((c) => c.call_id)} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
     {showNew && <NewRunDialog onClose={() => setShowNew(false)} onCreated={(run) => { setShowNew(false); void loadRuns(); selectRun(run.run_id); }} />}
     {error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}
   </section>;
@@ -237,19 +236,23 @@ function EventTimeline({ events, title }: { events: RunEvent[]; title: string })
 }
 
 interface ObservedChange { action: FileChange['action']; size?: number; prev_size?: number; call_id: string; seq: number }
-interface ChangeTreeFile { name: string; path: string; latest: ObservedChange }
+interface ChangeTreeFile { name: string; path: string; latest: ObservedChange; is_new: boolean }
 interface ChangeTreeDir { label: string; dirs: ChangeTreeDir[]; files: ChangeTreeFile[] }
 
-function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
+function buildChangeTree(records: FileChangeRecord[], selectedCallId: string | null): ChangeTreeDir {
   const files = new Map<string, ChangeTreeFile>();
   for (const record of records) {
+    const isNew = selectedCallId !== null && record.call_id === selectedCallId;
     for (const change of record.changes) {
       const info: ObservedChange = { action: change.action, size: change.size, prev_size: change.prev_size, call_id: record.call_id, seq: record.seq };
       const existing = files.get(change.path);
       if (existing) {
-        if (record.seq >= existing.latest.seq) existing.latest = info;
+        if (record.seq >= existing.latest.seq) {
+          existing.latest = info;
+          existing.is_new = isNew;
+        }
       } else {
-        files.set(change.path, { name: change.path.split('/').pop() ?? change.path, path: change.path, latest: info });
+        files.set(change.path, { name: change.path.split('/').pop() ?? change.path, path: change.path, latest: info, is_new: isNew });
       }
     }
   }
@@ -280,12 +283,28 @@ function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
   return convert(root, '');
 }
 
-function FileChangesPanel({ records, runId, selectedCallId, onClose }: { records: FileChangeRecord[]; runId: string; selectedCallId: string | null; onClose: () => void }) {
-  const filtered = selectedCallId ? records.filter((r) => r.call_id === selectedCallId) : records;
-  const totalChanges = filtered.reduce((sum, record) => sum + record.changes.length, 0);
-  const tree = useMemo(() => buildChangeTree(filtered), [filtered]);
+function FileChangesPanel({ records, runId, selectedCallId, callOrder, onClose }: { records: FileChangeRecord[]; runId: string; selectedCallId: string | null; callOrder: string[]; onClose: () => void }) {
+  const cumulative = useMemo(() => {
+    if (!selectedCallId) return records;
+    // Find the max seq among records matching this call
+    const matching = records.filter((r) => r.call_id === selectedCallId);
+    let maxSeq: number;
+    if (matching.length > 0) {
+      maxSeq = Math.max(...matching.map((r) => r.seq));
+    } else {
+      // Call produced no file changes — find the last record from any preceding call
+      const callIdx = callOrder.indexOf(selectedCallId);
+      const precedingIds = new Set(callOrder.slice(0, callIdx + 1));
+      const preceding = records.filter((r) => precedingIds.has(r.call_id));
+      maxSeq = preceding.length > 0 ? Math.max(...preceding.map((r) => r.seq)) : 0;
+    }
+    return records.filter((r) => r.seq <= maxSeq);
+  }, [records, selectedCallId, callOrder]);
+  const deltaCount = selectedCallId ? records.filter((r) => r.call_id === selectedCallId).reduce((sum, r) => sum + r.changes.length, 0) : 0;
+  const totalChanges = cumulative.reduce((sum, record) => sum + record.changes.length, 0);
+  const tree = useMemo(() => buildChangeTree(cumulative, selectedCallId), [cumulative, selectedCallId]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} change{totalChanges === 1 ? '' : 's'}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{filtered.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
+  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} file{totalChanges === 1 ? '' : 's'}{deltaCount > 0 && ` · ${deltaCount} new`}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{cumulative.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
 }
 
 function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; depth: number; onPreview: (path: string) => void }) {
@@ -294,7 +313,7 @@ function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; dept
 
 function ChangeTreeFileView({ file, depth, onPreview }: { file: ChangeTreeFile; depth: number; onPreview: (path: string) => void }) {
   const shown = file.latest;
-  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
+  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}${file.is_new ? ' is-new' : ''}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{file.is_new && <span className="file-change-badge">new</span>}{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
 }
 
 function RunFilePreviewDialog({ runId, path, onClose }: { runId: string; path: string; onClose: () => void }) {
