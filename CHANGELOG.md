@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.25.0] — 2026-07-27
+## [0.24.2] — 2026-07-27
 
 ### Added
 - **Web 端跨平台目录选择器**（BL-009 / ADR-0053）：新增 `GET /api/v1/system/list-directory` 端点（`os.scandir` 列子目录），前端用 Web 模态目录浏览器替代 macOS-only osascript。远程/非 macOS 部署时 Browse 按钮正常工作。
