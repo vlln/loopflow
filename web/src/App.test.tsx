@@ -22,7 +22,7 @@ type FetchOptions = boolean | {
   intervention?: Record<string, unknown> | Record<string, unknown>[];
   responseStatus?: number;
   responseBody?: unknown;
-  fileChanges?: Record<string, { seq: number; phase: string; phase_id: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
+  fileChanges?: Record<string, { seq: number; call_id: string; label: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
   runFile?: { status?: number; body?: unknown };
   pickDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
@@ -119,7 +119,7 @@ it('operates the Runs master-detail workspace and stream', async () => {
   render(<App />);
 
   expect(await screen.findByText('run-live')).toBeVisible();
-  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(await screen.findByText('Agent graph')).toBeVisible();
   expect(screen.getAllByText('call-a').length).toBe(1);
   expect(screen.getByText('1 malformed')).toBeVisible();
   fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
@@ -133,7 +133,7 @@ it('operates the Runs master-detail workspace and stream', async () => {
   expect(screen.getByText(/Default · exit 0/)).toBeVisible();
   expect(EventSourceMock.instances[0].url).toContain('last_event_id=3');
   act(() => {
-    EventSourceMock.instances[0].emit('run_event', JSON.stringify({ version: 2, event_id: 3, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: 'next' } }));
+    EventSourceMock.instances[0].emit('run_event', JSON.stringify({ version: 2, event_id: 3, type: 'message', call_id: 'call-a', payload: { text: 'next' } }));
   });
   fireEvent.click(screen.getByRole('button', { name: 'Stop run' }));
   await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-live/stop'));
@@ -165,7 +165,7 @@ it('operates secondary Run controls and handles invalid arguments', async () => 
   await waitFor(() => expect(calls).toContain('POST /api/v1/runs/run-failed/recover'));
   fireEvent.click(screen.getByRole('button', { name: 'Rerun run' }));
   fireEvent.click(screen.getByRole('button', { name: 'Reconcile run' }));
-  fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
+  fireEvent.click(screen.getByText('plan', { selector: '.agent-node span' }));
   fireEvent.click(screen.getByRole('button', { name: /call-plan/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Open file changes panel' }));
   fireEvent.click(screen.getByRole('button', { name: 'Close file changes panel' }));
@@ -330,8 +330,8 @@ it('shows API failures without replacing the workspace', async () => {
 // --- AC-024: File change observation WebUI rendering ---
 
 const fileChangeRecords = [
-  { seq: 1, phase: 'Plan', phase_id: 'plan-1', ts: '2026-07-18T22:00:01Z', changes: [{ path: 'data/raw.json', action: 'created', size: 1024 }] },
-  { seq: 2, phase: 'Review', phase_id: 'review-2', ts: '2026-07-18T22:00:03Z', changes: [
+  { seq: 1, call_id: 'call-plan', label: 'plan', ts: '2026-07-18T22:00:01Z', changes: [{ path: 'data/raw.json', action: 'created', size: 1024 }] },
+  { seq: 2, call_id: 'call-a', label: 'reviewer', ts: '2026-07-18T22:00:03Z', changes: [
     { path: 'data/raw.json', action: 'modified', size: 2048, prev_size: 1024 },
     { path: 'data/clean.json', action: 'created', size: 512 },
   ] },
@@ -348,7 +348,7 @@ it('AC-024-N-4: renders file changes tree with created action and size', async (
   expect(screen.getAllByText(/1024/).length).toBeGreaterThan(0);
 });
 
-it('AC-024-N-5: tree merges changes from all phases with latest action and size', async () => {
+it('AC-024-N-5: tree merges changes from all calls with latest action and size', async () => {
   installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
@@ -385,7 +385,7 @@ it('AC-024-N-7: SSE file_changes push appends to tree in real-time', async () =>
   await screen.findByText('No file changes observed');
   act(() => {
     EventSourceMock.instances[0].emit('file_changes', JSON.stringify({
-      seq: 1, phase: 'Review', phase_id: 'review-2', ts: '2026-07-18T22:00:05Z',
+      seq: 1, call_id: 'call-a', label: 'reviewer', ts: '2026-07-18T22:00:05Z',
       changes: [{ path: 'output/result.json', action: 'created', size: 256 }],
     }));
   });
@@ -394,13 +394,13 @@ it('AC-024-N-7: SSE file_changes push appends to tree in real-time', async () =>
   expect(screen.getByText('created')).toBeVisible();
 });
 
-it('AC-024-N-8: tree markers follow the selected phase', async () => {
+it('AC-024-N-8: tree markers follow the selected call', async () => {
   installFetch({ fileChanges: { 'run-live': fileChangeRecords } });
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
   await screen.findByTestId('file-changes-panel');
   expect(screen.getByText('1024 → 2048 B')).toBeVisible();
-  fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
+  fireEvent.click(screen.getByText('plan', { selector: '.agent-node span' }));
   expect(screen.getByText('1024 B')).toBeVisible();
   expect(screen.queryByText('1024 → 2048 B')).not.toBeInTheDocument();
 });
@@ -445,7 +445,7 @@ it('AC-025-N-5: clicking a file in the tree previews its content read-only', asy
 
 it('AC-025-E-3: previewing a deleted file shows a friendly not-found message', async () => {
   installFetch({
-    fileChanges: { 'run-live': [{ seq: 1, phase: 'Review', phase_id: 'review-2', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'tmp/scratch.txt', action: 'deleted', prev_size: 10 }] }] },
+    fileChanges: { 'run-live': [{ seq: 1, call_id: 'call-a', label: 'reviewer', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'tmp/scratch.txt', action: 'deleted', prev_size: 10 }] }] },
     runFile: { status: 404, body: { error: { code: 'file_not_found', message: 'file not found', details: {} } } },
   });
   render(<App />);
@@ -549,61 +549,6 @@ it('AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing', asy
   fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
   expect(await screen.findByText(/Unexpected token|JSON/)).toBeVisible();
   expect(calls.bodies).toHaveLength(0);
-});
-
-// --- AC-015: declared phases merge semantics (ADR-0040) ---
-
-it('AC-015-N-7: executed declared phase replaces its placeholder, others stay pending', async () => {
-  installFetch({
-    detailOverride: {
-      declared_phases: [{ title: '采集', detail: '' }, { title: '处理', detail: '' }],
-      graph: {
-        nodes: [{ phase: '采集', occurrence_count: 1, is_current: true }],
-        edges: [],
-        current_phase_id: 'caiji-1',
-      },
-      occurrences: [{ phase_id: 'caiji-1', phase: '采集', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: null, call_ids: ['call-a'] }],
-    },
-  });
-  render(<App />);
-
-  const executed = (await screen.findByText('采集', { selector: '.phase-node span' })).closest('.phase-node')!;
-  expect(executed.className).not.toContain('is-declared');
-  expect(executed.className).toContain('is-current');
-  expect(executed.textContent).toContain('×1');
-  const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
-  expect(pending.className).toContain('is-declared');
-  expect(pending.textContent).toContain('pending');
-});
-
-it('AC-015-N-8: undeclared runtime phase renders with the undeclared marker', async () => {
-  installFetch({
-    detailOverride: {
-      declared_phases: [{ title: '采集', detail: '' }, { title: '处理', detail: '' }],
-      graph: {
-        nodes: [
-          { phase: '采集', occurrence_count: 1, is_current: false },
-          { phase: '归档', occurrence_count: 1, is_current: true },
-        ],
-        edges: [{ from: '采集', to: '归档', count: 1, is_backedge: false }],
-        current_phase_id: 'guidang-1',
-      },
-      occurrences: [
-        { phase_id: 'caiji-1', phase: '采集', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-a'] },
-        { phase_id: 'guidang-1', phase: '归档', occurrence: 1, started_at: '2026-07-18T22:00:02Z', ended_at: null, call_ids: ['call-b'] },
-      ],
-    },
-  });
-  render(<App />);
-
-  const undeclared = (await screen.findByText('归档', { selector: '.phase-node span' })).closest('.phase-node')!;
-  expect(undeclared.className).toContain('is-undeclared');
-  expect(undeclared.className).not.toContain('is-declared');
-  const declared = screen.getByText('采集', { selector: '.phase-node span' }).closest('.phase-node')!;
-  expect(declared.className).not.toContain('is-undeclared');
-  expect(declared.className).not.toContain('is-declared');
-  const pending = screen.getByText('处理', { selector: '.phase-node span' }).closest('.phase-node')!;
-  expect(pending.className).toContain('is-declared');
 });
 
 // --- AC-014: rail version sync / declared arguments prefill / AC-019: theme toggle ---
@@ -722,11 +667,11 @@ it('shows paused loop badge with streak and unpauses via API', async () => {
 it('AC-015-N-9: call-list shows call_id as primary, session_id in tooltip', async () => {
   installFetch();
   render(<App />);
-  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(await screen.findByText('Agent graph')).toBeVisible();
   expect(screen.getByText('call-a')).toBeTruthy();
   const callA = screen.getByText('call-a');
   expect(callA.closest('button')?.querySelector('strong')?.title).toBe('wf-review-a');
-  fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
+  fireEvent.click(screen.getByText('plan', { selector: '.agent-node span' }));
   expect(screen.getByText('call-plan')).toBeTruthy();
   const callPlan = screen.getByText('call-plan');
   expect(callPlan.closest('button')?.querySelector('strong')?.title).toBe('wf-plan');
@@ -737,41 +682,17 @@ it('AC-015-N-9: call-list shows call_id as primary, session_id in tooltip', asyn
 it('AC-015-B-5: call without session_id shows call_id and no empty row', async () => {
   installFetch({
     detailOverride: {
-      calls: [{ call_id: 'call-no-session', phase_id: 'plan-1', session: null, status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }],
-      graph: { nodes: [{ phase: 'Plan', occurrence_count: 1, is_current: false }], edges: [], current_phase_id: 'plan-1' },
-      occurrences: [{ phase_id: 'plan-1', phase: 'Plan', occurrence: 1, started_at: null, ended_at: null, call_ids: ['call-no-session'] }],
-      events: [{ version: 2, event_id: 1, type: 'phase', ts: '2026-07-18T22:00:00Z', phase: 'Plan', phase_id: 'plan-1', payload: {} }],
+      calls: [{ call_id: 'call-no-session', session: null, status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }],
+      agent_graph: { nodes: [{ id: 'call-no-session', label: 'agent', agent_def: null, status: 'done' }], edges: [], current: 'call-no-session' },
+      events: [{ version: 2, event_id: 1, type: 'agent_start', ts: '2026-07-18T22:00:00Z', call_id: 'call-no-session', payload: {} }],
       unattributed_count: 0, malformed_count: 0,
     },
   });
   render(<App />);
-  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(await screen.findByText('Agent graph')).toBeVisible();
   expect(screen.getByText('call-no-session')).toBeVisible();
   const callEl = screen.getByText('call-no-session');
   expect(callEl.closest('button')?.querySelector('strong')?.title).toBeFalsy();
-});
-
-// --- AC-015-E-4: occurrence and event counts (BL-021) ---
-
-it('AC-015-E-4: phase node shows ×N, detail shows occurrence and event counts', async () => {
-  installFetch({
-    detailOverride: {
-      graph: { nodes: [{ phase: 'Review', occurrence_count: 5, is_current: true }], edges: [], current_phase_id: 'review-3' },
-      occurrences: [
-        { phase_id: 'review-1', phase: 'Review', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-a'] },
-        { phase_id: 'review-2', phase: 'Review', occurrence: 2, started_at: '2026-07-18T22:00:02Z', ended_at: '2026-07-18T22:00:03Z', call_ids: ['call-b'] },
-        { phase_id: 'review-3', phase: 'Review', occurrence: 3, started_at: '2026-07-18T22:00:04Z', ended_at: null, call_ids: ['call-c'] },
-      ],
-      calls: [{ call_id: 'call-c', phase_id: 'review-3', session: 'wf-review-c', status: 'running', started_at: null, finished_at: null, exit_code: null, backend: 'kimi', model: null }],
-      events: Array.from({ length: 12 }, (_, i) => ({ version: 2, event_id: i + 1, type: 'agent_message', ts: '2026-07-18T22:00:00Z', phase: 'Review', phase_id: 'review-3', call_id: 'call-c', payload: { content: `msg ${i}` } })),
-      unattributed_count: 0, malformed_count: 0,
-    },
-  });
-  render(<App />);
-  expect(await screen.findByText('Phase graph')).toBeVisible();
-  expect(screen.getByText('×5')).toBeTruthy();
-  expect(screen.getByText('第 3 次执行')).toBeTruthy();
-  expect(screen.getByText('12 个事件')).toBeTruthy();
 });
 
 // --- AC-015-F-4: legacy events without call_id are unattributed (BL-021) ---
@@ -779,7 +700,7 @@ it('AC-015-E-4: phase node shows ×N, detail shows occurrence and event counts',
 it('AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls', async () => {
   installFetch();
   render(<App />);
-  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(await screen.findByText('Agent graph')).toBeVisible();
   expect(screen.getByText('call-a')).toBeTruthy();
   expect(screen.getByRole('tab', { name: 'Unattributed 1' })).toBeTruthy();
   fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
