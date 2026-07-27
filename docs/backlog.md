@@ -31,3 +31,5 @@
 | BL-023 | agent_graph fan-in 投影修复 | `project_events()` back-to-back parallel 的 join 边不生成、`pending_join` 跨组合并、fork source 解析错误；join-edge 无 CSS 区分 | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-024 | agent 节点详情面板 | 点击节点仅过滤事件/文件，无合并详情面板（events + files + call info 一起展示） | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-025 | Playwright fixture phase_id 清理 | `webui.spec.ts` mock fixture 仍含 `phase_id` 字段 | 0.24.0 发布后排查 | done | 0.24.1 |
+| BL-026 | Loops 页面切换延迟 | `read_summary()` 中 `project_events()` 死代码导致每次切 loop 全量解析所有 run 的 events.jsonl；`detail()` 重复读 frontmatter；`rglob` 无隐藏目录过滤 | 用户报告 2026-07-27 | done | 0096 |
+| BL-027 | reconcile 宽限期阻止逻辑移除 | 宽限期阻止已确认死亡的进程被清理，无安全收益；频繁重启 server 导致 stale run 永远无法清理（ADR-0046 修订） | 用户报告 2026-07-27 | done | 0096 |
