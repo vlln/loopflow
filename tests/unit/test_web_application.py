@@ -731,6 +731,77 @@ def test_pick_directory_not_supported_platforms(tmp_path, monkeypatch):
     assert missing_error.value.code == "not_supported"
 
 
+def test_list_directory_returns_subdirs(tmp_path, monkeypatch):
+    """AC-025-N-8: list_directory returns subdirectories only, sorted by name."""
+    service, _, _ = app(tmp_path)
+    base = tmp_path / "base"
+    base.mkdir()
+    sub_a = base / "sub_a"
+    sub_b = base / "sub_b"
+    sub_a.mkdir()
+    sub_b.mkdir()
+    (base / "file.txt").write_text("hello")
+    result = service.list_directory(str(base))
+    assert result["path"] == str(base)
+    names = [e["name"] for e in result["entries"]]
+    assert names == ["sub_a", "sub_b"]
+    assert all(e["path"].startswith(str(base)) for e in result["entries"])
+
+
+def test_list_directory_parent(tmp_path, monkeypatch):
+    """list_directory returns parent path."""
+    service, _, _ = app(tmp_path)
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    result = service.list_directory(str(sub))
+    assert result["parent"] == str(tmp_path)
+
+
+def test_list_directory_parent_null_at_root(tmp_path, monkeypatch):
+    """list_directory returns null parent for filesystem root."""
+    service, _, _ = app(tmp_path)
+    result = service.list_directory("/")
+    assert result["parent"] is None
+
+
+def test_list_directory_default_cwd(tmp_path, monkeypatch):
+    """list_directory without path returns cwd listing."""
+    service, _, _ = app(tmp_path)
+    base = tmp_path / "cwd_test"
+    base.mkdir()
+    (base / "child").mkdir()
+    monkeypatch.chdir(base)
+    result = service.list_directory()
+    assert result["path"] == str(base)
+    assert [e["name"] for e in result["entries"]] == ["child"]
+
+
+def test_list_directory_relative_path_rejected(tmp_path, monkeypatch):
+    """AC-025-B-10: relative path → validation_failed."""
+    service, _, _ = app(tmp_path)
+    with pytest.raises(ApplicationError) as error:
+        service.list_directory("relative/path")
+    assert error.value.code == "validation_failed"
+
+
+def test_list_directory_not_found(tmp_path, monkeypatch):
+    """AC-025-B-10: nonexistent path → file_not_found."""
+    service, _, _ = app(tmp_path)
+    with pytest.raises(ApplicationError) as error:
+        service.list_directory(str(tmp_path / "nonexistent"))
+    assert error.value.code == "file_not_found"
+
+
+def test_list_directory_not_a_directory(tmp_path, monkeypatch):
+    """AC-025-B-11: file (not dir) → validation_failed."""
+    service, _, _ = app(tmp_path)
+    f = tmp_path / "file.txt"
+    f.write_text("hello")
+    with pytest.raises(ApplicationError) as error:
+        service.list_directory(str(f))
+    assert error.value.code == "validation_failed"
+
+
 def test_unpause_loop_clears_pause_and_returns_summary(tmp_path, monkeypatch):
     """unpause_loop 清除 paused 与 streak，返回含 paused 状态的 Loop 摘要。"""
     monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))

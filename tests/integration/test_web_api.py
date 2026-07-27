@@ -979,6 +979,47 @@ def test_pick_directory_endpoint(api, monkeypatch):
     assert client.request("GET", "/api/v1/system/pick-directory").status == 404
 
 
+def test_list_directory_endpoint(api, tmp_path):
+    """AC-025-N-8/B-7: cross-platform directory listing endpoint."""
+    client, _, _ = api
+    base = tmp_path / "browse_test"
+    base.mkdir()
+    (base / "sub_a").mkdir()
+    (base / "sub_b").mkdir()
+    (base / "file.txt").write_text("hello")
+
+    response = client.request("GET", f"/api/v1/system/list-directory?path={base}")
+    assert response.status == 200
+    body = response.json()
+    assert body["path"] == str(base)
+    assert body["parent"] is not None
+    names = [e["name"] for e in body["entries"]]
+    assert names == ["sub_a", "sub_b"]
+
+    # Default path (no path param) — should return 200 with cwd listing
+    default_response = client.request("GET", "/api/v1/system/list-directory")
+    assert default_response.status == 200
+    assert "path" in default_response.json()
+
+    # Nonexistent path → 404
+    not_found = client.request("GET", f"/api/v1/system/list-directory?path={base / 'nonexistent'}")
+    assert not_found.status == 404
+    assert not_found.json()["error"]["code"] == "file_not_found"
+
+    # File (not dir) → 422
+    not_dir = client.request("GET", f"/api/v1/system/list-directory?path={base / 'file.txt'}")
+    assert not_dir.status == 422
+    assert not_dir.json()["error"]["code"] == "validation_failed"
+
+    # Relative path → 422
+    relative = client.request("GET", "/api/v1/system/list-directory?path=relative/path")
+    assert relative.status == 422
+    assert relative.json()["error"]["code"] == "validation_failed"
+
+    # POST → 404 (GET only)
+    assert client.request("POST", "/api/v1/system/list-directory").status == 404
+
+
 def test_loop_unpause_endpoint(api, tmp_path, monkeypatch):
     """POST /api/v1/loops/{name}/unpause：解除熔断；loop 不存在返回 404。"""
     monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
