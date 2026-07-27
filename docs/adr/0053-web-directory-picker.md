@@ -2,7 +2,7 @@
 title: ADR 0053 — Web 端跨平台目录选择器
 description: 用 server 端目录列表端点 + 浏览器端模态目录浏览器替代 macOS-only osascript 目录选择器，修复远程/非 macOS 场景下 Browse 按钮失效问题（BL-009）
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-27T07:50:00Z
 ---
 

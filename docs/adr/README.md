@@ -24,7 +24,7 @@
 | [0050](0050-mock-acp-test-infra.md) | mock ACP server 测试基础设施 | accepted | ADR-0049 / AC-030 |
 | [0051](0051-agent-body-excludes-frontmatter.md) | Agent body 剥离 frontmatter | accepted | BL-018 / ADR-0025 / ADR-0026 |
 | [0052](0052-remove-phase.md) | 移除 Phase 抽象，改为 Agent 实例图 | accepted | ADR-0039 / ADR-0040 / ADR-0043 |
-| [0053](0053-web-directory-picker.md) | Web 端跨平台目录选择器 | proposed | ADR-0042 / BL-009 |
+| [0053](0053-web-directory-picker.md) | Web 端跨平台目录选择器 | accepted | ADR-0042 / BL-009 |
 
 ## 状态说明
 
