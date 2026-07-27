@@ -193,12 +193,21 @@ created: 2026-07-22T06:35:57Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-026-E-1 | transient 失败连续 3 次重试均失败 | 执行含该 agent() 的 workflow | 抛 AgentError（含 category=transient），run failed；agent_retry 事件共 3 条，退避间隔 3/9/27s | 自动化 |
+| AC-026-E-2 | agent 返回合法 JSON 但 schema 校验失败（如 `decisions` 应为对象数组但返回字符串数组），连续 max_retries 次均如此 | 执行含该 agent() 的 workflow | 抛 AgentError，消息中包含最后一次 schema 校验的具体错误信息（字段路径 + 期望类型）；run.json 的 error_summary 包含该校验错误 | 自动化 |
 
 ## 失败场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-026-F-1 | 后端上报 quota 失败 | run 失败后尝试 recover --mode continue | 按既有 continue 规则处理（durable session 满足则可续接），分类不改变恢复边界 | 自动化 |
+
+> 2026-07-27 追加（BL-031）：retry hint 携带具体 schema 校验错误。E-2 插入既有异常表（上），N-4 新增正常场景（下）。
+
+### 正常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-N-4 | agent 第 1 次返回合法 JSON 但 schema 校验失败（字段 `score` 应为 number 但返回 string `"95"`） | 检查第 2 次调用的 prompt 中的 retry hint | hint 包含 "did not match the required schema" 和具体字段路径（如 `score`）和期望类型（如 `number`）；hint 不包含 "not valid JSON" 措辞 | 自动化 |
 
 ---
 

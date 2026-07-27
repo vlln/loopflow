@@ -37,6 +37,7 @@ created: 2026-07-18T21:00:00Z
 | AC-014-B-3 | Arguments 键值编辑器含空 key 行 | 启动 Run | 空 key 行被忽略；args 仅含有效条目；无任何条目时 args 为 `{}` | 自动化 |
 | AC-014-B-4 | Arguments 切换到 JSON 高级模式 | 输入非法 JSON 并启动 | 显示 JSON 校验错误，不发送请求 | 自动化 |
 | AC-014-B-5 | Loop 无 `meta.args` 声明 | 打开 New Run 对话框 | 键值编辑器为空白起始（无预填行），行为与声明前一致 | 自动化 |
+| AC-014-B-6 | Run 的 working_directory 为 `/home/user/bio-reproducer` | 查看 Runs 左栏该 run item | 次要标识行显示 `bio-reproducer`（working_directory 的 basename），不显示 run_id UUID；hover 显示完整路径 | 自动化 |
 
 ## 异常场景
 
@@ -280,6 +281,7 @@ created: 2026-07-18T21:00:00Z
 | AC-019-B-1 | 1024x768 视口 | 打开 Run | 主列表和 Phase 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠 | 自动化 + 截图 |
 | AC-019-B-2 | 390x844 视口 | 在 Runs、Phase、Process 间切换 | 一次只显示一个主区域；Stop/Resume 可到达；无水平页面滚动 | 自动化 + 截图 |
 | AC-019-B-3 | light 主题 | 打开 Runs 工作区 | 面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域 | 自动化 + 截图 |
+| AC-019-B-4 | failed Run 的 error_summary 超过 2 行文本（如多行 schema 校验错误） | 查看该 Run 详情 | error_banner 的 error_summary 文本截断为 2 行（-webkit-line-clamp），不挤占 Phase 工作区和 Inspector；Traceback 折叠条仍可展开查看完整信息 | 自动化 + 截图 |
 
 ## 异常场景
 
