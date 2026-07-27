@@ -23,7 +23,7 @@
 | [0049](0049-adopt-python-acp-sdk.md) | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | accepted | BL-014 / spike 通过（pi-acp 实跑） |
 | [0050](0050-mock-acp-test-infra.md) | mock ACP server 测试基础设施 | accepted | ADR-0049 / AC-030 |
 | [0051](0051-agent-body-excludes-frontmatter.md) | Agent body 剥离 frontmatter | accepted | BL-018 / ADR-0025 / ADR-0026 |
-| [0052](0052-remove-phase.md) | 移除 Phase 抽象，改为 Agent 实例图 | proposed | ADR-0039 / ADR-0040 / ADR-0043 |
+| [0052](0052-remove-phase.md) | 移除 Phase 抽象，改为 Agent 实例图 | accepted | ADR-0039 / ADR-0040 / ADR-0043 |
 
 ## 状态说明
 

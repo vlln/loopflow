@@ -1,6 +1,6 @@
-"""File change observation — snapshot diff at phase boundaries.
+"""File change observation — snapshot diff at agent call boundaries.
 
-Scans the working directory (pwd) at each phase() call, diffs against the
+Scans the working directory (pwd) at each agent call, diffs against the
 previous snapshot, and appends records to file_changes.jsonl. Controlled by
 loop frontmatter meta.file_observation.
 
@@ -89,7 +89,7 @@ class FileObservationConfig:
 
 
 class FileChangeObserver:
-    """Observes file changes in a working directory across phase boundaries.
+    """Observes file changes in a working directory across agent call boundaries.
 
     On each observe() call, scans the directory, diffs against the previous
     snapshot, and appends a record to file_changes.jsonl if there are changes.

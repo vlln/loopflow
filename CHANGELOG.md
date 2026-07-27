@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.24.1] — 2026-07-27
+
+### Fixed
+- **Phase 残留清理**（BL-022）：删除 0.24.0 遗漏的 `phase()` 函数、`PhaseGraph`、`TerminalGraphRenderer`、`_emit_phase`、`from_phase`/`only_phase` CLI/API/context 属性（10 个文件，-1215 行）
+- **agent_graph fan-in 投影**（BL-023）：修复 `project_events()` back-to-back parallel 的 3 个 bug（join 边不生成、pending_join 跨组合并、fork source 错误）；新增 `fork_active` 标志
+- **join-edge CSS**：`.join-edge` 虚线 + mint-strong 色，区别于 fork-edge 和 sequential
+- **`.phase-node` → `.agent-node` CSS**：修复 Playwright 视觉回归
+
+### Added
+- **节点详情面板**（BL-024）：点击 agent 节点显示 label/agent_def/backend/model/exit code/时间范围
+- **fork/join 投影单元测试**：single fork、back-to-back forks、fork without preceding agent
+- Events scope tabs：Events / Unattributed / Malformed 切换
+
+### Changed
+- WebUI 测试：14 个 phase 相关测试修复（Phase graph → Agent graph，phase_id → call_id/label）
+- Playwright fixture：移除 `phase_id` 字段
+
 ## [0.24.0] — 2026-07-27
 
 ### Removed

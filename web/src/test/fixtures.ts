@@ -12,11 +12,11 @@ export const runs: RunSummary[] = [
 export const detail: RunDetail = {
   ...runs[0], args: {}, state: { attempt: 2 }, working_directory: '/tmp/run-live',
   agent_graph: { nodes: [{ id: 'call-plan', label: 'plan', agent_def: 'planner', status: 'done' }, { id: 'call-a', label: 'reviewer', agent_def: 'reviewer', status: 'running' }], edges: [{ from: 'call-plan', to: 'call-a', kind: 'sequential' }], current: 'call-a' },
-  calls: [{ call_id: 'call-plan', session: 'wf-plan', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }, { call_id: 'call-a', session: 'wf-review-a', status: 'running', started_at: null, finished_at: null, exit_code: null, backend: 'codex', model: 'gpt-5' }],
-  unattributed_count: 0, malformed_count: 0,
+  calls: [{ call_id: 'call-plan', session: 'wf-plan', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }, { call_id: 'call-a', session: 'wf-review-a', status: 'running', started_at: null, finished_at: null, exit_code: null, backend: 'codex', model: 'gpt-5' }, { call_id: 'call-b', session: 'wf-review-b', status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }],
+  unattributed_count: 1, malformed_count: 1,
   interventions: [],
-  events: [{ version: 2, event_id: 1, type: 'agent_start', ts: '2026-07-18T22:00:02Z', call_id: 'call-a', payload: { backend: 'codex' } }, { version: 2, event_id: 2, type: 'agent_message', ts: '2026-07-18T22:00:03Z', call_id: 'call-a', payload: { session: 'wf-review-a', content: 'Reviewing **workflow output** now.' } }],
-  unattributed: [], malformed: [],
+  events: [{ version: 2, event_id: 1, type: 'agent_start', ts: '2026-07-18T22:00:02Z', call_id: 'call-a', payload: { backend: 'codex' } }, { version: 2, event_id: 2, type: 'agent_message', ts: '2026-07-18T22:00:03Z', call_id: 'call-a', payload: { session: 'wf-review-a', content: 'Reviewing **workflow output** now.' } }, { version: 2, event_id: 3, type: 'agent_done', ts: '2026-07-18T22:00:04Z', call_id: 'call-a', payload: { exit_code: 0 } }],
+  unattributed: [{ version: 1, event_id: 0, type: 'message', ts: '2026-07-18T22:00:00Z', payload: { text: 'legacy run output' } }], malformed: [{ type: 'malformed', raw: '{bad json' }],
 };
 
 export const loopSummary: LoopSummary = { name: 'review-loop', description: 'Review and fix changes', agent_count: 1, triggers: [], valid: true, error_summary: null };

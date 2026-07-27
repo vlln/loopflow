@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` |
-| **设计评估** | 0.24.0 迭代：移除 Phase 抽象 → Agent 实例图。DESIGN 完成（ADR-0052 accepted），DEVELOP 完成（Plan 0094 done），进 SYSTEM_TEST 全量验证。 |
+| **当前阶段** | `RELEASE` (v0.24.1) |
+| **设计评估** | 0.24.1 残留收尾完成：phase 残留清理(BL-022) + agent_graph fan-in 修复(BL-023) + 节点详情面板(BL-024) + Playwright/WebUI fixture 清理(BL-025)。Python 500 + WebUI 42 + Playwright 13 全绿。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

@@ -44,7 +44,7 @@ def execute_workflow(
         "execution_options": {
             key: value
             for key, value in options.items()
-            if key in {"backend", "model", "mock", "from_phase", "only_phase"}
+            if key in {"backend", "model", "mock"}
         },
         "pid": pid,
         "process_group_id": os.getpgrp(),
@@ -53,15 +53,6 @@ def execute_workflow(
         # already chdir'd, so cwd is the authoritative value
         "working_directory": str(Path.cwd()),
     }
-    declared_phases = metadata.get("phases")
-    if isinstance(declared_phases, list):
-        valid_phases = [
-            {"title": str(p.get("title", "")).strip(), "detail": str(p.get("detail") or "")}
-            for p in declared_phases
-            if isinstance(p, dict) and isinstance(p.get("title"), str) and p["title"].strip()
-        ]
-        if valid_phases:
-            run_metadata["declared_phases"] = valid_phases
     if recover and (run_dir / "run.json").is_file():
         previous = read_json(run_dir / "run.json")
         run_metadata.update(previous)
@@ -97,8 +88,6 @@ def execute_workflow(
         recovery_target_call_id=run_metadata.get("failed_call_id") if recover else None,
         execution_options=run_metadata.get("execution_options"),
     )
-    context.from_phase = options.get("from_phase")
-    context.only_phase = options.get("only_phase")
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
     # File change observation (ADR-0039): initialize observer from loop meta

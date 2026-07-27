@@ -63,6 +63,7 @@ function RunsWorkspace() {
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'process'>('list');
   const [error, setError] = useState<string | null>(null);
   const [interventions, setInterventions] = useState<InterventionSummary[]>([]);
+  const [eventScope, setEventScope] = useState<'events' | 'unattributed' | 'malformed'>('events');
 
   const loadRuns = async () => {
     try {
@@ -92,6 +93,7 @@ function RunsWorkspace() {
     if (!selectedId) { setDetail(null); setInterventions([]); setFileChangeRecords([]); return; }
     void api.run(selectedId).then((value) => {
       setDetail(value);
+      setEventScope('events');
       if (value.status === 'waiting_input' || value.allowed_actions.includes('respond') || value.interventions?.length) void api.interventions(value.run_id).then((page) => setInterventions(page.items)).catch((cause) => setError(messageOf(cause))); else setInterventions([]);
       dispatchEvent({ type: '__reset__', items: value.events });
       void api.fileChanges(selectedId).then((result) => setFileChangeRecords(result.items)).catch(() => setFileChangeRecords([]));
@@ -112,6 +114,7 @@ function RunsWorkspace() {
 
   const calls = detail?.calls ?? [];
   const selectedCall = calls.find((call) => call.call_id === selectedCallId) ?? calls[0] ?? null;
+  const selectedNode = detail?.agent_graph?.nodes?.find((n) => n.id === selectedCallId) ?? null;
   const visibleEvents = eventState.items.filter((event) => !selectedCall || event.call_id === selectedCall.call_id);
   const displayedEvents = visibleEvents;
   const hasIntervention = !!detail && (detail.status === 'waiting_input' || detail.allowed_actions.includes('respond') || interventions.length > 0);
@@ -138,19 +141,19 @@ function RunsWorkspace() {
       <ScrollArea className="run-list" role="list">{runs.length ? runs.map((run) => <button role="listitem" key={run.run_id} className={`run-row ${selectedId === run.run_id ? 'is-selected' : ''}`} onClick={() => selectRun(run.run_id)}><span className="run-row-top"><strong>{run.loop ?? 'Unreadable run'}</strong><StatusBadge value={run.status} /></span><code title={run.working_directory}>{run.run_id}</code><span className="row-meta"><span>{formatDuration(run.duration_ms)}</span></span>{graceLabel(run) && <span className="row-grace">{graceLabel(run)}</span>}{run.error_summary && <span className="row-error">{run.error_category ? `[${run.error_category}] ` : ''}{run.error_summary}</span>}{run.parse_error && <span className="row-error">{run.parse_error}</span>}</button>) : <EmptyState title="No runs" detail="Start a Loop to create the first Run." />}</ScrollArea>
     </aside>
     <section className={`panel run-detail-panel ${hasIntervention ? 'has-intervention' : ''}`}>
-      {!detail ? <EmptyState title="Select a Run" detail="Phase execution and events appear here." /> : <>
+      {!detail ? <EmptyState title="Select a Run" detail="Agent execution and events appear here." /> : <>
         <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="panel-header-text"><span className="eyebrow">{detail.loop}</span><h2 className="panel-title">{detail.run_id}</h2></div><span className="toolbar-meta">{formatDuration(detail.duration_ms)} · {detail.iteration_count} iteration{detail.iteration_count === 1 ? '' : 's'} · stream {detail.status === 'running' ? streamState : 'closed'}</span><div className="toolbar-actions"><StatusBadge value={detail.status} />{graceLabel(detail) && <span className="row-grace">{graceLabel(detail)}</span>}{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('recover_retry') && <button aria-label={retryLabel} className={hasRespondAction ? 'secondary-button' : 'primary-button'} onClick={() => void act('recover_retry')}><RotateCcw size={14} />Retry</button>}{showContinue && <button aria-label={detail.allowed_actions.includes('recover_continue') ? continueLabel : continueUnavailableLabel} title={detail.allowed_actions.includes('recover_continue') ? continueLabel : 'Backend did not persist a durable session or this cancel boundary is atomic'} className="secondary-button" disabled={!detail.allowed_actions.includes('recover_continue')} onClick={() => void act('recover_continue')}><Play size={14} />Continue</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{detail.state && <details className="state-details"><summary aria-label="View run state" title="Run state"><Braces size={14} /></summary><pre className="scroll-area">{JSON.stringify(detail.state, null, 2)}</pre></details>}{selectedId && <IconButton label="Open file changes panel" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
         {hasIntervention && <InterventionPanel runId={detail.run_id} items={interventions} onAnswered={async () => { await loadRuns(); const next = await api.run(detail.run_id); setDetail(next); if (next.status === 'waiting_input' || next.allowed_actions.includes('respond') || next.interventions?.length) { const page = await api.interventions(detail.run_id); setInterventions(page.items); } else { setInterventions(next.interventions ?? []); } }} onError={setError} />}
         {detail.error_summary && <div className="run-error-banner" role="alert">{detail.error_category && <StatusBadge value={detail.error_category} />}<span>{detail.error_summary}</span></div>}
         <AgentGraph key={`${selectedId}-${mobilePane === 'list' ? 'hidden' : 'visible'}`} detail={detail} selectedCallId={selectedCallId} onSelect={(callId) => { setSelectedCallId(callId); }} />
         <section className="agent-detail"><div className="agent-detail-bar"><div className="agent-detail-title"><h3 className="section-title">Events</h3></div>
-          <div className="event-scope-tabs">{detail.calls.length > 0 && <span className="section-meta">{detail.calls.length} call{detail.calls.length === 1 ? '' : 's'}</span>}</div>
+          <div className="event-scope-tabs" role="tablist"><button role="tab" aria-selected={eventScope === 'events'} onClick={() => setEventScope('events')}>Events</button>{detail.unattributed_count > 0 && <button role="tab" aria-selected={eventScope === 'unattributed'} onClick={() => setEventScope('unattributed')}>Unattributed {detail.unattributed_count}</button>}{detail.malformed_count > 0 && <button role="tab" aria-selected={eventScope === 'malformed'} onClick={() => setEventScope('malformed')}>Malformed {detail.malformed_count}</button>}</div>
           {detail.malformed_count > 0 && <span className="warning-text">{detail.malformed_count} malformed</span>}</div>
-          <div className={`call-event-grid ${detail.calls.length === 0 ? 'events-only' : ''}`}>{detail.calls.length > 0 && <ScrollArea className="call-list"><SectionHeader title="Calls" />{detail.calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong title={call.session ?? undefined}>{call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small>{call.call_id === selectedCall?.call_id && <small className="call-facts">{call.model ?? 'Default'} · exit {call.exit_code === null ? '—' : call.exit_code}</small>}</span><ChevronRight size={14} /></button>)}</ScrollArea>}<EventTimeline events={displayedEvents} title="Events" /></div>
+          <div className={`call-event-grid ${detail.calls.length === 0 || eventScope !== 'events' ? 'events-only' : ''}`}>{detail.calls.length > 0 && eventScope === 'events' && <ScrollArea className="call-list"><SectionHeader title="Calls" />{detail.calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong title={call.session ?? undefined}>{call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small>{call.call_id === selectedCall?.call_id && <small className="call-facts">{call.backend ?? '—'} · {call.model ?? 'Default'} · exit {call.exit_code === null ? '—' : call.exit_code} · {formatTime(call.started_at) || '—'}</small>}</span><ChevronRight size={14} /></button>)}</ScrollArea>}{eventScope === 'events' && <EventTimeline events={displayedEvents} title="Events" />}{eventScope === 'unattributed' && <EventTimeline events={detail.unattributed} title="Unattributed events" />}{eventScope === 'malformed' && <ScrollArea className="event-list"><SectionHeader title="Malformed events" meta={`${detail.malformed.length} 个事件`} />{detail.malformed.length ? detail.malformed.map((event, index) => <div className="event-row" key={`malformed-${index}`}><span className="event-marker" /><div className="event-body"><pre className="code-preview scroll-area">{JSON.stringify(event, null, 2)}</pre></div></div>) : <span className="muted">No malformed events</span>}</ScrollArea>}</div>
         </section>
       </>}
     </section>
-    <div className="inspector-column">{selectedId && <FileChangesPanel records={fileChangeRecords} selectedCallId={selectedCallId} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
+    <div className="inspector-column">{selectedId && detail && <FileChangesPanel records={fileChangeRecords} selectedCallId={selectedCallId} callOrder={detail.calls.map((c) => c.call_id)} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
     {showNew && <NewRunDialog onClose={() => setShowNew(false)} onCreated={(run) => { setShowNew(false); void loadRuns(); selectRun(run.run_id); }} />}
     {error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}
   </section>;
@@ -205,7 +208,7 @@ function AgentGraph({ detail, selectedCallId, onSelect }: { detail: RunDetail; s
     const rawEdges: Edge[] = (detail.agent_graph?.edges ?? []).map((item, index) => ({
       id: `${item.from}-${item.to}-${index}`, source: item.from, target: item.to,
       animated: item.to === detail.agent_graph?.current,
-      className: item.kind === 'fork' ? 'fork-edge' : '',
+      className: item.kind === 'fork' ? 'fork-edge' : item.kind === 'join' ? 'join-edge' : '',
     }));
     if (rawNodes.length === 0) return { nodes: [], edges: [] };
     // Use dagre for DAG layout
@@ -233,19 +236,23 @@ function EventTimeline({ events, title }: { events: RunEvent[]; title: string })
 }
 
 interface ObservedChange { action: FileChange['action']; size?: number; prev_size?: number; call_id: string; seq: number }
-interface ChangeTreeFile { name: string; path: string; latest: ObservedChange }
+interface ChangeTreeFile { name: string; path: string; latest: ObservedChange; is_new: boolean }
 interface ChangeTreeDir { label: string; dirs: ChangeTreeDir[]; files: ChangeTreeFile[] }
 
-function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
+function buildChangeTree(records: FileChangeRecord[], selectedCallId: string | null): ChangeTreeDir {
   const files = new Map<string, ChangeTreeFile>();
   for (const record of records) {
+    const isNew = selectedCallId !== null && record.call_id === selectedCallId;
     for (const change of record.changes) {
       const info: ObservedChange = { action: change.action, size: change.size, prev_size: change.prev_size, call_id: record.call_id, seq: record.seq };
       const existing = files.get(change.path);
       if (existing) {
-        if (record.seq >= existing.latest.seq) existing.latest = info;
+        if (record.seq >= existing.latest.seq) {
+          existing.latest = info;
+          existing.is_new = isNew;
+        }
       } else {
-        files.set(change.path, { name: change.path.split('/').pop() ?? change.path, path: change.path, latest: info });
+        files.set(change.path, { name: change.path.split('/').pop() ?? change.path, path: change.path, latest: info, is_new: isNew });
       }
     }
   }
@@ -276,12 +283,28 @@ function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
   return convert(root, '');
 }
 
-function FileChangesPanel({ records, runId, selectedCallId, onClose }: { records: FileChangeRecord[]; runId: string; selectedCallId: string | null; onClose: () => void }) {
-  const filtered = selectedCallId ? records.filter((r) => r.call_id === selectedCallId) : records;
-  const totalChanges = filtered.reduce((sum, record) => sum + record.changes.length, 0);
-  const tree = useMemo(() => buildChangeTree(filtered), [filtered]);
+function FileChangesPanel({ records, runId, selectedCallId, callOrder, onClose }: { records: FileChangeRecord[]; runId: string; selectedCallId: string | null; callOrder: string[]; onClose: () => void }) {
+  const cumulative = useMemo(() => {
+    if (!selectedCallId) return records;
+    // Find the max seq among records matching this call
+    const matching = records.filter((r) => r.call_id === selectedCallId);
+    let maxSeq: number;
+    if (matching.length > 0) {
+      maxSeq = Math.max(...matching.map((r) => r.seq));
+    } else {
+      // Call produced no file changes — find the last record from any preceding call
+      const callIdx = callOrder.indexOf(selectedCallId);
+      const precedingIds = new Set(callOrder.slice(0, callIdx + 1));
+      const preceding = records.filter((r) => precedingIds.has(r.call_id));
+      maxSeq = preceding.length > 0 ? Math.max(...preceding.map((r) => r.seq)) : 0;
+    }
+    return records.filter((r) => r.seq <= maxSeq);
+  }, [records, selectedCallId, callOrder]);
+  const deltaCount = selectedCallId ? records.filter((r) => r.call_id === selectedCallId).reduce((sum, r) => sum + r.changes.length, 0) : 0;
+  const totalChanges = cumulative.reduce((sum, record) => sum + record.changes.length, 0);
+  const tree = useMemo(() => buildChangeTree(cumulative, selectedCallId), [cumulative, selectedCallId]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} change{totalChanges === 1 ? '' : 's'}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{filtered.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
+  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} file{totalChanges === 1 ? '' : 's'}{deltaCount > 0 && ` · ${deltaCount} new`}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{cumulative.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
 }
 
 function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; depth: number; onPreview: (path: string) => void }) {
@@ -290,7 +313,7 @@ function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; dept
 
 function ChangeTreeFileView({ file, depth, onPreview }: { file: ChangeTreeFile; depth: number; onPreview: (path: string) => void }) {
   const shown = file.latest;
-  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
+  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}${file.is_new ? ' is-new' : ''}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{file.is_new && <span className="file-change-badge">new</span>}{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
 }
 
 function RunFilePreviewDialog({ runId, path, onClose }: { runId: string; path: string; onClose: () => void }) {

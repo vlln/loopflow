@@ -70,33 +70,6 @@ def _run_dir_for_pwd() -> Path:
     return _runs_dir() / f"lf_{pwd}"
 
 
-def _print_graph(run_dir: Path) -> None:
-    """Render and print the phase graph from events.jsonl."""
-    events_path = run_dir / "events.jsonl"
-    if not events_path.is_file():
-        return
-
-    from loopflow.presentation.graph import PhaseGraph
-    from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-
-    events = []
-    for line in events_path.read_text().strip().split("\n"):
-        if line:
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-
-    pg = PhaseGraph.from_events(events)
-    if not pg.nodes():
-        return
-
-    renderer = TerminalGraphRenderer(pg)
-    rendered = renderer.render()
-    if rendered.plain.strip():
-        print(f"\n  {rendered.plain}", file=sys.stderr)
-
-
 def _check_environment(meta: dict, loop_dir: Path) -> None:
     """Check that declared environment file exists."""
     env_file = meta.get("requires", {}).get("environment")
@@ -149,20 +122,16 @@ def web(host: str, port: int, allow_remote: bool) -> None:
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
               help="Mock mode: bash (shell execution) or auto (schema-based generation)")
-@click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
-@click.option("--from-phase", default=None, help="Start execution from this phase")
-@click.option("--only-phase", default=None, help="Stop execution after this phase")
 @click.option("--backend", default=None, help="Agent backend (pi, kimi, claude, codex, ...)")
 @click.option("--transport", default=None, help="Transport mode (cli, acp). ADR-0049")
 @click.option("--work-dir", default=None,
               help="Working directory for the loop: a path to chdir into; "
                    "empty string to let the framework create one under run_dir; "
                    "omitted to use the current directory.")
-def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, work_dir):
+def run(name, wf_args, mock, backend, transport, work_dir):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
-    from loopflow.presentation.graph import PhaseGraph
-    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow, intervene
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
 
     if mock:
         set_mock(mock)
@@ -205,29 +174,15 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
         "execution_epoch": 1,
         "execution_options": {
             "mock": mock,
-            "from_phase": from_phase,
-            "only_phase": only_phase,
             "backend": backend,
             "transport": transport,
         },
     }
     _write_run(run_dir / "run.json", run_meta)
 
-    # Set up graph for live/watch mode
-    pg = PhaseGraph() if watch else None
-    live = None
-    if watch:
-        from rich.live import Live
-        from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-        live = Live(TerminalGraphRenderer(pg).render(), refresh_per_second=10,
-                     transient=True)
-        live.start()
-
     ctx = RunContext(
         run_id=run_id,
         run_dir=run_dir,
-        graph=pg,
-        live=live,
         loop_dir=loop_dir,
         execution_options=run_meta["execution_options"],
     )
@@ -273,8 +228,6 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
         _finish_run(run_meta, "stopped")
         run_meta["counter"] = ctx._counter
         _write_run(run_dir / "run.json", run_meta)
-        if live:
-            live.stop()
         sys.exit(0)
     except Exception as e:
         from loopflow.infrastructure.intervention import InterventionPending
@@ -283,8 +236,6 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
             _finish_run(run_meta, "waiting_input")
             run_meta["counter"] = ctx._counter
             _write_run(run_dir / "run.json", run_meta)
-            if live:
-                live.stop()
             print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
             sys.exit(0)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
@@ -294,15 +245,10 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
         run_meta["can_recover_continue"] = ctx.failed_can_continue
         run_meta["counter"] = ctx._counter
         _write_run(run_dir / "run.json", run_meta)
-        if live:
-            live.stop()
         # Circuit breaker (ADR-0045 §2 / BR-050): manual run failures count too
         from loopflow.infrastructure import loop_state
         loop_state.record_failure(name, run_id, threshold=loop_state.failure_threshold(meta))
         sys.exit(1)
-
-    if live:
-        live.stop()
 
     _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
@@ -322,15 +268,11 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
 
-    # Auto-render graph at end
-    _print_graph(run_dir)
 
-
-def legacy_resume_internal(run_id, mock, watch):
+def legacy_resume_internal(run_id, mock):
     """Resume a crashed loop run."""
     from loopflow.infrastructure.discovery import load_loop
-    from loopflow.presentation.graph import PhaseGraph
-    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow, intervene
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
 
     if mock:
         set_mock(mock)
@@ -359,17 +301,7 @@ def legacy_resume_internal(run_id, mock, watch):
     run_meta.pop("finished_at", None)
     _write_run(run_json, run_meta)
 
-    # Set up graph for live/watch mode
-    pg = PhaseGraph() if watch else None
-    live = None
-    if watch:
-        from rich.live import Live
-        from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-        live = Live(TerminalGraphRenderer(pg).render(), refresh_per_second=10,
-                     transient=True)
-        live.start()
-
-    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live,
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True,
                      loop_dir=loop_dir, counter=run_meta.get("counter", 0))
     set_context(ctx)
 
@@ -392,7 +324,7 @@ def legacy_resume_internal(run_id, mock, watch):
     try:
         run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
-            phase=phase, log=log, args=args_dict, workflow=workflow,
+            log=log, args=args_dict, workflow=workflow,
             intervene=intervene,
         )
         run_kwargs["state"] = state
@@ -402,8 +334,6 @@ def legacy_resume_internal(run_id, mock, watch):
         _finish_run(run_meta, "stopped")
         run_meta["counter"] = ctx._counter
         _write_run(run_json, run_meta)
-        if live:
-            live.stop()
         sys.exit(0)
     except Exception as e:
         from loopflow.infrastructure.intervention import InterventionPending
@@ -412,19 +342,12 @@ def legacy_resume_internal(run_id, mock, watch):
             _finish_run(run_meta, "waiting_input")
             run_meta["counter"] = ctx._counter
             _write_run(run_json, run_meta)
-            if live:
-                live.stop()
             print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
             sys.exit(0)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         _finish_run(run_meta, "failed")
         _write_run(run_json, run_meta)
-        if live:
-            live.stop()
         sys.exit(1)
-
-    if live:
-        live.stop()
 
     _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
@@ -439,9 +362,6 @@ def legacy_resume_internal(run_id, mock, watch):
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
-
-    # Auto-render graph at end
-    _print_graph(run_dir)
 
 
 @main.command()
@@ -488,9 +408,8 @@ def recover(run_id: str, mode: str) -> None:
 @main.command()
 @click.argument("run_id")
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None, hidden=True)
-@click.option("--watch/--no-watch", default=False, hidden=True)
 @click.pass_context
-def resume(ctx: click.Context, run_id: str, mock: str | None, watch: bool) -> None:
+def resume(ctx: click.Context, run_id: str, mock: str | None) -> None:
     """Deprecated alias for recover --mode retry."""
     click.echo("Warning: 'resume' is deprecated; use 'recover --mode retry'.", err=True)
     ctx.invoke(recover, run_id=run_id, mode="retry")
@@ -498,8 +417,7 @@ def resume(ctx: click.Context, run_id: str, mock: str | None, watch: bool) -> No
 
 @main.command()
 @click.argument("run_id")
-@click.option("--graph/--no-graph", default=True, help="Show phase execution graph")
-def status(run_id, graph):
+def status(run_id):
     """Show status of a run."""
     run_dir = _find_run_by_id(run_id)
     if run_dir is None:
@@ -523,28 +441,6 @@ def status(run_id, graph):
     print(f"  Agents: {len(agent_jsonl)} calls")
     if meta.get("args"):
         print(f"  Args:   {json.dumps(meta['args'], ensure_ascii=False)}")
-
-    # Show phase graph if events.jsonl exists
-    if graph:
-        events_path = run_dir / "events.jsonl"
-        if events_path.is_file():
-            from loopflow.presentation.graph import PhaseGraph
-            from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-
-            events = []
-            for line in events_path.read_text().strip().split("\n"):
-                if line:
-                    try:
-                        events.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
-
-            pg = PhaseGraph.from_events(events)
-            renderer = TerminalGraphRenderer(pg)
-            rendered = renderer.render()
-            if rendered.plain.strip():
-                print(f"\n  Execution graph:")
-                print(f"  {rendered.plain}")
 
 
 @main.command()

@@ -32,8 +32,6 @@ class EventWriter:
         event_type: str,
         *,
         run_id: str,
-        phase: str | None = None,
-        phase_id: str | None = None,
         call_id: str | None = None,
         payload: dict[str, Any] | None = None,
         ts: str | None = None,
@@ -50,10 +48,6 @@ class EventWriter:
                 "run_id": run_id,
                 "payload": payload or {},
             }
-            if phase is not None:
-                event["phase"] = phase
-            if phase_id is not None:
-                event["phase_id"] = phase_id
             if call_id is not None:
                 event["call_id"] = call_id
             with path.open("a", encoding="utf-8") as stream:
@@ -129,9 +123,10 @@ def project_events(path: Path) -> EventProjection:
     agent_edges: list[dict[str, Any]] = []
     seen_call_ids: set[str] = set()
     previous_call_id: str | None = None
-    fork_parent: str | None = None  # call_id of the agent before fork
-    fork_children: list[str] = []    # call_ids of parallel agents
-    pending_join: list[str] = []     # fork children waiting for join edges
+    fork_active: bool = False            # inside a fork (between fork_start and fork_end)
+    fork_parent: str | None = None       # call_id of the agent before fork (fan-out source)
+    fork_children: list[str] = []        # call_ids of parallel agents
+    pending_join: list[str] = []         # fork children waiting for join edges
 
     for event in raw:
         if event.get("version") == 2:
@@ -141,18 +136,37 @@ def project_events(path: Path) -> EventProjection:
             event_type = event["type"]
             call_id = event.get("call_id")
             if event_type == "fork_start":
-                fork_parent = previous_call_id
+                fork_active = True
                 fork_children = []
+                # Back-to-back fork: pending_join from previous fork becomes
+                # the join source for this fork's children (no fork_parent).
+                # Normal fork: fork_parent is the preceding agent.
+                fork_parent = previous_call_id if not pending_join else None
                 continue
             if event_type == "fork_end":
-                if fork_parent is not None and fork_children:
+                # Emit fork edges (fan-out from parent to children)
+                if fork_parent is not None:
                     for child_id in fork_children:
                         agent_edges.append({
                             "from": fork_parent,
                             "to": child_id,
                             "kind": "fork",
                         })
-                    pending_join.extend(fork_children)
+                # Back-to-back: emit join edges from pending_join to all children
+                if pending_join and fork_children:
+                    for join_source in pending_join:
+                        for child_id in fork_children:
+                            if join_source != child_id:
+                                agent_edges.append({
+                                    "from": join_source,
+                                    "to": child_id,
+                                    "kind": "join",
+                                })
+                    pending_join = []
+                # Children become pending_join for the next agent or fork
+                if fork_children:
+                    pending_join = list(fork_children)
+                fork_active = False
                 fork_parent = None
                 fork_children = []
                 continue
@@ -189,8 +203,12 @@ def project_events(path: Path) -> EventProjection:
                             "agent_def": agent_def,
                             "status": "running",
                         })
-                        # Add join edges from pending fork children to this agent
-                        if pending_join and fork_parent is None:
+                        # Graph edge logic
+                        if fork_active:
+                            # Inside a fork: track as child
+                            fork_children.append(call_id)
+                        elif pending_join:
+                            # Fan-in: join edges from fork children to this agent
                             for child_id in pending_join:
                                 if child_id != call_id:
                                     agent_edges.append({
@@ -199,9 +217,6 @@ def project_events(path: Path) -> EventProjection:
                                         "kind": "join",
                                     })
                             pending_join = []
-                        if fork_parent is not None:
-                            # Inside a fork: track as child
-                            fork_children.append(call_id)
                         elif previous_call_id is not None:
                             agent_edges.append({
                                 "from": previous_call_id,

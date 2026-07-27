@@ -240,16 +240,16 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .section-meta { margin-left: auto; color: var(--quiet); font-size: 9px; }
 .phase-graph { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .flow-canvas { min-height: 0; flex: 1; margin: 0 8px 8px; overflow: hidden; border-radius: 6px; background: var(--surface-deep); }
-.phase-node { display: grid; min-width: 126px; gap: 3px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--text); }
-.phase-node span { font-size: 12px; font-weight: 650; }
-.phase-node small { color: var(--muted); font-size: 9px; }
-.phase-node.is-selected, .phase-node.is-current { border-color: var(--accent); background: var(--accent-soft-bg); color: var(--text); }
-.phase-node.is-selected small, .phase-node.is-current small { color: var(--mint-strong); }
-.phase-node.is-declared { border-style: dashed; border-color: var(--muted); opacity: 0.65; }
-.phase-node.is-undeclared { border-color: var(--accent-undeclared); }
+.agent-node { display: grid; min-width: 126px; gap: 3px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--text); }
+.agent-node span { font-size: 12px; font-weight: 650; }
+.agent-node small { color: var(--muted); font-size: 9px; }
+.agent-node.is-selected { border-color: var(--accent); background: var(--accent-soft-bg); color: var(--text); }
+.agent-node.is-selected small { color: var(--mint-strong); }
 .react-flow__handle { width: 7px; height: 7px; border: 0; background: var(--mint-strong); }
 .react-flow__edge-path { stroke: var(--edge); stroke-width: 1.5; }
 .react-flow__edge.animated .react-flow__edge-path { stroke: var(--mint-strong); }
+.react-flow__edge.fork-edge .react-flow__edge-path { stroke: var(--accent); stroke-width: 2; }
+.react-flow__edge.join-edge .react-flow__edge-path { stroke: var(--mint-strong); stroke-dasharray: 5 3; }
 .react-flow__controls { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; box-shadow: none; }
 .react-flow__controls button { border: 0; border-bottom: 1px solid var(--line); background: var(--surface-raised); fill: var(--muted); }
 
@@ -446,12 +446,12 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .change-tree-row.is-file { color: var(--text); }
 button.change-tree-row.is-file { width: 100%; border: 0; background: none; cursor: pointer; font-family: inherit; text-align: left; }
 button.change-tree-row.is-file:hover { background: var(--accent-tint-hover); }
-button.change-tree-row.is-file.is-in-phase:hover { background: var(--accent-tint-strong); }
-.change-tree-row.is-file.is-in-phase { background: var(--accent-tint); }
-.change-tree-row.is-file:not(.is-in-phase) { opacity: .5; }
+button.change-tree-row.is-file.is-new { background: var(--accent-tint); }
+button.change-tree-row.is-file.is-new:hover { background: var(--accent-tint-strong); }
 .change-tree-row.is-deleted .change-tree-name { color: var(--quiet); text-decoration: line-through; }
 .change-tree-name { flex: 1; overflow: hidden; font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .change-tree-row small { flex-shrink: 0; color: var(--muted); font-size: 8px; }
+.file-change-badge { flex-shrink: 0; font-size: 7px; font-weight: 700; color: var(--mint-strong); text-transform: uppercase; }
 .file-change-action { flex-shrink: 0; min-width: 44px; padding: 1px 4px; border-radius: 3px; font-size: 7px; font-weight: 700; text-align: center; text-transform: uppercase; }
 .change-tree-row.is-created .file-change-action { background: var(--chip-created-bg); color: var(--accent); }
 .change-tree-row.is-modified .file-change-action { background: var(--chip-modified-bg); color: var(--chip-modified-text); }

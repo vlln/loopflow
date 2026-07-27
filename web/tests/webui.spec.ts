@@ -14,7 +14,7 @@ async function installApi(page: Page) {
     if (path.endsWith('/events')) {
       return route.fulfill({
         contentType: 'text/event-stream',
-        body: `event: run_event\ndata: ${JSON.stringify({ version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } })}\n\nevent: stream_end\ndata: {"last_event_id":4}\n\n`,
+        body: `event: run_event\ndata: ${JSON.stringify({ version: 2, event_id: 4, type: 'message', call_id: 'call-a', payload: { text: longOutput } })}\n\nevent: stream_end\ndata: {"last_event_id":4}\n\n`,
       });
     }
     if (path === '/api/v1/runs' && request.method() === 'POST') return json(runs[0], 201);
@@ -24,7 +24,7 @@ async function installApi(page: Page) {
       const items = runs.filter((run) => (!status || run.status === status) && (!query || `${run.run_id} ${run.loop}`.toLowerCase().includes(query)));
       return json({ items, next_cursor: null });
     }
-    if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } }] });
+    if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', call_id: 'call-a', payload: { text: longOutput } }] });
     if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[2], allowed_actions: ['recover_retry', 'recover_continue'] });
     if (/\/api\/v1\/runs\/[^/]+\/(stop|recover|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'running', allowed_actions: ['stop'] });
     if (path === '/api/v1/loops') return json({ items: [loopSummary], next_cursor: null });

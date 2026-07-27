@@ -45,7 +45,7 @@ class RunContext:
     """Tracks run state: session naming, resume, nested workflow()."""
 
     def __init__(self, run_id: str | None = None, run_dir: Path | None = None,
-                 resume: bool = False, graph=None, live=None,
+                 resume: bool = False, live=None,
                  loop_dir: Path | None = None,
                  state: State | None = None,
                  counter: int = 0,
@@ -67,18 +67,9 @@ class RunContext:
         self._counter = counter
         self._counter_lock = threading.Lock()
         self._call_namespace = threading.local()
-        self._prev_phase: str | None = None
-        self._current_phase: str | None = None
-        self._current_phase_id: str | None = None
         self._current_call_id: str | None = None
-        self._phase_counter: int = 0
-        self.from_phase: str | None = None  # --from-phase: skip phases before this
-        self.only_phase: str | None = None  # --only-phase: stop after this phase
         self.default_backend: str | None = None
         self.default_model: str | None = None
-        self._reached_from_phase: bool = False
-        self._past_only_phase: bool = False
-        self.graph = graph
         self.live = live
         self.loop_dir = loop_dir
         self.state = state
@@ -233,21 +224,17 @@ def _write_event(event: dict) -> None:
         from loopflow.infrastructure.web_events import EventWriter
 
         event_type = str(event.get("type", "event"))
-        phase = event.get("phase") or _ctx._current_phase
-        phase_id = event.get("phase_id") or _ctx._current_phase_id
         call_id = event.get("call_id") or (
             _ctx._current_call_id if event_type.startswith("agent_") else None
         )
         payload = {
             key: value for key, value in event.items()
-            if key not in {"type", "ts", "phase", "phase_id", "call_id"}
+            if key not in {"type", "ts", "call_id"}
         }
         EventWriter().append(
             _ctx.run_dir,
             event_type,
             run_id=_ctx.run_id,
-            phase=phase,
-            phase_id=phase_id,
             call_id=call_id,
             payload=payload,
         )

@@ -12,8 +12,7 @@ def create_loop(root):
     loop.mkdir(parents=True)
     (loop / "loop.md").write_text("---\nname: hello\nstate:\n  count: 0\n---\n")
     (loop / "workflow.py").write_text(
-        "def run(phase, state, **kwargs):\n"
-        "    phase('Work')\n"
+        "def run(state, **kwargs):\n"
         "    state.count += 1\n"
     )
     return loop
@@ -21,7 +20,12 @@ def create_loop(root):
 
 def test_execute_workflow_writes_terminal_metadata_and_v2_phase(tmp_path, monkeypatch):
     loops = tmp_path / "loops"
-    create_loop(loops)
+    loop = create_loop(loops)
+    (loop / "workflow.py").write_text(
+        "def run(state, log, **kwargs):\n"
+        "    state.count += 1\n"
+        "    log('done')\n"
+    )
     monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
     run = tmp_path / "run"
     run.mkdir()
@@ -31,7 +35,7 @@ def test_execute_workflow_writes_terminal_metadata_and_v2_phase(tmp_path, monkey
     metadata = json.loads((run / "run.json").read_text())
     event = json.loads((run / "events.jsonl").read_text())
     assert metadata["status"] == "done" and metadata["finished_at"]
-    assert "pid" not in metadata and event["version"] == 2 and event["phase_id"] == "phase-1"
+    assert "pid" not in metadata and event["version"] == 2
 
 
 def test_execute_workflow_terminal_guard_does_not_overwrite_cancelled(tmp_path, monkeypatch):
@@ -300,10 +304,8 @@ def test_run_executes_and_observes_in_explicit_working_directory(tmp_path, monke
     loop = create_loop(loops)
     (loop / "workflow.py").write_text(
         "from pathlib import Path\n"
-        "def run(phase, **kwargs):\n"
-        "    phase('Work')\n"
+        "def run(**kwargs):\n"
         "    Path('output.txt').write_text('made in working dir')\n"
-        "    phase('Done')\n"
     )
     monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
     workdir = tmp_path / "B"
@@ -333,8 +335,7 @@ def test_recover_reuses_persisted_working_directory(tmp_path, monkeypatch):
     loop = create_loop(loops)
     (loop / "workflow.py").write_text(
         "from pathlib import Path\n"
-        "def run(phase, **kwargs):\n"
-        "    phase('Work')\n"
+        "def run(**kwargs):\n"
         "    if not Path('attempt.marker').exists():\n"
         "        Path('attempt.marker').write_text('first')\n"
         "        raise RuntimeError('boom')\n"

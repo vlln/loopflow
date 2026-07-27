@@ -84,11 +84,9 @@ def test_replay_rejects_legacy_and_out_of_range_cursor(tmp_path):
 
 def test_runtime_context_writes_v2_but_keeps_resume_cache_flat(tmp_path):
     from loopflow.infrastructure.context import RunContext, _append_cache, _write_event, set_context
-    from loopflow.presentation.events import _emit_phase
 
     context = RunContext(run_id="run-1", run_dir=tmp_path)
     set_context(context)
-    _emit_phase("Review")
     session = context.next_session()
     _write_event({"type": "agent_start", "session": session})
     cache = tmp_path / "0001.jsonl"
@@ -97,6 +95,84 @@ def test_runtime_context_writes_v2_but_keeps_resume_cache_flat(tmp_path):
     events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
     flat = json.loads(cache.read_text())
 
-    assert events[0]["phase"] == "Review" and events[0]["phase_id"] == "phase-1"
-    assert events[1]["call_id"] == "0001" and events[1]["phase_id"] == "phase-1"
+    assert events[0]["version"] == 2 and events[0]["type"] == "agent_start"
+    assert events[0]["call_id"] == "0001"
     assert flat == {"type": "agent_done", "exit_code": 0}
+
+
+# ── fork/join graph projection tests (BL-023) ──────────────────────────────
+
+def _pairs(proj, kind):
+    return {(e["from"], e["to"]) for e in proj.agent_graph["edges"] if e["kind"] == kind}
+
+
+def test_single_fork_produces_fork_and_join_edges(tmp_path):
+    writer = EventWriter()
+    run = tmp_path / "run"
+    # A → parallel(B, C) → D
+    writer.append(run, "agent_start", run_id="r", call_id="A", payload={"label": "a"})
+    writer.append(run, "agent_done", run_id="r", call_id="A", payload={"exit_code": 0})
+    writer.append(run, "fork_start", run_id="r", call_id="A")
+    writer.append(run, "agent_start", run_id="r", call_id="B", payload={"label": "b"})
+    writer.append(run, "agent_done", run_id="r", call_id="B", payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="r", call_id="C", payload={"label": "c"})
+    writer.append(run, "agent_done", run_id="r", call_id="C", payload={"exit_code": 0})
+    writer.append(run, "fork_end", run_id="r", call_id="A")
+    writer.append(run, "agent_start", run_id="r", call_id="D", payload={"label": "d"})
+    writer.append(run, "agent_done", run_id="r", call_id="D", payload={"exit_code": 0})
+
+    proj = project_events(run / "events.jsonl")
+
+    assert _pairs(proj, "fork") == {("A", "B"), ("A", "C")}
+    assert _pairs(proj, "join") == {("B", "D"), ("C", "D")}
+
+
+def test_back_to_back_forks_produce_join_edges_between_groups(tmp_path):
+    writer = EventWriter()
+    run = tmp_path / "run"
+    # A → parallel(B, C) → parallel(D, E) → F
+    writer.append(run, "agent_start", run_id="r", call_id="A", payload={"label": "a"})
+    writer.append(run, "agent_done", run_id="r", call_id="A", payload={"exit_code": 0})
+    writer.append(run, "fork_start", run_id="r", call_id="A")
+    writer.append(run, "agent_start", run_id="r", call_id="B", payload={"label": "b"})
+    writer.append(run, "agent_done", run_id="r", call_id="B", payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="r", call_id="C", payload={"label": "c"})
+    writer.append(run, "agent_done", run_id="r", call_id="C", payload={"exit_code": 0})
+    writer.append(run, "fork_end", run_id="r", call_id="A")
+    writer.append(run, "fork_start", run_id="r", call_id="C")
+    writer.append(run, "agent_start", run_id="r", call_id="D", payload={"label": "d"})
+    writer.append(run, "agent_done", run_id="r", call_id="D", payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="r", call_id="E", payload={"label": "e"})
+    writer.append(run, "agent_done", run_id="r", call_id="E", payload={"exit_code": 0})
+    writer.append(run, "fork_end", run_id="r", call_id="C")
+    writer.append(run, "agent_start", run_id="r", call_id="F", payload={"label": "f"})
+    writer.append(run, "agent_done", run_id="r", call_id="F", payload={"exit_code": 0})
+
+    proj = project_events(run / "events.jsonl")
+
+    # Group 1 fork: A → B, A → C
+    assert _pairs(proj, "fork") == {("A", "B"), ("A", "C")}
+    # Back-to-back join: B → D, B → E, C → D, C → E + final join D → F, E → F
+    assert _pairs(proj, "join") == {
+        ("B", "D"), ("B", "E"), ("C", "D"), ("C", "E"),
+        ("D", "F"), ("E", "F"),
+    }
+
+
+def test_fork_with_no_preceding_agent_has_no_fork_edges(tmp_path):
+    writer = EventWriter()
+    run = tmp_path / "run"
+    # parallel(B, C) → D (no A before fork)
+    writer.append(run, "fork_start", run_id="r", call_id=None)
+    writer.append(run, "agent_start", run_id="r", call_id="B", payload={"label": "b"})
+    writer.append(run, "agent_done", run_id="r", call_id="B", payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="r", call_id="C", payload={"label": "c"})
+    writer.append(run, "agent_done", run_id="r", call_id="C", payload={"exit_code": 0})
+    writer.append(run, "fork_end", run_id="r", call_id=None)
+    writer.append(run, "agent_start", run_id="r", call_id="D", payload={"label": "d"})
+    writer.append(run, "agent_done", run_id="r", call_id="D", payload={"exit_code": 0})
+
+    proj = project_events(run / "events.jsonl")
+
+    assert _pairs(proj, "fork") == set()
+    assert _pairs(proj, "join") == {("B", "D"), ("C", "D")}

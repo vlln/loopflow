@@ -264,45 +264,6 @@ class TestResume:
 class TestGraph:
     """AC-009 integration: graph display in status and run."""
 
-    def test_status_shows_graph_when_events_exist(self, env_dirs):
-        """AC-009-N-1: status displays linear phase graph from events.jsonl."""
-        loops, runs = env_dirs
-        _create_test_loop(loops)
-
-        run_id = "graph1234"
-        lf_dir = runs / "lf_test"
-        run_dir = lf_dir / run_id
-        run_dir.mkdir(parents=True)
-
-        # Write events.jsonl with phase events
-        events = [
-            {"type": "phase", "title": "Ingest", "ts": 1.0},
-            {"type": "phase", "title": "Process", "ts": 2.0},
-            {"type": "phase", "title": "Export", "ts": 3.0},
-        ]
-        (run_dir / "events.jsonl").write_text(
-            "\n".join(json.dumps(e) for e in events) + "\n"
-        )
-
-        # Write run.json
-        (run_dir / "run.json").write_text(json.dumps({
-            "loop": "hello",
-            "run_id": run_id,
-            "status": "done",
-            "created": "2026-07-07T12:00:00Z",
-            "args": {},
-            "counter": 0,
-        }))
-
-        from loopflow.presentation.cli import main
-        runner = CliRunner()
-        result = runner.invoke(main, ["status", run_id])
-        assert result.exit_code == 0
-        assert "Ingest" in result.output
-        assert "Process" in result.output
-        assert "Export" in result.output
-        assert "Execution graph" in result.output
-
     def test_status_no_graph_when_no_events(self, env_dirs):
         """AC-009-F-1: no graph when events.jsonl doesn't exist."""
         loops, runs = env_dirs
@@ -325,38 +286,6 @@ class TestGraph:
         from loopflow.presentation.cli import main
         runner = CliRunner()
         result = runner.invoke(main, ["status", run_id])
-        assert result.exit_code == 0
-        assert "Execution graph" not in result.output
-
-    def test_status_no_graph_flag(self, env_dirs):
-        """--no-graph flag suppresses graph display."""
-        loops, runs = env_dirs
-        _create_test_loop(loops)
-
-        run_id = "nogflag1"
-        lf_dir = runs / "lf_test"
-        run_dir = lf_dir / run_id
-        run_dir.mkdir(parents=True)
-
-        events = [
-            {"type": "phase", "title": "A", "ts": 1.0},
-        ]
-        (run_dir / "events.jsonl").write_text(
-            "\n".join(json.dumps(e) for e in events) + "\n"
-        )
-
-        (run_dir / "run.json").write_text(json.dumps({
-            "loop": "hello",
-            "run_id": run_id,
-            "status": "done",
-            "created": "2026-07-07T12:00:00Z",
-            "args": {},
-            "counter": 0,
-        }))
-
-        from loopflow.presentation.cli import main
-        runner = CliRunner()
-        result = runner.invoke(main, ["status", "--no-graph", run_id])
         assert result.exit_code == 0
         assert "Execution graph" not in result.output
 
