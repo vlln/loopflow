@@ -27,7 +27,7 @@
 | BL-019 | pi backend 用 text_end 消息级 event | `_parse_line` 取 `text_end` 的完整 content，弃 `text_delta`（token 级），修 `_extract_text` `"\n".join` 在流式 delta 间插 `\n` 破坏 JSON 字符串值 | deep-research 实测 2026-07-26 | done | 0.23.0 |
 | BL-020 | CLI `--work-dir` 统一工作目录 | `loop run --work-dir [path|""|缺省]`，框架 chdir 到 workdir；loop 不处理工作目录，agent 用相对路径（当前目录）。统一 backend cwd 与产出目录，消除 run_dir/work 冗余 | deep-research 实测 2026-07-26 | done | 0.23.0 |
 | BL-021 | webUI call/occurrence 显示简化 | call-list 主显 call_id（逻辑编号），session 降 tooltip；节点 "×N"、详情 "第 N 次执行"、EventTimeline "N 个事件"——消除 call_id 重复（session 含 call_id 又单独显示）+ occurrence/events 措辞区分 | devloop DESIGN 2026-07-26 | done | 0.23.0 |
-| BL-022 | phase 残留清理 | runtime.py 仍保留 `def phase()`、`_emit_phase` import、`from_phase`/`only_phase` 逻辑——ADR-0052 声称删除但实际未删；14 个测试基于 phase 红灯 | 0.24.0 发布后排查 | planned | 0.24.1 |
-| BL-023 | agent_graph fan-in 投影修复 | `project_events()` back-to-back parallel 的 join 边不生成、`pending_join` 跨组合并、fork source 解析错误；join-edge 无 CSS 区分 | 0.24.0 发布后排查 | planned | 0.24.1 |
-| BL-024 | agent 节点详情面板 | 点击节点仅过滤事件/文件，无合并详情面板（events + files + call info 一起展示） | 0.24.0 发布后排查 | planned | 0.24.1 |
-| BL-025 | Playwright fixture phase_id 清理 | `webui.spec.ts` mock fixture 仍含 `phase_id` 字段 | 0.24.0 发布后排查 | planned | 0.24.1 |
+| BL-022 | phase 残留清理 | runtime.py 仍保留 `def phase()`、`_emit_phase` import、`from_phase`/`only_phase` 逻辑——ADR-0052 声称删除但实际未删；14 个测试基于 phase 红灯 | 0.24.0 发布后排查 | done | 0.24.1 |
+| BL-023 | agent_graph fan-in 投影修复 | `project_events()` back-to-back parallel 的 join 边不生成、`pending_join` 跨组合并、fork source 解析错误；join-edge 无 CSS 区分 | 0.24.0 发布后排查 | done | 0.24.1 |
+| BL-024 | agent 节点详情面板 | 点击节点仅过滤事件/文件，无合并详情面板（events + files + call info 一起展示） | 0.24.0 发布后排查 | done | 0.24.1 |
+| BL-025 | Playwright fixture phase_id 清理 | `webui.spec.ts` mock fixture 仍含 `phase_id` 字段 | 0.24.0 发布后排查 | done | 0.24.1 |

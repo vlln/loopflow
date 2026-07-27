@@ -63,7 +63,7 @@
 | [0092](0092-work-dir/) | CLI --work-dir 统一工作目录（BL-020） | done | 2026-07-26 |
 | [0093](0093-webui-display/) | WebUI call/occurrence 显示简化（BL-021） | done | 2026-07-26 |
 | [0094](0094-remove-phase/) | 移除 Phase 抽象 → Agent 实例图（ADR-0052） | done | 2026-07-27 |
-| [0095](0095-phase-cleanup/) | 0.24.0 Phase 残留收尾（BL-022/023/024/025） | pending | 2026-07-27 |
+| [0095](0095-phase-cleanup/) | 0.24.0 Phase 残留收尾（BL-022/023/024/025） | done | 2026-07-27 |
 
 ## 状态说明
 
