@@ -287,7 +287,7 @@ class AgentRunner:
         """Observe file changes after an agent call completes."""
         if self.ctx.file_observer is not None:
             try:
-                call_id = getattr(self.ctx, '_current_call_id', None) or "unknown"
+                call_id = self.ctx.current_call_id
                 label = self._label or call_id
                 self.ctx.file_observer.observe(call_id, label)
             except Exception:
