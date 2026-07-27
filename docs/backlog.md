@@ -31,4 +31,4 @@
 | BL-023 | agent_graph fan-in 投影修复 | `project_events()` back-to-back parallel 的 join 边不生成、`pending_join` 跨组合并、fork source 解析错误；join-edge 无 CSS 区分 | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-024 | agent 节点详情面板 | 点击节点仅过滤事件/文件，无合并详情面板（events + files + call info 一起展示） | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-025 | Playwright fixture phase_id 清理 | `webui.spec.ts` mock fixture 仍含 `phase_id` 字段 | 0.24.0 发布后排查 | done | 0.24.1 |
-| BL-027 | SSE stream 结束后 detail 不刷新 | run 结束（done/failed）后 SSE `stream_end` 只设 `streamState`，不重新拉取 `detail`，导致 UI 卡在 running 状态、error_banner 不显示 error_summary。秒败的 run 尤为明显 | deep-research run 实测 2026-07-27 | planned | 0099 |
+| BL-027 | SSE stream 结束后 detail 不刷新 | run 结束（done/failed）后 SSE `stream_end` 只设 `streamState`，不重新拉取 `detail`，导致 UI 卡在 running 状态、error_banner 不显示 error_summary。秒败的 run 尤为明显 | deep-research run 实测 2026-07-27 | done | 0099 |
