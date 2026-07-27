@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.24.0] — 2026-07-27
+
+### Removed
+- **Phase 抽象**：删除 `phase()` 函数、`PhaseGraph`、`_emit_phase`、`declared_phases`、`--from-phase`/`--only-phase`（ADR-0052）。每个 `agent()` 调用即图节点，`parallel()` 产生 fork/join 边
+
+### Added
+- **AgentGraph**：agent 实例图，dagre DAG 布局（`rankdir: LR`），fork/join 边表示并行
+- agent_start 事件包含 `label`、`agent_def`、`backend` 字段
+- File Changes 按 `call_id` 过滤，点击节点联动
+
+### Changed
+- `file_changes.jsonl` 字段：`phase`/`phase_id` → `call_id`/`label`
+- WebUI 图节点：Phase 节点 → Agent 节点（显示 label + agent_def + status）
+- File Changes 面板：扁平列表，无 phase 分组
+- 事件流：移除 phase 事件类型，只保留 agent_start/agent_done
+
+### Fixed
+- 重复 agent_message 事件（`_write_cache` 冗余写入）
+- agent_start 事件缺少 `backend` 字段
+
 ## [0.23.0] — 2026-07-26
 
 ### Added
