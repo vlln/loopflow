@@ -4,7 +4,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [WebUI/API 默认工作目录隔离](01-plan-web-workdir-default.md) | — | pending |
+| 01 | [WebUI/API 默认工作目录隔离](01-plan-web-workdir-default.md) | [Report](01-report-web-workdir-default.md) | done |
 
 ## 范围
 

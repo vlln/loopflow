@@ -31,4 +31,4 @@
 | BL-023 | agent_graph fan-in 投影修复 | `project_events()` back-to-back parallel 的 join 边不生成、`pending_join` 跨组合并、fork source 解析错误；join-edge 无 CSS 区分 | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-024 | agent 节点详情面板 | 点击节点仅过滤事件/文件，无合并详情面板（events + files + call info 一起展示） | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-025 | Playwright fixture phase_id 清理 | `webui.spec.ts` mock fixture 仍含 `phase_id` 字段 | 0.24.0 发布后排查 | done | 0.24.1 |
-| BL-026 | WebUI/API 默认工作目录隔离 | `BackgroundRunExecutor.start()` 在 `working_directory` 未提供时 fallback 到 `Path.cwd()`（server cwd，通常为项目根），导致 file observer 误捕获外部进程的文件变更。CLI 已有 `--work-dir ""` 隔离模式（BL-020），WebUI/API 路径缺少等价机制。修复：未提供时默认创建 `run_dir/work` 隔离目录，与 CLI `--work-dir ""` 对齐 | deep-research run bf862b1d 实测 2026-07-27 | planned | 0097 |
+| BL-026 | WebUI/API 默认工作目录隔离 | `BackgroundRunExecutor.start()` 在 `working_directory` 未提供时 fallback 到 `Path.cwd()`（server cwd，通常为项目根），导致 file observer 误捕获外部进程的文件变更。CLI 已有 `--work-dir ""` 隔离模式（BL-020），WebUI/API 路径缺少等价机制。修复：未提供时默认创建 `run_dir/work` 隔离目录，与 CLI `--work-dir ""` 对齐 | deep-research run bf862b1d 实测 2026-07-27 | done | 0097 |
