@@ -1,9 +1,20 @@
 # Changelog
 
-## [Unreleased]
+## [0.25.0] — 2026-07-27
 
 ### Added
 - **Web 端跨平台目录选择器**（BL-009 / ADR-0053）：新增 `GET /api/v1/system/list-directory` 端点（`os.scandir` 列子目录），前端用 Web 模态目录浏览器替代 macOS-only osascript。远程/非 macOS 部署时 Browse 按钮正常工作。
+- **WebUI/API 默认工作目录隔离**（BL-026 / ADR-0054）：`BackgroundRunExecutor` 未提供 `working_directory` 时默认创建 `run_dir/work` 隔离目录，与 CLI `--work-dir ""` 对齐。防止 file observer 误捕获外部进程的文件变更。
+- **Run 失败 traceback 存储**（BL-027）：`run.json` 新增 `error_traceback` 字段，存储完整 Python traceback；前端 error_banner 增加可展开的 Traceback `<details>`。
+
+### Fixed
+- **agent graph live-run join 边**（BL-028）：`project_events()` back-to-back join 边从 `fork_end` 提前到 `agent_start`，live run 期间 verifier 节点不再孤立平铺在画布中。
+- **SSE stream 结束后 detail 不刷新**（BL-027）：run 结束后 SSE `stream_end` 触发 `onState('closed')` 但不重新拉取 `detail`，导致 UI 卡在 running 状态、error_banner 不显示 error_summary。修复为 stream 结束时重新拉取 detail + fileChanges + runs 列表。
+- **reconcile 宽限期阻止逻辑**（BL-030 / ADR-0046 修订）：移除宽限期阻止已确认死亡的进程被清理的逻辑，无安全收益；频繁重启 server 导致 stale run 永远无法清理。
+
+### Changed
+- **Loops 页面切换性能**（BL-029）：移除 `read_summary()` 中 `project_events()` 死代码（每次切 loop 全量解析所有 run 的 events.jsonl）；`detail()` 去重 frontmatter 解析；`rglob` 增加隐藏目录过滤。
+- **error_banner CSS**：加 `flex-wrap` + `word-break` 处理长错误消息换行。
 
 ## [0.24.1] — 2026-07-27
 
