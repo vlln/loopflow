@@ -166,3 +166,69 @@ created: 2026-07-22T06:35:57Z
 | AC-023-F-1 | Agent 返回自然语言问题但无结构化 requests | Agent 正常返回 | loopflow 不创建 intervention；结果按普通 Agent 输出处理 | 自动化 |
 | AC-023-F-2 | Agent requests 需要 continue，但 durable session_id 未落盘 | 处理 Agent 结果 | Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request | 自动化 |
 | AC-023-F-3 | batch respond 持久化成功后恢复 worker 失败 | 提交 batch | responses 保持 answered；后续失败按普通 Run execution failure 表达，不创建 intervention 特殊状态 | 自动化 |
+
+---
+
+# AC-026: Agent 失败分类处理
+
+验证失败分类驱动的重试/续接策略的正确性。对应 Spec v15 BR-049、ADR-0044。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-N-1 | mock 后端第 1 次调用返回 transient 失败（stderr 含 "rate_limit"），第 2 次成功 | 执行含该 agent() 的 workflow | 自动退避重试后成功返回；events.jsonl 含 agent_retry 事件（attempt/reason/delay）；agent_done 的 error_category 缺省或 transient | 自动化 |
+| AC-026-N-2 | 后端结构化上报 error_category=quota，同时 stderr 含 "timeout" 字样 | 执行含该 agent() 的 workflow | 按 quota 处理：不自动重试（无 agent_retry 事件），结构化上报优先于 stderr 模式匹配 | 自动化 |
+| AC-026-N-3 | agent 调用失败（任意类别） | run 失败后检查 run.json 与 agent_done 事件 | run.json 的 error_category 与 agent_done payload 的分类一致，值为 auth/quota/transient/task/unknown 之一 | 自动化 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-B-1 | 后端上报 auth 失败（如凭证过期） | 执行含该 agent() 的 workflow | 不自动重试，run 直接 failed，error_category=auth | 自动化 |
+| AC-026-B-2 | 失败信息无法匹配任何已知类别 | 执行含该 agent() 的 workflow | error_category=unknown，按 task 处理：不自动重试 | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-E-1 | transient 失败连续 3 次重试均失败 | 执行含该 agent() 的 workflow | 抛 AgentError（含 category=transient），run failed；agent_retry 事件共 3 条，退避间隔 3/9/27s | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-F-1 | 后端上报 quota 失败 | run 失败后尝试 recover --mode continue | 按既有 continue 规则处理（durable session 满足则可续接），分类不改变恢复边界 | 自动化 |
+
+---
+
+# AC-029: stale 失联宽限期
+
+验证 stale 宽限期与调和语义的正确性。对应 Spec v15 BR-052、ADR-0046。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-029-N-1 | run 状态 running，其 pid/process_started_at 探活失败（首次判定 stale） | 通过 API 读取该 run | 读模型返回 stale；run.json 原子写入 stale_since（首次判定时间） | 自动化 |
+| AC-029-N-2 | AC-029-N-1 之后，宽限期内 worker 进程恢复并写入终态（done/failed） | 读取 run.json | 以 worker 写入的终态为准，stale_since 已清除 | 自动化 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-029-B-1 | run 处于 stale 且 stale_since 距今不足 24h（宽限期内） | `POST /api/v1/runs/{id}/reconcile` | 返回 409，错误码 run_in_grace；run.json 未被修改 | 自动化 |
+| AC-029-B-2 | run 处于 stale 且 stale_since 距今超过 24h | `POST /api/v1/runs/{id}/reconcile` | 按既有 reconcile 流程：status=failed、写 error_summary、清除 pid 字段与 stale_since | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-029-E-1 | run.json 已含 stale_since，再次读取仍为 stale | 连续两次读取该 run | stale_since 保持首次值不被刷新 | 自动化 |
+| AC-029-E-2 | legacy run（无 stale_since 字段）判定 stale | 读取该 run | 按首次判定处理：写入 stale_since，行为与 AC-029-N-1 一致 | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-029-F-1 | run 状态非 stale（进程存活） | `POST /api/v1/runs/{id}/reconcile` | 返回 409 run_not_stale（既有行为不变） | 自动化 |

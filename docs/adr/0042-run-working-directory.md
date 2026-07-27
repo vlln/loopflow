@@ -8,6 +8,8 @@ created: 2026-07-24T05:30:00Z
 
 # ADR 0042: Run 显式工作目录
 
+> 2026-07-26 扩展（BL-020）：CLI 暴露 `--work-dir` 参数，统一 workdir 概念（backend cwd = 产出目录），消除 `RunContext.work_dir` 冗余。详见 Decision §5。
+
 ## Context
 
 当前 run 的工作目录被硬编码为进程 cwd：
@@ -52,6 +54,18 @@ created: 2026-07-24T05:30:00Z
 ### 4. WebUI 创建入口
 
 New Run 对话框增加 working directory 文本输入，默认留空（= server cwd），占位符提示当前 server cwd。queue / scheduler 的 worker 走同一个 `executor.start()`，一并受益。
+
+### 5. CLI --work-dir 与 workdir 统一（BL-020）
+
+CLI `loop run --work-dir [path|""|缺省]` 暴露工作目录为显式参数，统一 workdir 概念：
+
+- **缺省**（option 未传）：使用当前目录（`Path.cwd()`），向后兼容 `cd` + `loop run` 的 headless 用法。
+- **`""`（空字符串）**：框架在 `run_dir/work` 下创建隔离工作目录，供 loop 及其 agent 使用。
+- **`<path>`**：`os.chdir(path)` 到该路径。
+
+框架 `chdir` 到 workdir 后，backend cwd 与 workflow `Path.cwd()` 统一——loop 不再收 `work_dir` 参数，agent 用相对路径（当前目录）访问工作文件。这消除了 `RunContext.work_dir` 冗余字段及其在 execution / cli / runtime 间的传递链。
+
+与 §1–§4 的关系：§1–§4 定义 REST API 层的 `working_directory`（server 进程 cwd → 子进程 chdir）；§5 定义 CLI 层的 `--work-dir`（CLI 进程 cwd → 直接 chdir）。两者共享 workdir = backend cwd = 产出目录的统一概念，CLI 路径不经过 REST API。
 
 ## Alternatives
 

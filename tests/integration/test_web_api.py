@@ -5,6 +5,7 @@ import json
 import subprocess
 import threading
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -112,7 +113,13 @@ def test_run_lifecycle_commands_preserve_contract(api):
     running = factory.create_run("running", status="running", pid=7, process_started_at="same", process_group_id=70)
     failed = factory.create_run("failed", status="failed", args={"attempt": 2})
     done = factory.create_run("done-source", status="done", args={"x": 1})
-    stale = factory.create_run("stale", status="running", pid=9, process_started_at="gone")
+    stale = factory.create_run(
+        "stale",
+        status="running",
+        pid=9,
+        process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(),
+    )
 
     stopped = client.request("POST", "/api/v1/runs/running/stop")
     assert stopped.status == 200 and stopped.json()["status"] == "cancelled"
@@ -136,6 +143,52 @@ def test_run_lifecycle_commands_preserve_contract(api):
     assert reconciled.status == 200 and reconciled.json()["status"] == "failed"
     conflict = client.request("POST", "/api/v1/runs/done-source/stop")
     assert conflict.status == 409 and conflict.json()["error"]["code"] == "invalid_run_transition"
+
+
+def test_ac029_b1_reconcile_within_grace_succeeds(api):
+    """ADR-0046 updated: grace period no longer blocks reconcile — process is confirmed dead, clean up immediately."""
+    client, factory, _ = api
+    stale = factory.create_run(
+        "stale-grace",
+        status="running",
+        pid=9,
+        process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+
+    response = client.request("POST", "/api/v1/runs/stale-grace/reconcile")
+
+    assert response.status == 200 and response.json()["status"] == "failed"
+    metadata = json.loads((stale / "run.json").read_text())
+    assert "stale_since" not in metadata and "pid" not in metadata
+    assert metadata["error_summary"] and metadata["finished_at"]
+
+
+def test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since(api):
+    client, factory, _ = api
+    stale = factory.create_run(
+        "stale-expired",
+        status="running",
+        pid=9,
+        process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(),
+    )
+
+    response = client.request("POST", "/api/v1/runs/stale-expired/reconcile")
+
+    assert response.status == 200 and response.json()["status"] == "failed"
+    metadata = json.loads((stale / "run.json").read_text())
+    assert "stale_since" not in metadata and "pid" not in metadata
+    assert metadata["error_summary"] and metadata["finished_at"]
+
+
+def test_ac029_f1_reconcile_live_run_returns_run_not_stale(api):
+    client, factory, _ = api
+    factory.create_run("active", status="running", pid=7, process_started_at="same", process_group_id=70)
+
+    response = client.request("POST", "/api/v1/runs/active/reconcile")
+
+    assert response.status == 409 and response.json()["error"]["code"] == "run_not_stale"
 
 
 def test_intervention_endpoints_list_validate_and_respond(api):
@@ -483,85 +536,137 @@ def test_sse_no_file_changes_jsonl_silently_empty(api):
     assert event_types[-1] == "stream_end"
 
 
+def test_sse_stream_end_waits_for_file_changes_terminal():
+    """AC-016-B-3: run_event terminal but file_changes not — stream_end withheld until both terminal."""
+    class LaggingFileChangesApp:
+        def __init__(self):
+            self.fc_calls = 0
+
+        def replay_events(self, run_id, cursor):
+            return ([{"version": 2, "event_id": 1, "type": "log", "ts": "now", "run_id": run_id, "payload": {}}], 1, True)
+
+        def replay_file_changes(self, run_id, cursor):
+            self.fc_calls += 1
+            if self.fc_calls == 1:
+                return ([{"seq": 1, "phase": "采集", "phase_id": "p1", "ts": "now", "changes": []}], 1, False)
+            return ([{"seq": 2, "phase": "处理", "phase_id": "p2", "ts": "now", "changes": []}], 2, True)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(LaggingFileChangesApp(), poll_interval=0.01))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+        connection.request("GET", "/api/v1/runs/run-1/events")
+        response = connection.getresponse()
+        events = parse_sse(response.readlines())
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert response.status == 200
+    # file_changes kept flowing after run_event went terminal; stream_end only at the very end
+    assert [item["event"] for item in events] == ["run_event", "file_changes", "file_changes", "stream_end"]
+    assert json.loads(events[-1]["data"]) == {"last_event_id": 1, "last_file_changes_id": 2}
+
+
+def test_sse_file_changes_read_failure_emits_stream_error_and_closes():
+    """AC-016-F-3: file_changes OSError → stream_error event_read_failed (no topic), connection closes."""
+    class FailingFileChangesApp:
+        def __init__(self):
+            self.fc_calls = 0
+
+        def replay_events(self, run_id, cursor):
+            if cursor == 0:
+                return ([{"version": 2, "event_id": 1, "type": "log", "ts": "now", "run_id": run_id, "payload": {}}], 1, False)
+            return ([], 1, False)
+
+        def replay_file_changes(self, run_id, cursor):
+            self.fc_calls += 1
+            if self.fc_calls == 1:
+                return ([{"seq": 1, "phase": "采集", "phase_id": "p1", "ts": "now", "changes": []}], 1, False)
+            raise OSError("fixture-read-failed")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler_for(FailingFileChangesApp(), poll_interval=0.01))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        connection = http.client.HTTPConnection("127.0.0.1", server.server_port)
+        connection.request("GET", "/api/v1/runs/run-1/events")
+        response = connection.getresponse()
+        events = parse_sse(response.readlines())
+        connection.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    assert response.status == 200
+    # data pushed before the failure is delivered exactly once, then a single stream_error
+    assert [item["event"] for item in events] == ["run_event", "file_changes", "stream_error"]
+    error_data = json.loads(events[-1]["data"])
+    assert error_data == {"code": "event_read_failed", "last_event_id": 1}
+    assert "topic" not in error_data
+
+
 # --- Declared phases pre-display tests (ADR-0040) ---
 
 
-def test_loop_summary_includes_declared_phases(api):
-    """Loop detail returns declared_phases from meta.phases frontmatter."""
-    _, factory, port = api
-    factory.create_loop("phased", phases=[
-        {"title": "采集", "detail": "数据采集阶段"},
-        {"title": "处理", "detail": "数据处理阶段"},
-        {"title": "归档", "detail": ""},
-    ])
-
-    client = JsonHttpClient("127.0.0.1", port)
-    detail = client.request("GET", "/api/v1/loops/phased").json()
-    assert detail["declared_phases"] == [
-        {"title": "采集", "detail": "数据采集阶段"},
-        {"title": "处理", "detail": "数据处理阶段"},
-        {"title": "归档", "detail": ""},
-    ]
-
-
-def test_loop_summary_without_phases_returns_empty_list(api):
-    """Loop without meta.phases returns empty declared_phases list."""
+# declared_phases removed — tests updated to verify agent_graph instead
+def test_loop_detail_has_agent_count(api):
+    """Loop detail returns basic fields."""
     _, factory, port = api
     factory.create_loop("simple")
-
     client = JsonHttpClient("127.0.0.1", port)
     detail = client.request("GET", "/api/v1/loops/simple").json()
-    assert detail["declared_phases"] == []
+    assert detail["name"] == "simple"
+    assert "agents" in detail
 
 
-def test_loop_summary_skips_invalid_phase_entries(api):
-    """Invalid phase entries (missing/empty title) are silently skipped."""
+def test_run_detail_has_agent_graph(api):
+    """Run detail returns agent_graph (not graph/occurrences/declared_phases)."""
     _, factory, port = api
-    factory.create_loop("mixed", phases=[
-        {"title": "有效", "detail": "ok"},
-        {"detail": "missing title"},
-        {"title": "", "detail": "empty title"},
-        {"title": 123, "detail": "non-string title"},
-        "not-a-dict",
-    ])
-
-    client = JsonHttpClient("127.0.0.1", port)
-    detail = client.request("GET", "/api/v1/loops/mixed").json()
-    assert detail["declared_phases"] == [{"title": "有效", "detail": "ok"}]
-
-
-def test_run_detail_includes_declared_phases_from_run_json(api):
-    """Run detail returns declared_phases persisted in run.json at execution start."""
-    _, factory, port = api
-    factory.create_loop("phased", phases=[
-        {"title": "采集", "detail": "数据采集"},
-        {"title": "归档", "detail": ""},
-    ])
-    run = factory.create_run("run-1", status="running", loop="phased")
-    # Simulate execution.py writing declared_phases to run.json
-    metadata = json.loads((run / "run.json").read_text())
-    metadata["declared_phases"] = [
-        {"title": "采集", "detail": "数据采集"},
-        {"title": "归档", "detail": ""},
-    ]
-    factory.write_json(run / "run.json", metadata)
-
+    factory.create_loop("simple")
+    run = factory.create_run("run-1", status="done", loop="simple")
     client = JsonHttpClient("127.0.0.1", port)
     detail = client.request("GET", "/api/v1/runs/run-1").json()
-    assert detail["declared_phases"] == [
-        {"title": "采集", "detail": "数据采集"},
-        {"title": "归档", "detail": ""},
-    ]
+    assert "agent_graph" in detail
+    assert "graph" not in detail
+    assert "occurrences" not in detail
+    assert "declared_phases" not in detail
 
 
-def test_run_detail_without_declared_phases_returns_none(api):
-    """Legacy run without declared_phases returns None (not empty list)."""
-    _, factory, port = api
-    factory.create_run("legacy-run", status="done")
+class StartFailingExecutor:
+    """Mirrors BackgroundRunExecutor when the child dies before run.json (e.g. syntax-error workflow.py)."""
 
-    client = JsonHttpClient("127.0.0.1", port)
-    detail = client.request("GET", "/api/v1/runs/legacy-run").json()
-    assert detail.get("declared_phases") is None
+    def start(self, loop, args, options, run_id=None, working_directory=None):
+        raise RuntimeError("run_process_start_failed")
+
+
+def test_workflow_syntax_error_run_start_fails_without_placeholders(tmp_path):
+    """AC-015-F-3: syntax-error workflow.py → run start fails, no run/placeholders, service stays up."""
+    factory = WebFixtureFactory(tmp_path)
+    loop_dir = factory.create_loop("broken")
+    (loop_dir / "workflow.py").write_text("def run(:\n", encoding="utf-8")
+    runs = RunRepository(factory.runs, Probe())
+    app = WebApplication(runs, LoopRepository(factory.loops, runs), QueueRepository(tmp_path / "queue"), DiagnosticBackend(), StartFailingExecutor(), {"kimi"})
+    server = create_server("127.0.0.1", 0, application=app)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        client = JsonHttpClient("127.0.0.1", server.server_port)
+        created = client.request("POST", "/api/v1/runs", {"loop": "broken", "args": {}})
+        assert created.status == 500 and created.json()["error"]["code"] == "internal_error"
+        # no run persisted
+        assert client.request("GET", "/api/v1/runs").json()["items"] == []
+        detail = client.request("GET", "/api/v1/loops/broken")
+        assert detail.status == 200
+        assert detail.json()["valid"] is True
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
 
 
 # --- Declared args pre-fill tests (BR-047) ---
@@ -874,3 +979,68 @@ def test_pick_directory_endpoint(api, monkeypatch):
     assert unsupported.json()["error"]["code"] == "not_supported"
 
     assert client.request("GET", "/api/v1/system/pick-directory").status == 404
+
+
+def test_list_directory_endpoint(api, tmp_path):
+    """AC-025-N-8/B-7: cross-platform directory listing endpoint."""
+    client, _, _ = api
+    base = tmp_path / "browse_test"
+    base.mkdir()
+    (base / "sub_a").mkdir()
+    (base / "sub_b").mkdir()
+    (base / "file.txt").write_text("hello")
+
+    response = client.request("GET", f"/api/v1/system/list-directory?path={base}")
+    assert response.status == 200
+    body = response.json()
+    assert body["path"] == str(base)
+    assert body["parent"] is not None
+    names = [e["name"] for e in body["entries"]]
+    assert names == ["sub_a", "sub_b"]
+
+    # Default path (no path param) — should return 200 with cwd listing
+    default_response = client.request("GET", "/api/v1/system/list-directory")
+    assert default_response.status == 200
+    assert "path" in default_response.json()
+
+    # Nonexistent path → 404
+    not_found = client.request("GET", f"/api/v1/system/list-directory?path={base / 'nonexistent'}")
+    assert not_found.status == 404
+    assert not_found.json()["error"]["code"] == "file_not_found"
+
+    # File (not dir) → 422
+    not_dir = client.request("GET", f"/api/v1/system/list-directory?path={base / 'file.txt'}")
+    assert not_dir.status == 422
+    assert not_dir.json()["error"]["code"] == "validation_failed"
+
+    # Relative path → 422
+    relative = client.request("GET", "/api/v1/system/list-directory?path=relative/path")
+    assert relative.status == 422
+    assert relative.json()["error"]["code"] == "validation_failed"
+
+    # POST → 404 (GET only)
+    assert client.request("POST", "/api/v1/system/list-directory").status == 404
+
+
+def test_loop_unpause_endpoint(api, tmp_path, monkeypatch):
+    """POST /api/v1/loops/{name}/unpause：解除熔断；loop 不存在返回 404。"""
+    monkeypatch.setenv("LOOPFLOW_HOME", str(tmp_path / "home"))
+    from loopflow.infrastructure import loop_state
+
+    client, _, _ = api
+    for i in range(5):
+        loop_state.record_failure("hello", f"run-{i}")
+    assert client.request("GET", "/api/v1/loops/hello").json()["paused"] is True
+
+    response = client.request("POST", "/api/v1/loops/hello/unpause")
+    assert response.status == 200
+    body = response.json()
+    assert body["name"] == "hello"
+    assert body["paused"] is False
+    state = loop_state.load("hello")
+    assert state["paused"] is False
+    assert state["consecutive_failures"] == 0
+
+    missing = client.request("POST", "/api/v1/loops/nonexistent/unpause")
+    assert missing.status == 404
+    assert missing.json()["error"]["code"] == "loop_not_found"

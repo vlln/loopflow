@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 0.20.0 已发布（v0.20.0 tag 在 main，0070-0079 全部闭环）。新一轮迭代候选：web profile manifest 漂移修复（test 容器）、loop args schema 服务端校验、非 macOS 目录选择器。 |
+| **当前阶段** | `RELEASE` complete (v0.24.2) |
+| **设计评估** | v0.24.2 发布：BL-009 目录选择器 + BL-026 默认工作目录隔离 + BL-027 SSE detail 刷新 + traceback + BL-028 graph live-run join 边 + BL-029 Loops 切换性能 + BL-030 reconcile 宽限期移除。ADR-0053/0054 accepted。512 Python + 42 前端全绿。tag v0.24.2，main + develop 已同步。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
@@ -14,6 +14,7 @@
 
 | 路径 | 用途 |
 |------|------|
+| [backlog.md](backlog.md) | 工程需求池：迭代候选 |
 | [vision.md](vision.md) | 全局顶层愿景 |
 | [spec/](spec/) | Spec 需求规格（用户故事、模块划分、数据模型、非功能指标） |
 | [interface/](interface/) | 接口定义（入参/出参/错误码，适用有 API 时） |

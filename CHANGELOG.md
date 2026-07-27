@@ -1,5 +1,98 @@
 # Changelog
 
+## [0.24.2] — 2026-07-27
+
+### Added
+- **Web 端跨平台目录选择器**（BL-009 / ADR-0053）：新增 `GET /api/v1/system/list-directory` 端点（`os.scandir` 列子目录），前端用 Web 模态目录浏览器替代 macOS-only osascript。远程/非 macOS 部署时 Browse 按钮正常工作。
+- **WebUI/API 默认工作目录隔离**（BL-026 / ADR-0054）：`BackgroundRunExecutor` 未提供 `working_directory` 时默认创建 `run_dir/work` 隔离目录，与 CLI `--work-dir ""` 对齐。防止 file observer 误捕获外部进程的文件变更。
+- **Run 失败 traceback 存储**（BL-027）：`run.json` 新增 `error_traceback` 字段，存储完整 Python traceback；前端 error_banner 增加可展开的 Traceback `<details>`。
+
+### Fixed
+- **agent graph live-run join 边**（BL-028）：`project_events()` back-to-back join 边从 `fork_end` 提前到 `agent_start`，live run 期间 verifier 节点不再孤立平铺在画布中。
+- **SSE stream 结束后 detail 不刷新**（BL-027）：run 结束后 SSE `stream_end` 触发 `onState('closed')` 但不重新拉取 `detail`，导致 UI 卡在 running 状态、error_banner 不显示 error_summary。修复为 stream 结束时重新拉取 detail + fileChanges + runs 列表。
+- **reconcile 宽限期阻止逻辑**（BL-030 / ADR-0046 修订）：移除宽限期阻止已确认死亡的进程被清理的逻辑，无安全收益；频繁重启 server 导致 stale run 永远无法清理。
+
+### Changed
+- **Loops 页面切换性能**（BL-029）：移除 `read_summary()` 中 `project_events()` 死代码（每次切 loop 全量解析所有 run 的 events.jsonl）；`detail()` 去重 frontmatter 解析；`rglob` 增加隐藏目录过滤。
+- **error_banner CSS**：加 `flex-wrap` + `word-break` 处理长错误消息换行。
+
+## [0.24.1] — 2026-07-27
+
+### Fixed
+- **Phase 残留清理**（BL-022）：删除 0.24.0 遗漏的 `phase()` 函数、`PhaseGraph`、`TerminalGraphRenderer`、`_emit_phase`、`from_phase`/`only_phase` CLI/API/context 属性（10 个文件，-1215 行）
+- **agent_graph fan-in 投影**（BL-023）：修复 `project_events()` back-to-back parallel 的 3 个 bug（join 边不生成、pending_join 跨组合并、fork source 错误）；新增 `fork_active` 标志
+- **join-edge CSS**：`.join-edge` 虚线 + mint-strong 色，区别于 fork-edge 和 sequential
+- **`.phase-node` → `.agent-node` CSS**：修复 Playwright 视觉回归
+
+### Added
+- **节点详情面板**（BL-024）：点击 agent 节点显示 label/agent_def/backend/model/exit code/时间范围
+- **fork/join 投影单元测试**：single fork、back-to-back forks、fork without preceding agent
+- Events scope tabs：Events / Unattributed / Malformed 切换
+
+### Changed
+- WebUI 测试：14 个 phase 相关测试修复（Phase graph → Agent graph，phase_id → call_id/label）
+- Playwright fixture：移除 `phase_id` 字段
+
+## [0.24.0] — 2026-07-27
+
+### Removed
+- **Phase 抽象**：删除 `phase()` 函数、`PhaseGraph`、`_emit_phase`、`declared_phases`、`--from-phase`/`--only-phase`（ADR-0052）。每个 `agent()` 调用即图节点，`parallel()` 产生 fork/join 边
+
+### Added
+- **AgentGraph**：agent 实例图，dagre DAG 布局（`rankdir: LR`），fork/join 边表示并行
+- agent_start 事件包含 `label`、`agent_def`、`backend` 字段
+- File Changes 按 `call_id` 过滤，点击节点联动
+
+### Changed
+- `file_changes.jsonl` 字段：`phase`/`phase_id` → `call_id`/`label`
+- WebUI 图节点：Phase 节点 → Agent 节点（显示 label + agent_def + status）
+- File Changes 面板：扁平列表，无 phase 分组
+- 事件流：移除 phase 事件类型，只保留 agent_start/agent_done
+
+### Fixed
+- 重复 agent_message 事件（`_write_cache` 冗余写入）
+- agent_start 事件缺少 `backend` 字段
+
+## [0.23.0] — 2026-07-26
+
+### Added
+- CLI `--work-dir` 统一工作目录（ADR-0042 §5）：`loop run --work-dir [path|""|缺省]`，框架 chdir，loop 用相对路径
+
+### Changed
+- `parse_agent` 剥离 frontmatter（ADR-0051）：body 只含 markdown 正文，不再含 frontmatter 元数据
+- webUI call-list 主显 call_id（数字），session 降 hover tooltip；phase 节点 "×N"、详情 "第 N 次执行"、EventTimeline "N 个事件"
+
+### Fixed
+- `render_template` 模板变量转 str：防 integer/None 致 `re.sub` TypeError
+- pi backend `_parse_line` 用 `text_end` 消息级 event：修 `_extract_text` `"\n".join` 在流式 delta 间插 `\n` 破坏 JSON 字符串值
+- event `call_id` 不再用 session fallback：runner agent_start 加 call_id，`_write_event` 删 session fallback
+
+## [0.22.0] — 2026-07-25
+
+### Added
+- Optional ACP transport via the official Python ACP SDK (ADR-0049, AC-030): `loopflow run --transport acp --backend <native-acp>` routes to an SDK-backed ACP transport; CLI remains the default. The hand-rolled JSON-RPC plumbing is replaced by `agent-client-protocol` (asyncio stdio transport + Pydantic schema), bridged to loopflow's sync runner via a dedicated daemon-thread event loop.
+- ACP notification full mapping (BR-056): `agent_message_chunk`, `agent_thought_chunk`, `tool_call_start`/`progress` (informational), and `usage_update` are all surfaced as loopflow events — completing the ADR-0021 stub.
+- ACP permission auto-approve (BR-055): `request_permission` is auto-approved (fire-and-forget model), eliminating the ADR-0018 authorization deadlock.
+- ACP continue (BR-057): backends declaring `loadSession`/`resume` expose continue recovery via `session/load`; best-effort and capability-gated, like the CLI path.
+- `--transport` / `--backend` CLI options and a `transport` field on `POST /api/v1/runs`.
+
+### Changed
+- `agent-client-protocol` (+ pydantic) added as a runtime dependency during implementation; the optional `[acp]` extra split is deferred to a later release (AC-030-B-2 verified via the error constant).
+- Mock ACP server test infrastructure (0088) enables CI-runnable ACP tests without real-backend quota; a new `agent` AC manifest profile covers AC-001~004 and AC-030 (21 scenarios, all strict-green).
+
+## [0.21.0] — 2026-07-25
+
+### Added
+- Failure classification for agent calls (ADR-0044, AC-026): failures are categorized as auth / quota / transient / task / unknown — structured backend reporting takes precedence over stderr pattern matching; only transient failures auto-retry with the existing 3/9/27s backoff. The category is persisted in `agent_done` events and `run.json` `error_category`.
+- Loop failure circuit breaker (ADR-0045, AC-027): consecutive failed runs are counted per loop in `~/.loopflow/loop_state/<loop>.json`; at the threshold (default 5, overridable via loop frontmatter `failure_threshold`) the loop is paused and its queued tasks are deferred instead of dispatched. `loopflow unpause <name>` / `POST /api/v1/loops/{name}/unpause` clears the pause manually; manual `loopflow run` is never blocked.
+- Stale grace period (ADR-0046, AC-029): a stale run records `stale_since` on first detection; reconcile within the 24h grace window returns 409 `run_in_grace`, and a worker that comes back within the window reconciles naturally — its terminal write wins and clears `stale_since`.
+- Explicit queue task status (ADR-0047, AC-028): queue entries carry `status` (pending / deferred / superseded), `status_reason`, and `superseded_by`; resource-locked tasks are marked deferred, `loopflow enqueue --supersede` replaces same-loop pending tasks, and deferred/superseded no longer count as dispatch errors.
+- WebUI failure and circuit-breaker surfacing: run list and detail render `error_category` + `error_summary`; the Loops workspace shows the paused badge, reason, failure-streak aggregation, and an unpause action; stale runs display "Unreachable (grace period)" with the remaining window.
+
+### Changed
+- AC text aligned with verified implementation (0086): AC-010-N-2/E-2 (loop.md is mandatory per ADR-0031), AC-015-F-3/N-7/N-8, AC-016-F-3 — documentation corrected to actual behavior; 8 previously planned manifest scenarios now map to real test nodes, and all three AC manifest profiles (web / recovery / scheduling) pass in strict mode.
+- Dispatch summary reports `deferred` / `superseded` buckets separately; the legacy `skipped` key is kept at 0 for compatibility.
+
 ## [0.20.1] — 2026-07-24
 
 ### Fixed

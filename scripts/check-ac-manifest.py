@@ -11,29 +11,42 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from tests.web_support import ac_manifest as web_manifest
 from tests.recovery_support import manifest as recovery_manifest
+from tests.scheduling_support import manifest as scheduling_manifest
+from tests.agent_support import manifest as agent_manifest
+
+PROFILES = {
+    "web": (web_manifest, "docs/ac/0010-webui.md", "tests/system/cases.json"),
+    "recovery": (
+        recovery_manifest,
+        "docs/ac/0011-recovery-intervention.md",
+        "tests/system/recovery_cases.json",
+    ),
+    "scheduling": (
+        scheduling_manifest,
+        "docs/ac/0004-scheduling.md",
+        "tests/system/scheduling_cases.json",
+    ),
+    "agent": (
+        agent_manifest,
+        "docs/ac/0003-agent-layer.md",
+        "tests/system/agent_cases.json",
+    ),
+}
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--profile", choices=("web", "recovery"), default="web")
+    parser.add_argument("--profile", choices=tuple(PROFILES), default="web")
     parser.add_argument("--ac", type=Path)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--allow-planned", action="store_true")
     parser.add_argument("--write", action="store_true")
     args = parser.parse_args()
-    profile = recovery_manifest if args.profile == "recovery" else web_manifest
+    profile, default_ac, default_manifest = PROFILES[args.profile]
     if args.ac is None:
-        args.ac = Path(
-            "docs/ac/0011-recovery-intervention.md"
-            if args.profile == "recovery"
-            else "docs/ac/0010-webui.md"
-        )
+        args.ac = Path(default_ac)
     if args.manifest is None:
-        args.manifest = Path(
-            "tests/system/recovery_cases.json"
-            if args.profile == "recovery"
-            else "tests/system/cases.json"
-        )
+        args.manifest = Path(default_manifest)
 
     if args.write:
         manifest = profile.generate_manifest(args.ac)

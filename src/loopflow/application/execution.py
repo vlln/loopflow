@@ -10,6 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.context import RunContext, State, set_context
 from loopflow.infrastructure.discovery import load_loop
 from loopflow.infrastructure.web_storage import SystemProcessProbe, append_run_index, atomic_write_json, now_iso, read_json
@@ -24,7 +25,7 @@ def execute_workflow(
     run_dir: Path,
 ) -> None:
     """Execute one workflow in the current process and persist its lifecycle."""
-    from loopflow.runtime import agent, intervene, log, parallel, phase, pipeline, set_mock, workflow
+    from loopflow.runtime import agent, intervene, log, parallel, pipeline, set_mock, workflow
 
     recover = bool(options.get("recover") or options.get("resume"))
     module, metadata, loop_dir = load_loop(loop)
@@ -43,7 +44,7 @@ def execute_workflow(
         "execution_options": {
             key: value
             for key, value in options.items()
-            if key in {"backend", "model", "mock", "from_phase", "only_phase"}
+            if key in {"backend", "model", "mock"}
         },
         "pid": pid,
         "process_group_id": os.getpgrp(),
@@ -52,15 +53,6 @@ def execute_workflow(
         # already chdir'd, so cwd is the authoritative value
         "working_directory": str(Path.cwd()),
     }
-    declared_phases = metadata.get("phases")
-    if isinstance(declared_phases, list):
-        valid_phases = [
-            {"title": str(p.get("title", "")).strip(), "detail": str(p.get("detail") or "")}
-            for p in declared_phases
-            if isinstance(p, dict) and isinstance(p.get("title"), str) and p["title"].strip()
-        ]
-        if valid_phases:
-            run_metadata["declared_phases"] = valid_phases
     if recover and (run_dir / "run.json").is_file():
         previous = read_json(run_dir / "run.json")
         run_metadata.update(previous)
@@ -96,8 +88,6 @@ def execute_workflow(
         recovery_target_call_id=run_metadata.get("failed_call_id") if recover else None,
         execution_options=run_metadata.get("execution_options"),
     )
-    context.from_phase = options.get("from_phase")
-    context.only_phase = options.get("only_phase")
     context.default_backend = options.get("backend")
     context.default_model = options.get("model")
     # File change observation (ADR-0039): initialize observer from loop meta
@@ -112,12 +102,13 @@ def execute_workflow(
         # Baseline snapshot (ADR-0043): pre-existing files are not "created"
         context.file_observer.seed()
     set_context(context)
-    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
+    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
     kwargs["state"] = state
     try:
         module.run(**accepted_kwargs(module.run, kwargs))
     except KeyboardInterrupt:
         status, error = "cancelled", None
+        error_traceback = None
     except Exception as exc:
         from loopflow.infrastructure.intervention import InterventionPending
         from loopflow.infrastructure.recovery import ReplayDiverged
@@ -128,15 +119,28 @@ def execute_workflow(
             status, error = "failed", "replay_diverged"
         else:
             status, error = "failed", str(exc)
+        import traceback as _tb
+        error_traceback = "".join(_tb.format_exception(exc))
     except BaseException as exc:
         status, error = "failed", str(exc)
+        import traceback as _tb
+        error_traceback = "".join(_tb.format_exception(exc))
     else:
         if recover and context.recovery_target_call_id and not context.recovery_target_reached:
             status, error = "failed", "replay_diverged"
+            error_traceback = None
         else:
             status, error = "done", None
+            error_traceback = None
+    # Final file observation: capture files written after the last agent call
+    if context.file_observer is not None:
+        try:
+            call_id = getattr(context, '_current_call_id', None) or "unknown"
+            context.file_observer.observe(call_id, call_id)
+        except Exception:
+            pass
     finished = now_iso()
-    run_metadata.update({"status": status, "counter": context._counter, "finished_at": finished, "updated_at": finished, "error_summary": error})
+    run_metadata.update({"status": status, "counter": context._counter, "finished_at": finished, "updated_at": finished, "error_summary": error, "error_traceback": error_traceback})
     if recover:
         run_metadata["recovery_verification"] = (
             "unverified" if context.legacy_recovery else "verified"
@@ -146,10 +150,14 @@ def execute_workflow(
         run_metadata["active_call_id"] = context._current_call_id
         run_metadata["failed_session_id"] = context.failed_session_id
         run_metadata["can_recover_continue"] = context.failed_can_continue
+        if context.failed_error_category is not None:
+            # ADR-0044 §3 / BR-049：与 error_summary 并列的失败分类
+            run_metadata["error_category"] = context.failed_error_category
     elif status == "done":
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
         run_metadata.pop("can_recover_continue", None)
+        run_metadata.pop("error_category", None)
         run_metadata.pop("cancel_point", None)
         run_metadata.pop("active_call_id", None)
         run_metadata.pop("active_worker_atomic", None)
@@ -158,12 +166,22 @@ def execute_workflow(
     run_metadata.pop("pid", None)
     run_metadata.pop("process_started_at", None)
     run_metadata.pop("process_group_id", None)
+    # Stale grace (BR-052): the worker's terminal write is authoritative and
+    # clears stale_since recorded by the read model while it was unreachable
+    run_metadata.pop("stale_since", None)
     current = read_json(run_dir / "run.json")
     if (
         current.get("execution_epoch") == run_metadata.get("execution_epoch")
         and current.get("status") == "running"
     ):
         atomic_write_json(run_dir / "run.json", run_metadata)
+    # Circuit breaker (ADR-0045 §2 / BR-050): count terminal failures per loop
+    # and pause at the threshold; a done run resets the streak. Manual and
+    # dispatch-triggered runs alike land here, so both are counted.
+    if status == "failed":
+        loop_state.record_failure(loop, run_id, threshold=loop_state.failure_threshold(metadata))
+    elif status == "done":
+        loop_state.record_success(loop)
 
 
 def _execute_workflow_process(
@@ -217,15 +235,30 @@ class BackgroundRunExecutor:
         run_id = run_id or uuid.uuid4().hex
         recover = bool(options.get("recover") or options.get("resume"))
         run_dir = self._existing(run_id) if recover else None
+        explicit = working_directory is not None
         if recover and run_dir is not None:
             # Recover/rerun reuse the persisted working directory (ADR-0042);
             # a new value never overrides it
             persisted = read_json(run_dir / "run.json").get("working_directory")
-            working_directory = persisted if isinstance(persisted, str) and persisted else None
-        working_directory = Path(working_directory) if working_directory is not None else Path.cwd()
-        encoded = str(working_directory.resolve()).lstrip("/").replace("/", "-")
+            if isinstance(persisted, str) and persisted:
+                working_directory = persisted
+                explicit = True
+            else:
+                working_directory = None
+                explicit = False
+        # For run_dir naming: use explicit working_directory or server cwd (ADR-0054)
+        base = Path(working_directory) if working_directory is not None else Path.cwd()
+        encoded = str(base.resolve()).lstrip("/").replace("/", "-")
         run_dir = run_dir or self.runs_root / f"lf_{encoded}" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
+        # Default isolation (ADR-0054): when no explicit working_directory,
+        # create run_dir/work so the file observer and agent output stay
+        # isolated from the server's cwd (typically the project root).
+        if not explicit:
+            working_directory = run_dir / "work"
+            working_directory.mkdir(parents=True, exist_ok=True)
+        else:
+            working_directory = Path(working_directory)
         previous_epoch = None
         if recover:
             previous_epoch = int(read_json(run_dir / "run.json").get("execution_epoch", 0))

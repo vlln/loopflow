@@ -42,6 +42,7 @@ ERROR_STATUS = {
     "continue_not_supported": 409,
     "intervention_already_answered": 409,
     "run_not_stale": 409,
+    "run_in_grace": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
     "process_gone": 410,
@@ -143,9 +144,14 @@ def handler_for(
             if method == "GET" and path == "/backends":
                 self._json(200, self.app.list_backends())
                 return
+            # Deprecated: ADR-0053 — frontend uses GET /system/list-directory instead
             if method == "POST" and path == "/system/pick-directory":
                 self._require_empty_body()
                 self._json(200, self.app.pick_directory())
+                return
+            if method == "GET" and path == "/system/list-directory":
+                dir_path = _one(query, "path") or None
+                self._json(200, self.app.list_directory(dir_path))
                 return
             if method == "GET" and path == "/system/meta":
                 self._json(200, self.app.system_meta())
@@ -204,6 +210,15 @@ def handler_for(
                     )
                 else:
                     self._error(404, "run_not_found", "Run endpoint was not found")
+                return
+
+            match = re.fullmatch(r"/loops/([^/]+)/unpause", path)
+            if match:
+                if method == "POST":
+                    self._require_empty_body()
+                    self._json(200, self.app.unpause_loop(match.group(1)))
+                else:
+                    self._error(404, "file_not_found", "Resource was not found")
                 return
 
             match = re.fullmatch(r"/loops/([^/]+)(?:/file)?", path)

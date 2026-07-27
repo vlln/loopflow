@@ -49,6 +49,21 @@
 | [0078](0078-new-run-dialog-ux/) | New Run 对话框 UX（目录选择器 + Arguments 编辑器） | done | 2026-07-24 |
 | [0079](0079-ui-version-args-theme/) | 版本同步 / Args 声明预填 / 日夜主题 | done | 2026-07-24 |
 | [0080](0080-hotfix-0.20.1/) | Hotfix 0.20.1（recover mock / 启动信号 / spawn） | done | 2026-07-24 |
+| [0081](0081-failure-injection-infra/) | 失败注入测试基础设施 | done | 2026-07-25 |
+| [0082](0082-queue-task-status/) | 队列任务显式状态（AC-028） | done | 2026-07-25 |
+| [0083](0083-failure-classification/) | Agent 失败分类与重试/续接策略（AC-026） | done | 2026-07-25 |
+| [0084](0084-loop-failure-circuit-breaker/) | Loop 失败熔断与 loop_state（AC-027） | done | 2026-07-25 |
+| [0085](0085-stale-grace-period/) | stale 失联宽限期（AC-029） | done | 2026-07-25 |
+| [0086](0086-manifest-debt-cleanup/) | manifest strict 欠账清理（AC-010 + web 6 场景） | done | 2026-07-25 |
+| [0087](0087-system-test-0.21.0/) | 0.21.0 系统测试 | done | 2026-07-25 |
+| [0088](0088-mock-acp-test-infra/) | mock ACP server 测试基建 | done | 2026-07-25 |
+| [0089](0089-acp-sdk-impl/) | ACP SDK 真实实现 | done | 2026-07-25 |
+| [0090](0090-system-test-0.22.0/) | 0.22.0 系统测试 | done | 2026-07-26 |
+| [0091](0091-framework-robustness/) | 框架健壮性修复（BL-017/018/019） | done | 2026-07-26 |
+| [0092](0092-work-dir/) | CLI --work-dir 统一工作目录（BL-020） | done | 2026-07-26 |
+| [0093](0093-webui-display/) | WebUI call/occurrence 显示简化（BL-021） | done | 2026-07-26 |
+| [0094](0094-remove-phase/) | 移除 Phase 抽象 → Agent 实例图（ADR-0052） | done | 2026-07-27 |
+| [0095](0095-phase-cleanup/) | 0.24.0 Phase 残留收尾（BL-022/023/024/025） | done | 2026-07-27 |
 
 ## 状态说明
 

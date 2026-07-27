@@ -1,4 +1,4 @@
-"""Workflow runtime — public API: agent, parallel, pipeline, phase, log, workflow.
+"""Workflow runtime — public API: agent, parallel, pipeline, log, workflow.
 
 All infrastructure (context, backends, worktree) and presentation (events)
 are in their respective layers. This module is the application orchestrator.
@@ -24,7 +24,7 @@ from loopflow.infrastructure.context import (
 from loopflow.infrastructure.intervention import InterventionIdentity, request_or_answer
 from loopflow.infrastructure.backends import manager as _backend_manager
 from loopflow.infrastructure.worktree import _create_worktree
-from loopflow.presentation.events import _emit_log, _emit_phase
+from loopflow.presentation.events import _emit_log
 from loopflow.domain.goal_loop import AgentResult
 
 # Mutable state accessed via module attribute (not import-time binding)
@@ -63,13 +63,11 @@ def agent(
     backend = backend or getattr(ctx, "default_backend", None)
     model = model or getattr(ctx, "default_model", None)
 
-    # --from-phase: skip agent calls before the target phase
-    if ctx.from_phase and not ctx._reached_from_phase:
-        return AgentResult(status="complete", turns=0, reason="skipped")
-
-    # --only-phase: stop after the target phase completed
-    if ctx.only_phase and ctx._past_only_phase:
-        return AgentResult(status="blocked", turns=0, reason="stopped-after-phase")
+    # ADR-0049: read transport/backend from execution_options (CLI --transport / --backend)
+    exec_opts = getattr(ctx, "execution_options", {}) or {}
+    transport = exec_opts.get("transport") or kwargs.pop("transport", None)
+    if backend is None:
+        backend = exec_opts.get("backend")
 
     ad = None
     if ctx.loop_dir is not None and agent_def is not None:
@@ -80,7 +78,7 @@ def agent(
             except (ValueError, FileNotFoundError):
                 ad = None
 
-    backend_instance = None if _backend_manager._mock_mode else _make_backend(backend)
+    backend_instance = None if _backend_manager._mock_mode else _make_backend(backend, transport=transport)
     try:
         def _invoke(prompt_str, session_name, **kw):
             return _run_subagent(
@@ -113,6 +111,8 @@ def agent(
                 isolation=isolation,
                 max_retries=max_retries,
                 goal_max_iterations=goal_max_iterations,
+                label=label,
+                agent_def=agent_def,
                 **kwargs,
             )
         if result.status != "complete":
@@ -128,6 +128,10 @@ def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
     errors: list[BaseException | None] = [None] * len(thunks)
     ctx = _ctx_module._ctx
     namespaces = ctx.reserve_parallel(len(thunks))
+
+    # Record fork in agent graph and emit fork event
+    current_call_id = getattr(ctx, '_current_call_id', None)
+    _write_event({"type": "fork_start", "call_id": current_call_id, "count": len(thunks)})
 
     def _run(idx: int, fn: Callable[[], Any]) -> None:
         ctx.enter_call_namespace(namespaces[idx])
@@ -146,6 +150,10 @@ def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
         threads.append(t)
     for t in threads:
         t.join()
+
+    # Record join in agent graph and emit fork_end event
+    _write_event({"type": "fork_end", "call_id": current_call_id})
+
     if ctx.resume:
         first = next((error for error in errors if error is not None), None)
         if first is not None:
@@ -211,15 +219,11 @@ def workflow(script_path: str, args: dict | None = None) -> Any:
     from loopflow.infrastructure.workflow_args import accepted_kwargs
     run_kwargs = dict(
         agent=agent, parallel=parallel, pipeline=pipeline,
-        phase=phase, log=log, args=args or {}, intervene=intervene,
+        log=log, args=args or {}, intervene=intervene,
         workflow=workflow,
     )
     run_kwargs["state"] = _ctx_module._ctx.state
     return mod.run(**accepted_kwargs(mod.run, run_kwargs))
-
-
-def phase(title: str) -> None:
-    _emit_phase(title)
 
 
 def log(message: str) -> None:

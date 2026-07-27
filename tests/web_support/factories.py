@@ -33,6 +33,7 @@ class WebFixtureFactory:
         pid: int | None = None,
         process_started_at: str | None = None,
         process_group_id: int | None = None,
+        stale_since: str | None = None,
         working_directory: str | None = None,
     ) -> Path:
         run_dir = self.runs / run_id
@@ -53,6 +54,8 @@ class WebFixtureFactory:
         }
         if working_directory is not None:
             metadata["working_directory"] = working_directory
+        if stale_since is not None:
+            metadata["stale_since"] = stale_since
         self.write_json(run_dir / "run.json", metadata)
         if state is not None:
             self.write_json(run_dir / "state.json", state)
@@ -115,13 +118,10 @@ class WebFixtureFactory:
         with (run_dir / "events.jsonl").open("a", encoding="utf-8") as stream:
             stream.write(content)
 
-    def create_loop(self, name: str, *, description: str = "Fixture loop", phases: list[dict[str, Any]] | None = None, args: list[dict[str, Any]] | None = None) -> Path:
+    def create_loop(self, name: str, *, description: str = "Fixture loop", args: list[dict[str, Any]] | None = None) -> Path:
         loop_dir = self.loops / name
         (loop_dir / "agents").mkdir(parents=True)
         frontmatter = f"---\ndescription: {description}\n"
-        if phases is not None:
-            import yaml as _yaml
-            frontmatter += f"phases:\n{_yaml.safe_dump(phases, default_flow_style=False, allow_unicode=True)}"
         if args is not None:
             import yaml as _yaml
             frontmatter += f"args:\n{_yaml.safe_dump(args, default_flow_style=False, allow_unicode=True)}"

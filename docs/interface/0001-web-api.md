@@ -63,6 +63,7 @@ created: 2026-07-18T22:00:00Z
 | parse_error | string/null | 是 | status=unreadable 时为 JSON 解析异常摘要，格式 `line {line}, column {column}: {message}`；其他状态为 null |
 | execution_epoch | integer/null | 是 | 当前执行 fencing token；legacy/unreadable 无法证明时为 null |
 | allowed_actions | string[] | 是 | `stop/recover_retry/recover_continue/respond/rerun/reconcile` 的允许子集；`recover_retry` 是兼容 action 名，表示默认 recover/retry 入口，不对应单独能力字段 |
+| transport | string | 是 | `cli` 或 `acp`；默认 `cli`，旧 Run 缺失时回退为 `cli` |
 
 ### RunDetail
 
@@ -191,6 +192,7 @@ Query：
 | from_phase | string/null | 否 | null | 声明的 Phase title 或 null |
 | only_phase | string/null | 否 | null | 声明的 Phase title 或 null；非 null 时服务端令有效 from_phase 等于该值；请求同时传非同值 from_phase 返回 422 |
 | working_directory | string/null | 否 | null | run 的显式工作目录（ADR-0042）；非 null 时必须是已存在的目录的绝对路径，否则 422（details 指明 `not_absolute` / `not_found` / `not_a_directory`）；null 时为进程 cwd（向后兼容） |
+| transport | string | 否 | cli | `cli` 或 `acp`；`acp` 路由到 ACP 后端（AcpSdkBackend），加载可选依赖 agent-client-protocol，缺失时报错提示安装 extra `[acp]`（对应 422 `validation_failed` 或 503） |
 
 201：`RunSummary`，同时设置 `Location: /api/v1/runs/{run_id}`。
 
@@ -440,7 +442,7 @@ AgentDefinitionSummary：`name:string`、`description:string`、`path:string`，
 
 ### `GET /queue`
 
-Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queue items，字段为 `task_id:string`、`loop:string`、`args:object`、`resources:object`、`priority:integer`、`created:string`、`blocked_resources:string[]`，全部必填；外层为 `items` 和 `next_cursor`。
+Query：`limit` integer 1..200、`cursor` string，均可选。200：分页 queue items，字段为 `task_id:string`、`loop:string`、`args:object`、`resources:object`、`priority:integer`、`created:string`、`status:string`（pending/deferred/superseded）、`status_reason:string|null`、`superseded_by:string|null`、`blocked_resources:string[]`，全部必填；外层为 `items` 和 `next_cursor`。
 
 错误：422 `validation_failed`。
 
@@ -514,14 +516,28 @@ stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感�
 
 ### `POST /system/pick-directory`
 
+> 已废弃（ADR-0053）。前端不再调用此端点，改用 `GET /system/list-directory` + Web 模态目录浏览器。macOS 本地场景仍可用。
+
 在 server 所在机器上调起操作系统原生目录选择器（供 WebUI New Run 对话框的 Browse 按钮使用，ADR-0042）。
 
 200（选中）：`{"path": "/absolute/dir", "cancelled": false}`（返回绝对路径）
 200（取消）：`{"path": null, "cancelled": true}`
 
-平台支持：macOS（osascript `choose folder`）；其他平台返回 501 `not_supported`，前端回退为手动输入。
+平台支持：macOS（osascript `choose folder`）；其他平台返回 501 `not_supported`。
 
 错误：501 `not_supported`。
+
+### `GET /system/list-directory`
+
+列出 server 端指定路径下的子目录（供 WebUI New Run 对话框的 Web 目录浏览器使用，ADR-0053）。跨平台，使用 `os.scandir`。
+
+参数：`path`（可选，绝对路径；缺省 = server cwd）
+
+200：`{"path": "/absolute/dir", "parent": "/absolute", "entries": [{"name": "subdir", "path": "/absolute/dir/subdir"}, ...]}`
+- `entries` 只包含子目录（不含文件），按名称排序
+- `parent` 为父目录绝对路径；已是根目录时为 `null`
+
+错误：404 `file_not_found`（路径不存在）；422 `validation_failed`（相对路径 / 非目录）。
 
 ## 八、服务启动约束
 

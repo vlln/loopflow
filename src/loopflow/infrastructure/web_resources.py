@@ -15,8 +15,10 @@ from typing import Any, Callable
 import yaml
 
 from loopflow.domain.capabilities import Capabilities
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.backends.diagnostics import BACKEND_META
 from loopflow.infrastructure.backends.manager import _make_backend
+from loopflow.infrastructure.queue import effective_status
 from loopflow.infrastructure.repository import parse_agent
 from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json
 
@@ -123,6 +125,7 @@ class LoopRepository:
         except (OSError, UnicodeError, ValueError) as exc:
             metadata, valid, error = {}, False, str(exc)
         agents = list((loop_dir / "agents").glob("*.md")) if (loop_dir / "agents").is_dir() else []
+        state = loop_state.load(loop_dir.name)
         return {
             "name": loop_dir.name,
             "description": str(metadata.get("description") or ""),
@@ -132,14 +135,17 @@ class LoopRepository:
             "declared_args": _extract_declared_args(metadata),
             "valid": valid,
             "error_summary": error,
+            # Circuit breaker projection (ADR-0045 §1): per-loop pause state
+            "consecutive_failures": state["consecutive_failures"],
+            "paused": state["paused"],
+            "paused_reason": state["paused_reason"],
+            "_resources": metadata.get("resources") if isinstance(metadata.get("resources"), list) else [],
+            "_environment": metadata.get("environment") if isinstance(metadata.get("environment"), str) else None,
         }
 
     def detail(self, loop_dir: Path) -> dict[str, Any]:
         summary = self.summary(loop_dir)
-        metadata: dict[str, Any] = {}
-        if summary["valid"]:
-            metadata = _frontmatter(loop_dir / "loop.md")
-        files = [self.file_summary(loop_dir, path) for path in sorted(loop_dir.rglob("*")) if path.is_file()]
+        files = [self.file_summary(loop_dir, path) for path in sorted(loop_dir.rglob("*")) if path.is_file() and not any(part.startswith(".") for part in path.relative_to(loop_dir).parts[:-1])]
         agents = []
         for path in sorted((loop_dir / "agents").glob("*.md")) if (loop_dir / "agents").is_dir() else []:
             if path.name.startswith("_"):
@@ -159,11 +165,14 @@ class LoopRepository:
             "description": summary["description"],
             "valid": summary["valid"],
             "error_summary": summary["error_summary"],
-            "triggers": metadata.get("triggers") if isinstance(metadata.get("triggers"), list) else [],
-            "resources": metadata.get("resources") if isinstance(metadata.get("resources"), list) else [],
-            "environment": metadata.get("environment") if isinstance(metadata.get("environment"), str) else None,
+            "triggers": summary["triggers"],
+            "resources": summary.get("_resources", []),
+            "environment": summary.get("_environment"),
             "declared_phases": summary.get("declared_phases", []),
             "declared_args": summary.get("declared_args", []),
+            "consecutive_failures": summary["consecutive_failures"],
+            "paused": summary["paused"],
+            "paused_reason": summary["paused_reason"],
             "files": files,
             "agents": agents,
             "runs": related[:20],
@@ -236,7 +245,7 @@ class QueueRepository:
 
     def enqueue(self, loop: str, args: dict[str, Any], resources: dict[str, str], priority: int) -> dict[str, Any]:
         task_id = uuid.uuid4().hex
-        value = {"loop": loop, "args": args, "resources": resources, "priority": priority, "created": datetime.now(timezone.utc).isoformat()}
+        value = {"loop": loop, "args": args, "resources": resources, "priority": priority, "created": datetime.now(timezone.utc).isoformat(), "status": "pending"}
         atomic_write_json(self.root / f"{task_id}.json", value)
         return self._project(self.root / f"{task_id}.json", value)
 
@@ -249,6 +258,9 @@ class QueueRepository:
             "resources": resources,
             "priority": value.get("priority", 5),
             "created": value.get("created", ""),
+            "status": effective_status(value),
+            "status_reason": value.get("status_reason") if isinstance(value.get("status_reason"), str) else None,
+            "superseded_by": value.get("superseded_by") if isinstance(value.get("superseded_by"), str) else None,
             "blocked_resources": [name for name in resources if not self.resource_available(name)],
         }
 

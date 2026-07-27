@@ -45,7 +45,8 @@ class TestListLoops:
         assert len(result) == 2
 
     def test_no_loop_md_not_discoverable(self, loops_dir):
-        """Loop without loop.md is not discoverable."""
+        """AC-010-N-2: loop.md is mandatory — no workflow.py meta fallback."""
+        create_loop(loops_dir, "hello")
         loop_dir = loops_dir / "hidden"
         loop_dir.mkdir(parents=True)
         (loop_dir / "workflow.py").write_text("""
@@ -56,7 +57,7 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 """)
         from loopflow.infrastructure.discovery import list_loops
         result = list_loops()
-        assert result == []
+        assert [name for name, _, _ in result] == ["hello"]
 
 
 class TestLoadLoop:
@@ -160,8 +161,9 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
         result = list_loops()
         assert result == []
 
-    def test_loop_md_bad_yaml(self, loops_dir):
-        """Corrupt loop.md YAML is skipped."""
+    def test_loop_md_bad_yaml(self, loops_dir, capsys):
+        """AC-010-E-2: corrupt loop.md YAML is skipped with a stderr error, no meta fallback."""
+        create_loop(loops_dir, "hello")
         loop_dir = loops_dir / "broken"
         loop_dir.mkdir(parents=True)
         (loop_dir / "loop.md").write_text("---\ninvalid: [\n---\n# broken")
@@ -173,4 +175,5 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
 """)
         from loopflow.infrastructure.discovery import list_loops
         result = list_loops()
-        assert result == []
+        assert [name for name, _, _ in result] == ["hello"]
+        assert "invalid YAML" in capsys.readouterr().err

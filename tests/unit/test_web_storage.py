@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -43,16 +44,21 @@ def test_unreadable_run_does_not_hide_valid_siblings(tmp_path):
     assert summaries["broken"]["working_directory"] == factory.runs.name
 
 
-def test_stale_is_derived_without_modifying_run_json(tmp_path):
+def test_stale_first_detection_records_stale_since_once(tmp_path):
     factory = WebFixtureFactory(tmp_path)
     run = factory.create_run("stale", status="running", pid=123, process_started_at="old")
-    before = (run / "run.json").read_bytes()
 
-    summary = RunRepository(factory.runs, Probe()).read_summary(run)
+    repository = RunRepository(factory.runs, Probe())
+    summary = repository.read_summary(run)
 
     assert summary["status"] == "stale"
     assert summary["allowed_actions"] == ["reconcile"]
-    assert (run / "run.json").read_bytes() == before
+    recorded = json.loads((run / "run.json").read_text())["stale_since"]
+    assert summary["stale_since"] == recorded
+
+    again = repository.read_summary(run)
+    assert again["stale_since"] == recorded
+    assert json.loads((run / "run.json").read_text())["stale_since"] == recorded
 
 
 def test_matching_pid_and_identity_remains_running(tmp_path):
@@ -67,13 +73,15 @@ def test_matching_pid_and_identity_remains_running(tmp_path):
 
 def test_reconcile_atomically_fails_stale_run_and_clears_identity(tmp_path):
     factory = WebFixtureFactory(tmp_path)
-    run = factory.create_run("stale", status="running", pid=123, process_started_at="old")
+    stale_since = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    run = factory.create_run("stale", status="running", pid=123, process_started_at="old", stale_since=stale_since)
 
     summary = RunRepository(factory.runs, Probe()).reconcile(run)
     metadata = json.loads((run / "run.json").read_text())
 
     assert summary["status"] == "failed"
     assert "pid" not in metadata and "process_started_at" not in metadata
+    assert "stale_since" not in metadata
     assert metadata["finished_at"] and metadata["updated_at"]
     assert not list(run.glob("*.tmp"))
 
@@ -115,7 +123,7 @@ def test_run_detail_missing_events_and_state_and_find_nested(tmp_path):
 
     assert detail["working_directory"] == "lf-project"
     assert detail["state"] is None
-    assert detail["events"] == [] and detail["graph"]["nodes"] == []
+    assert detail["events"] == [] and detail["agent_graph"]["nodes"] == []
     assert detail["allowed_actions"] == ["rerun"]
 
 

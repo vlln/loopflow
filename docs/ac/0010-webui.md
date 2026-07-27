@@ -89,6 +89,32 @@ created: 2026-07-18T21:00:00Z
 | AC-015-F-1 | events.jsonl 不存在 | 打开 Run | API 返回 Run 摘要和空事件集合；UI 显示无执行记录，不返回 500 | 自动化 |
 | AC-015-F-2 | events.jsonl 最后一行仅写入一半 | 运行期间读取事件 | 完整行全部返回；半行暂不返回且后续补全后只返回一次 | 自动化 |
 
+> 2026-07-26 追加（BL-021）：call/occurrence 显示简化。call-list 主显 call_id（逻辑编号），session 降 tooltip；节点显示 "×N"、详情显示 "第 N 次执行"、EventTimeline 显示 "N 个事件"。消除 call_id 重复（session 含 call_id 又单独显示）+ occurrence/events 措辞区分。新增 N-9、B-5、E-4、F-4。
+
+### 正常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-N-9 | Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id | 打开 Run，查看 Calls 列表 | call-list 主显 call_id（如 "call-1"）；session_id 降为 tooltip（hover 显示完整 session 值）；session_id 不作为独立行或列重复显示 | 自动化 |
+
+### 边界场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-B-5 | Call 有 call_id 但 session_id 缺失（如 mock backend 不产生 session） | 查看 Calls 列表 | 列表显示 call_id；tooltip 不显示 session 或显示 "no session"；不渲染空白行或报错 | 自动化 |
+
+### 异常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-E-4 | Phase 有 5 次 occurrence，当前选中第 3 次；EventTimeline 含 12 个事件 | 查看聚合节点、occurrence 详情和 EventTimeline | 聚合节点显示 "×5"；occurrence 详情显示 "第 3 次执行"；EventTimeline 标题显示 "12 个事件"；三处数字各自独立、不混淆 | 自动化 |
+
+### 失败场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-015-F-4 | legacy 事件缺少 call_id，无法关联到 Call | 查看 Calls 列表和原始 EventTimeline | 无法关联的事件不出现在任何 Call 详情中；原始 EventTimeline 仍可见（标记 unattributed）；call-list 不显示虚构 Call；页面不崩溃 | 自动化 |
+
 ---
 
 ## Declared Phases 预显示（BR-042）
@@ -100,8 +126,8 @@ created: 2026-07-18T21:00:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-015-N-6 | Loop 含 `meta.phases = [{"title":"采集","detail":"从数据源拉取"},{"title":"处理","detail":"清洗转换"}]` | 在 WebUI 启动该 Loop 的 Run | Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件 | 自动化 |
-| AC-015-N-7 | 同 AC-015-N-6，SSE 推送 phase("采集") 事件 | 观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
-| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | 观察 phase graph | 归档作为 undeclared 节点出现，带 "undeclared" badge；采集、处理按实际状态显示 | 自动化 + 截图 |
+| AC-015-N-7 | 同 AC-015-N-6，runtime 已产生 phase("采集") 事件 | （重新）加载 Run 详情，观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
+| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | （重新）加载 Run 详情，观察 phase graph | 归档作为 undeclared 节点出现，带 undeclared 视觉标记（is-undeclared 类，accent 边框色）；采集、处理按实际状态显示 | 自动化 + 截图 |
 
 ## 边界场景
 
@@ -120,7 +146,7 @@ created: 2026-07-18T21:00:00Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-015-F-3 | workflow.py 语法错误，无法提取 meta.phases | 在 WebUI 启动 Run | 报错退出或显示加载错误，不渲染占位节点，不崩溃 | 自动化 |
+| AC-015-F-3 | workflow.py 语法错误（loop.md 正常；declared phases 来自 loop.md frontmatter，不受影响） | 在 WebUI 启动 Run | API 返回错误（run 进程启动失败，500 internal_error），不创建 Run、不渲染占位节点；Loop 详情与 declared phases 不受影响，服务不崩溃 | 自动化 |
 
 ---
 
@@ -161,7 +187,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-016-F-1 | run_id 不存在 | 订阅 SSE | 返回 404，连接不进入重试循环 | 自动化 |
 | AC-016-F-2 | 注入 event reader，使订阅已发送 event_id=5 后下一次读取抛 `OSError("fixture-read-failed")` | 保持 SSE 连接并触发下一次读取 | 服务发送 `event: stream_error`，data.code=`event_read_failed`、data.last_event_id=5，随后关闭；不发送 event_id>5 | 自动化 |
-| AC-016-F-3 | file_changes.jsonl 读取抛 `OSError("fixture-read-failed")`，events.jsonl 正常 | 保持 SSE 连接 | file_changes topic 发送 `event: stream_error`（topic=file_changes）；run_event topic 不受影响，继续推送 | 自动化 |
+| AC-016-F-3 | file_changes.jsonl 读取抛 `OSError("fixture-read-failed")`，events.jsonl 正常 | 保持 SSE 连接 | 服务发送 `event: stream_error`（data.code=`event_read_failed`、data.last_event_id=当前 run_event 游标，无 topic 字段），随后关闭连接；失败前已推送的 run_event/file_changes 数据不重复 | 自动化 |
 
 ---
 

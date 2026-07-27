@@ -35,6 +35,7 @@ def _finish_run(metadata: dict, status: str) -> None:
     metadata["finished_at"] = datetime.now(timezone.utc).isoformat()
     metadata.pop("pid", None)
     metadata.pop("process_started_at", None)
+    metadata.pop("stale_since", None)
 
 
 def _runs_dir() -> Path:
@@ -67,33 +68,6 @@ def _run_dir_for_pwd() -> Path:
     """
     pwd = str(Path.cwd().absolute()).lstrip("/").replace("/", "-")
     return _runs_dir() / f"lf_{pwd}"
-
-
-def _print_graph(run_dir: Path) -> None:
-    """Render and print the phase graph from events.jsonl."""
-    events_path = run_dir / "events.jsonl"
-    if not events_path.is_file():
-        return
-
-    from loopflow.presentation.graph import PhaseGraph
-    from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-
-    events = []
-    for line in events_path.read_text().strip().split("\n"):
-        if line:
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                pass
-
-    pg = PhaseGraph.from_events(events)
-    if not pg.nodes():
-        return
-
-    renderer = TerminalGraphRenderer(pg)
-    rendered = renderer.render()
-    if rendered.plain.strip():
-        print(f"\n  {rendered.plain}", file=sys.stderr)
 
 
 def _check_environment(meta: dict, loop_dir: Path) -> None:
@@ -148,14 +122,16 @@ def web(host: str, port: int, allow_remote: bool) -> None:
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
               help="Mock mode: bash (shell execution) or auto (schema-based generation)")
-@click.option("--watch/--no-watch", default=False, help="Live-update phase graph during execution")
-@click.option("--from-phase", default=None, help="Start execution from this phase")
-@click.option("--only-phase", default=None, help="Stop execution after this phase")
-def run(name, wf_args, mock, watch, from_phase, only_phase):
+@click.option("--backend", default=None, help="Agent backend (pi, kimi, claude, codex, ...)")
+@click.option("--transport", default=None, help="Transport mode (cli, acp). ADR-0049")
+@click.option("--work-dir", default=None,
+              help="Working directory for the loop: a path to chdir into; "
+                   "empty string to let the framework create one under run_dir; "
+                   "omitted to use the current directory.")
+def run(name, wf_args, mock, backend, transport, work_dir):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
-    from loopflow.presentation.graph import PhaseGraph
-    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow, intervene
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
 
     if mock:
         set_mock(mock)
@@ -176,6 +152,17 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
     run_dir.mkdir(parents=True, exist_ok=True)
     append_run_index(_runs_dir(), Path.cwd(), run_dir.parent, run_id)
 
+    # --work-dir: chdir to a loop working directory before execution.
+    #   omitted  → current dir (Path.cwd() stays the loop-run location)
+    #   ""       → framework-managed: run_dir/work (isolated from loopflow internals)
+    #   <path>   → that path
+    # The loop and its agents then see this as the current directory; the loop
+    # does not handle paths itself.
+    if work_dir is not None:
+        target = run_dir / "work" if work_dir == "" else Path(work_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        os.chdir(target)
+
     # Write run.json
     run_meta = {
         "loop": name,
@@ -187,36 +174,30 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         "execution_epoch": 1,
         "execution_options": {
             "mock": mock,
-            "from_phase": from_phase,
-            "only_phase": only_phase,
+            "backend": backend,
+            "transport": transport,
         },
     }
     _write_run(run_dir / "run.json", run_meta)
 
-    # Set up graph for live/watch mode
-    pg = PhaseGraph() if watch else None
-    live = None
-    if watch:
-        from rich.live import Live
-        from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-        live = Live(TerminalGraphRenderer(pg).render(), refresh_per_second=10,
-                     transient=True)
-        live.start()
-
     ctx = RunContext(
         run_id=run_id,
         run_dir=run_dir,
-        graph=pg,
-        live=live,
         loop_dir=loop_dir,
         execution_options=run_meta["execution_options"],
     )
     set_context(ctx)
-    if from_phase:
-        ctx.from_phase = from_phase
-    if only_phase:
-        ctx.from_phase = only_phase  # --only-phase implies --from-phase
-        ctx.only_phase = only_phase
+
+    # File change observation (ADR-0039): initialize observer from loop meta
+    from loopflow.infrastructure.file_observation import FileChangeObserver, FileObservationConfig
+    obs_config = FileObservationConfig.from_meta(meta)
+    if obs_config.enabled:
+        ctx.file_observer = FileChangeObserver(
+            run_dir=run_dir,
+            working_dir=Path.cwd(),
+            config=obs_config,
+        )
+        ctx.file_observer.seed()
 
     # Create state from meta declaration
     from loopflow.runtime import State
@@ -230,18 +211,23 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         # Build kwargs, only pass state if run() accepts it
         run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
-            phase=phase, log=log, args=args_dict, workflow=workflow,
+            log=log, args=args_dict, workflow=workflow,
             intervene=intervene,
         )
         run_kwargs["state"] = state
         result = mod.run(**accepted_kwargs(mod.run, run_kwargs))
+        # Final file observation
+        if ctx.file_observer is not None:
+            try:
+                call_id = getattr(ctx, '_current_call_id', None) or "unknown"
+                ctx.file_observer.observe(call_id, call_id)
+            except Exception:
+                pass
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
         _finish_run(run_meta, "stopped")
         run_meta["counter"] = ctx._counter
         _write_run(run_dir / "run.json", run_meta)
-        if live:
-            live.stop()
         sys.exit(0)
     except Exception as e:
         from loopflow.infrastructure.intervention import InterventionPending
@@ -250,8 +236,6 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
             _finish_run(run_meta, "waiting_input")
             run_meta["counter"] = ctx._counter
             _write_run(run_dir / "run.json", run_meta)
-            if live:
-                live.stop()
             print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
             sys.exit(0)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
@@ -261,16 +245,18 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
         run_meta["can_recover_continue"] = ctx.failed_can_continue
         run_meta["counter"] = ctx._counter
         _write_run(run_dir / "run.json", run_meta)
-        if live:
-            live.stop()
+        # Circuit breaker (ADR-0045 §2 / BR-050): manual run failures count too
+        from loopflow.infrastructure import loop_state
+        loop_state.record_failure(name, run_id, threshold=loop_state.failure_threshold(meta))
         sys.exit(1)
-
-    if live:
-        live.stop()
 
     _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
     _write_run(run_dir / "run.json", run_meta)
+
+    # Circuit breaker (ADR-0045 §2): a done run resets the failure streak
+    from loopflow.infrastructure import loop_state
+    loop_state.record_success(name)
 
     if result is not None:
         if isinstance(result, str):
@@ -282,15 +268,11 @@ def run(name, wf_args, mock, watch, from_phase, only_phase):
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
 
-    # Auto-render graph at end
-    _print_graph(run_dir)
 
-
-def legacy_resume_internal(run_id, mock, watch):
+def legacy_resume_internal(run_id, mock):
     """Resume a crashed loop run."""
     from loopflow.infrastructure.discovery import load_loop
-    from loopflow.presentation.graph import PhaseGraph
-    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, phase, log, workflow, intervene
+    from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
 
     if mock:
         set_mock(mock)
@@ -319,17 +301,7 @@ def legacy_resume_internal(run_id, mock, watch):
     run_meta.pop("finished_at", None)
     _write_run(run_json, run_meta)
 
-    # Set up graph for live/watch mode
-    pg = PhaseGraph() if watch else None
-    live = None
-    if watch:
-        from rich.live import Live
-        from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-        live = Live(TerminalGraphRenderer(pg).render(), refresh_per_second=10,
-                     transient=True)
-        live.start()
-
-    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True, graph=pg, live=live,
+    ctx = RunContext(run_id=run_id, run_dir=run_dir, resume=True,
                      loop_dir=loop_dir, counter=run_meta.get("counter", 0))
     set_context(ctx)
 
@@ -352,7 +324,7 @@ def legacy_resume_internal(run_id, mock, watch):
     try:
         run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
-            phase=phase, log=log, args=args_dict, workflow=workflow,
+            log=log, args=args_dict, workflow=workflow,
             intervene=intervene,
         )
         run_kwargs["state"] = state
@@ -362,8 +334,6 @@ def legacy_resume_internal(run_id, mock, watch):
         _finish_run(run_meta, "stopped")
         run_meta["counter"] = ctx._counter
         _write_run(run_json, run_meta)
-        if live:
-            live.stop()
         sys.exit(0)
     except Exception as e:
         from loopflow.infrastructure.intervention import InterventionPending
@@ -372,19 +342,12 @@ def legacy_resume_internal(run_id, mock, watch):
             _finish_run(run_meta, "waiting_input")
             run_meta["counter"] = ctx._counter
             _write_run(run_json, run_meta)
-            if live:
-                live.stop()
             print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
             sys.exit(0)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         _finish_run(run_meta, "failed")
         _write_run(run_json, run_meta)
-        if live:
-            live.stop()
         sys.exit(1)
-
-    if live:
-        live.stop()
 
     _finish_run(run_meta, "done")
     run_meta["counter"] = ctx._counter
@@ -399,9 +362,6 @@ def legacy_resume_internal(run_id, mock, watch):
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
-
-    # Auto-render graph at end
-    _print_graph(run_dir)
 
 
 @main.command()
@@ -448,9 +408,8 @@ def recover(run_id: str, mode: str) -> None:
 @main.command()
 @click.argument("run_id")
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None, hidden=True)
-@click.option("--watch/--no-watch", default=False, hidden=True)
 @click.pass_context
-def resume(ctx: click.Context, run_id: str, mock: str | None, watch: bool) -> None:
+def resume(ctx: click.Context, run_id: str, mock: str | None) -> None:
     """Deprecated alias for recover --mode retry."""
     click.echo("Warning: 'resume' is deprecated; use 'recover --mode retry'.", err=True)
     ctx.invoke(recover, run_id=run_id, mode="retry")
@@ -458,8 +417,7 @@ def resume(ctx: click.Context, run_id: str, mock: str | None, watch: bool) -> No
 
 @main.command()
 @click.argument("run_id")
-@click.option("--graph/--no-graph", default=True, help="Show phase execution graph")
-def status(run_id, graph):
+def status(run_id):
     """Show status of a run."""
     run_dir = _find_run_by_id(run_id)
     if run_dir is None:
@@ -483,28 +441,6 @@ def status(run_id, graph):
     print(f"  Agents: {len(agent_jsonl)} calls")
     if meta.get("args"):
         print(f"  Args:   {json.dumps(meta['args'], ensure_ascii=False)}")
-
-    # Show phase graph if events.jsonl exists
-    if graph:
-        events_path = run_dir / "events.jsonl"
-        if events_path.is_file():
-            from loopflow.presentation.graph import PhaseGraph
-            from loopflow.presentation.display.graph_renderer import TerminalGraphRenderer
-
-            events = []
-            for line in events_path.read_text().strip().split("\n"):
-                if line:
-                    try:
-                        events.append(json.loads(line))
-                    except json.JSONDecodeError:
-                        pass
-
-            pg = PhaseGraph.from_events(events)
-            renderer = TerminalGraphRenderer(pg)
-            rendered = renderer.render()
-            if rendered.plain.strip():
-                print(f"\n  Execution graph:")
-                print(f"  {rendered.plain}")
 
 
 @main.command()
@@ -573,7 +509,9 @@ def stop(run_id):
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
 @click.option("--priority", default=5, help="Task priority (lower = higher priority)")
-def enqueue(name, wf_args, priority):
+@click.option("--supersede", is_flag=True, default=False,
+              help="Mark existing pending/deferred tasks of this loop as superseded")
+def enqueue(name, wf_args, priority, supersede):
     """Add a task to the dispatch queue."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.infrastructure.queue import enqueue as queue_enqueue
@@ -589,7 +527,7 @@ def enqueue(name, wf_args, priority):
             print(f"Error: invalid --args JSON: {e}", file=sys.stderr)
             sys.exit(1)
 
-    path = queue_enqueue(name, args=args_dict, priority=priority)
+    path = queue_enqueue(name, args=args_dict, priority=priority, supersede=supersede)
     print(f"[loopflow] Enqueued: {name} → {path}", file=sys.stderr)
 
 
@@ -600,5 +538,29 @@ def dispatch():
 
     summary = run_dispatch()
     print(f"[loopflow] Dispatch: {summary['processed']} processed, "
-          f"{summary['skipped']} skipped, {summary['errors']} errors",
+          f"{summary['deferred']} deferred, {summary['superseded']} superseded, "
+          f"{summary['errors']} errors",
           file=sys.stderr)
+
+
+@main.command()
+@click.argument("name")
+def unpause(name: str) -> None:
+    """Clear a loop's circuit-breaker pause (manual release, BR-051)."""
+    from loopflow.application.web import ApplicationError, WebApplication
+    from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
+    from loopflow.infrastructure.web_storage import RunRepository
+
+    runs_root = _runs_dir()
+    loops_root = Path(os.environ.get("LOOPFLOW_LOOPS_DIR", Path.home() / ".loopflow" / "loops"))
+    service = WebApplication(
+        runs=RunRepository(runs_root),
+        loops=LoopRepository(loops_root, RunRepository(runs_root)),
+        queue=QueueRepository(Path(os.environ.get("LOOPFLOW_QUEUE_DIR", Path.home() / ".loopflow" / "queue"))),
+        backends=BackendRepository(),
+    )
+    try:
+        result = service.unpause_loop(name)
+    except ApplicationError as error:
+        raise click.ClickException(f"{error.code}: {error.message}") from error
+    click.echo(f"[loopflow] Unpaused: {result['name']}", err=True)

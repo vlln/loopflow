@@ -7,8 +7,19 @@ from dataclasses import dataclass, field
 from typing import Any
 
 
+# ADR-0044 §1: agent 失败五分类。domain 只声明 taxonomy，不参与决策。
+ERROR_CATEGORIES = ("auth", "quota", "transient", "task", "unknown")
+
+
 class AgentError(Exception):
-    """Raised when an agent call fails at the infrastructure level."""
+    """Raised when an agent call fails at the infrastructure level.
+
+    category 仅携带 ADR-0044 失败分类（五分类之一或 None），不做决策。
+    """
+
+    def __init__(self, message: str, category: str | None = None) -> None:
+        super().__init__(message)
+        self.category = category
 
 
 @dataclass
@@ -161,6 +172,7 @@ def render_template(body: str, **kwargs: str) -> str:
             raise ValueError(
                 f"Template parameter '{{{name}}}' is required but not provided"
             )
-        return kwargs[name]
+        value = kwargs[name]
+        return "" if value is None else str(value)
 
     return re.sub(r"\{\{\s*(\w+)\s*\}\}", _replace, body)

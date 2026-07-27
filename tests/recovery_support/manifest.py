@@ -17,6 +17,8 @@ HTTP_STATUS_BY_CODE = {
     "intervention_already_answered": 409,
     "validation_failed": 422,
     "atomic_write_failed": 500,
+    "run_in_grace": 409,
+    "run_not_stale": 409,
 }
 
 
@@ -87,6 +89,18 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-023-F-1", "unit:agent-control-output")
     assign("AC-023-F-2", "unit:session-intervention")
     assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
+
+    assign(
+        "AC-026-N-1 AC-026-N-2 AC-026-N-3 AC-026-B-1 AC-026-B-2 AC-026-E-1",
+        "unit:failure-classification",
+    )
+    assign("AC-026-F-1", "POST /api/v1/runs/{run_id}/recover")
+
+    assign("AC-029-N-1 AC-029-N-2 AC-029-E-1 AC-029-E-2", "GET /api/v1/runs/{run_id}")
+    assign(
+        "AC-029-B-1 AC-029-B-2 AC-029-F-1",
+        "POST /api/v1/runs/{run_id}/reconcile",
+    )
     return targets
 
 
@@ -148,6 +162,20 @@ TEST_NODES = {
     "AC-023-F-1": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
     "AC-023-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
     "AC-023-F-3": "tests/integration/test_web_api.py::test_batch_intervention_endpoint_is_all_or_nothing",
+    "AC-026-N-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n1_transient_retries_then_succeeds",
+    "AC-026-N-2": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n2_structured_quota_beats_transient_stderr",
+    "AC-026-N-3": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n3_run_json_matches_agent_done_category",
+    "AC-026-B-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b1_auth_failure_fails_without_retry",
+    "AC-026-B-2": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_b2_unmatched_failure_is_unknown_no_retry",
+    "AC-026-E-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_e1_transient_exhausts_backoff_then_fails",
+    "AC-026-F-1": "tests/unit/test_web_application.py::test_quota_failure_recover_continue_keeps_existing_boundaries",
+    "AC-029-N-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n1_first_stale_detection_writes_stale_since",
+    "AC-029-N-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n2_worker_terminal_write_clears_stale_since",
+    "AC-029-B-1": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_returns_run_in_grace",
+    "AC-029-B-2": "tests/integration/test_web_api.py::test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since",
+    "AC-029-E-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e1_stale_since_is_not_refreshed",
+    "AC-029-E-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e2_legacy_run_records_stale_since_on_first_detection",
+    "AC-029-F-1": "tests/integration/test_web_api.py::test_ac029_f1_reconcile_live_run_returns_run_not_stale",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
@@ -214,6 +242,13 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-023-F-3": [{"kind": "http_status", "value": 200}],
+    "AC-029-N-1": [{"kind": "http_status", "value": 200}],
+    "AC-029-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-029-B-1": [{"kind": "http_status", "value": 409, "code": "run_in_grace"}],
+    "AC-029-B-2": [{"kind": "http_status", "value": 200}],
+    "AC-029-E-1": [{"kind": "http_status", "value": 200}],
+    "AC-029-E-2": [{"kind": "http_status", "value": 200}],
+    "AC-029-F-1": [{"kind": "http_status", "value": 409, "code": "run_not_stale"}],
 }
 
 

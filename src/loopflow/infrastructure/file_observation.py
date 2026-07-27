@@ -1,6 +1,6 @@
-"""File change observation — snapshot diff at phase boundaries.
+"""File change observation — snapshot diff at agent call boundaries.
 
-Scans the working directory (pwd) at each phase() call, diffs against the
+Scans the working directory (pwd) at each agent call, diffs against the
 previous snapshot, and appends records to file_changes.jsonl. Controlled by
 loop frontmatter meta.file_observation.
 
@@ -89,7 +89,7 @@ class FileObservationConfig:
 
 
 class FileChangeObserver:
-    """Observes file changes in a working directory across phase boundaries.
+    """Observes file changes in a working directory across agent call boundaries.
 
     On each observe() call, scans the directory, diffs against the previous
     snapshot, and appends a record to file_changes.jsonl if there are changes.
@@ -112,7 +112,7 @@ class FileChangeObserver:
         """
         self._previous = self._scan()
 
-    def observe(self, phase: str, phase_id: str) -> dict[str, Any] | None:
+    def observe(self, call_id: str, label: str) -> dict[str, Any] | None:
         """Take a snapshot and diff against previous. Returns the record if there are changes, None otherwise."""
         if not self.config.enabled:
             return None
@@ -128,8 +128,8 @@ class FileChangeObserver:
         self._seq += 1
         record = {
             "seq": self._seq,
-            "phase": phase,
-            "phase_id": phase_id,
+            "call_id": call_id,
+            "label": label,
             "ts": utc_now(),
             "changes": [c.to_dict() for c in changes],
         }

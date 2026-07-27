@@ -14,7 +14,7 @@ async function installApi(page: Page) {
     if (path.endsWith('/events')) {
       return route.fulfill({
         contentType: 'text/event-stream',
-        body: `event: run_event\ndata: ${JSON.stringify({ version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } })}\n\nevent: stream_end\ndata: {"last_event_id":4}\n\n`,
+        body: `event: run_event\ndata: ${JSON.stringify({ version: 2, event_id: 4, type: 'message', call_id: 'call-a', payload: { text: longOutput } })}\n\nevent: stream_end\ndata: {"last_event_id":4}\n\n`,
       });
     }
     if (path === '/api/v1/runs' && request.method() === 'POST') return json(runs[0], 201);
@@ -24,7 +24,7 @@ async function installApi(page: Page) {
       const items = runs.filter((run) => (!status || run.status === status) && (!query || `${run.run_id} ${run.loop}`.toLowerCase().includes(query)));
       return json({ items, next_cursor: null });
     }
-    if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', phase_id: 'review-2', call_id: 'call-a', payload: { text: longOutput } }] });
+    if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', call_id: 'call-a', payload: { text: longOutput } }] });
     if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[2], allowed_actions: ['recover_retry', 'recover_continue'] });
     if (/\/api\/v1\/runs\/[^/]+\/(stop|recover|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'running', allowed_actions: ['stop'] });
     if (path === '/api/v1/loops') return json({ items: [loopSummary], next_cursor: null });
@@ -48,21 +48,17 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
 });
 
-test('operates Runs without overflow and renders a nonblank phase graph', async ({ page }, testInfo) => {
+test('operates Runs without overflow and renders a nonblank agent graph', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'chromium-390';
   const tablet = testInfo.project.name === 'chromium-1024';
   const liveRun = page.getByRole('listitem').filter({ hasText: 'run-live' }).first();
   await expect(liveRun).toBeVisible();
   if (mobile) await liveRun.click();
-  await expect(page.getByRole('heading', { name: 'Phase graph' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /Unattributed/ })).toBeVisible();
-  await page.getByRole('tab', { name: /Unattributed/ }).click();
-  await expect(page.getByRole('heading', { name: 'Unattributed events' })).toBeVisible();
-  await page.getByRole('tab', { name: /^Events/ }).click();
+  await expect(page.getByRole('heading', { name: 'Agent graph' })).toBeVisible();
   await expect(page.getByText('workflow output').first()).toBeVisible();
   await expect(page.getByText(/"content":/)).toHaveCount(0);
 
-  const flow = page.getByTestId('phase-flow');
+  const flow = page.getByTestId('agent-flow');
   const nodes = flow.locator('.react-flow__node');
   await expect(nodes).toHaveCount(2);
   const flowBox = await flow.boundingBox();
@@ -101,6 +97,44 @@ test('operates Runs without overflow and renders a nonblank phase graph', async 
     await expect(page.getByRole('button', { name: 'Stop run' })).toHaveCount(0);
   }
   await page.screenshot({ path: testInfo.outputPath('runs.png'), fullPage: true });
+});
+
+test('light theme keeps panels and status badges legible', async ({ page }, testInfo) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.evaluate(() => localStorage.removeItem('lf-theme'));
+  await page.reload();
+  await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('light');
+
+  const panels = page.locator('.panel:visible');
+  const panelCount = await panels.count();
+  expect(panelCount).toBeGreaterThan(0);
+  for (let index = 0; index < panelCount; index += 1) {
+    const style = await panels.nth(index).evaluate((element) => {
+      let node: Element | null = element;
+      let background = 'rgba(0, 0, 0, 0)';
+      while (node) {
+        const candidate = getComputedStyle(node).backgroundColor;
+        if (candidate !== 'rgba(0, 0, 0, 0)') { background = candidate; break; }
+        node = node.parentElement;
+      }
+      return { background, text: getComputedStyle(element).color };
+    });
+    expect(style.background).not.toBe('rgba(0, 0, 0, 0)');
+    expect(style.background).not.toBe(style.text);
+  }
+
+  const badges = page.locator('.status:visible');
+  const badgeCount = await badges.count();
+  expect(badgeCount).toBeGreaterThan(0);
+  for (let index = 0; index < badgeCount; index += 1) {
+    const style = await badges.nth(index).evaluate((element) => {
+      const computed = getComputedStyle(element);
+      return { background: computed.backgroundColor, text: computed.color };
+    });
+    expect(style.background).not.toBe(style.text);
+  }
+  await page.screenshot({ path: testInfo.outputPath('runs-light.png'), fullPage: true });
 });
 
 test('navigates Loops and Backends responsively', async ({ page }, testInfo) => {

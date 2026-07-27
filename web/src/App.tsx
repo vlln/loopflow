@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node, type NodeProps } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import dagre from 'dagre';
 import ReactMarkdown from 'react-markdown';
 import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, Moon, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Sun, Terminal, X, Zap } from 'lucide-react';
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer } from './eventReducer';
-import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, RunDetail, RunEvent, RunFileContent, RunSummary } from './types';
+import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, RunDetail, RunEvent, RunFileContent, RunSummary, DirectoryListing } from './types';
 import { EmptyState, IconButton, PanelHeader, ScrollArea, SectionHeader, StatusBadge } from './ui';
 
 type View = 'runs' | 'loops' | 'backends';
@@ -54,9 +55,7 @@ function RunsWorkspace() {
   const [detail, setDetail] = useState<RunDetail | null>(null);
   const [status, setStatus] = useState('all');
   const [query, setQuery] = useState('');
-  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
   const [selectedCallId, setSelectedCallId] = useState<string | null>(null);
-  const [eventView, setEventView] = useState<'phase' | 'unattributed' | 'malformed'>('phase');
   const [streamState, setStreamState] = useState<'live' | 'closed' | 'error'>('closed');
   const [eventState, dispatchEvent] = useReducer(eventReducer, { items: [], lastEventId: 0 });
   const [fileChangeRecords, setFileChangeRecords] = useState<FileChangeRecord[]>([]);
@@ -64,6 +63,7 @@ function RunsWorkspace() {
   const [mobilePane, setMobilePane] = useState<'list' | 'detail' | 'process'>('list');
   const [error, setError] = useState<string | null>(null);
   const [interventions, setInterventions] = useState<InterventionSummary[]>([]);
+  const [eventScope, setEventScope] = useState<'events' | 'unattributed' | 'malformed'>('events');
 
   const loadRuns = async () => {
     try {
@@ -93,13 +93,12 @@ function RunsWorkspace() {
     if (!selectedId) { setDetail(null); setInterventions([]); setFileChangeRecords([]); return; }
     void api.run(selectedId).then((value) => {
       setDetail(value);
+      setEventScope('events');
       if (value.status === 'waiting_input' || value.allowed_actions.includes('respond') || value.interventions?.length) void api.interventions(value.run_id).then((page) => setInterventions(page.items)).catch((cause) => setError(messageOf(cause))); else setInterventions([]);
       dispatchEvent({ type: '__reset__', items: value.events });
       void api.fileChanges(selectedId).then((result) => setFileChangeRecords(result.items)).catch(() => setFileChangeRecords([]));
-      const phaseId = value.graph.current_phase_id ?? value.occurrences.at(-1)?.phase_id ?? null;
-      setSelectedPhaseId(phaseId);
-      setSelectedCallId(value.calls.find((call) => call.phase_id === phaseId)?.call_id ?? null);
-      setEventView(value.events.some((event) => event.phase_id) ? 'phase' : value.unattributed_count > 0 ? 'unattributed' : value.malformed_count > 0 ? 'malformed' : 'phase');
+      const currentId = value.agent_graph?.current ?? value.calls[0]?.call_id ?? null;
+      setSelectedCallId(currentId);
     }).catch((cause) => setError(messageOf(cause)));
   }, [selectedId]);
 
@@ -109,16 +108,22 @@ function RunsWorkspace() {
     return connectRunEvents(selectedId, { lastEventId: eventState.lastEventId, lastFileChangesId }, {
       onEvent: dispatchEvent,
       onFileChanges: (record) => setFileChangeRecords((prev) => prev.some((r) => r.seq === record.seq) ? prev : [...prev, record]),
-      onState: setStreamState,
+      onState: (state) => {
+        setStreamState(state);
+        if (state === 'closed' || state === 'error') {
+          void api.run(selectedId).then((value) => { setDetail(value); }).catch(() => {});
+          void api.fileChanges(selectedId).then((result) => setFileChangeRecords(result.items)).catch(() => setFileChangeRecords([]));
+          void loadRuns();
+        }
+      },
     });
   }, [selectedId, detail?.status]);
 
-  const occurrences = detail?.occurrences ?? [];
-  const selectedOccurrence = occurrences.find((item) => item.phase_id === selectedPhaseId) ?? null;
-  const calls = (detail?.calls ?? []).filter((call) => call.phase_id === selectedPhaseId);
+  const calls = detail?.calls ?? [];
   const selectedCall = calls.find((call) => call.call_id === selectedCallId) ?? calls[0] ?? null;
-  const visibleEvents = eventState.items.filter((event) => !selectedPhaseId || event.phase_id === selectedPhaseId).filter((event) => !selectedCall || event.call_id === selectedCall.call_id);
-  const displayedEvents = eventView === 'unattributed' ? detail?.unattributed ?? [] : eventView === 'malformed' ? detail?.malformed ?? [] : visibleEvents;
+  const selectedNode = detail?.agent_graph?.nodes?.find((n) => n.id === selectedCallId) ?? null;
+  const visibleEvents = eventState.items.filter((event) => !selectedCall || event.call_id === selectedCall.call_id);
+  const displayedEvents = visibleEvents;
   const hasIntervention = !!detail && (detail.status === 'waiting_input' || detail.allowed_actions.includes('respond') || interventions.length > 0);
   const hasRespondAction = !!detail?.allowed_actions.includes('respond');
 
@@ -140,21 +145,22 @@ function RunsWorkspace() {
     <aside className="panel run-list-panel">
       <PanelHeader icon={<Activity size={15} />} title="Runs" actions={<button className="primary-button" onClick={() => setShowNew(true)}><Plus size={15} />New</button>} />
       <div className="filter-bar"><label className="search"><Search size={14} /><input aria-label="Search runs" placeholder="Run or loop" value={query} onChange={(event) => setQuery(event.target.value)} /></label><label className="select-wrap"><ListFilter size={14} /><select aria-label="Filter status" value={status} onChange={(event) => setStatus(event.target.value)}><option value="all">All</option><option value="running">Running</option><option value="waiting_input">Waiting input</option><option value="failed">Failed</option><option value="done">Done</option><option value="cancelled">Cancelled</option><option value="stopped">Stopped</option></select></label></div>
-      <ScrollArea className="run-list" role="list">{runs.length ? runs.map((run) => <button role="listitem" key={run.run_id} className={`run-row ${selectedId === run.run_id ? 'is-selected' : ''}`} onClick={() => selectRun(run.run_id)}><span className="run-row-top"><strong>{run.loop ?? 'Unreadable run'}</strong><StatusBadge value={run.status} /></span><code title={run.working_directory}>{run.run_id}</code><span className="row-meta"><span>{run.current_phase ?? 'No phase'}</span><span>{formatDuration(run.duration_ms)}</span></span>{run.parse_error && <span className="row-error">{run.parse_error}</span>}</button>) : <EmptyState title="No runs" detail="Start a Loop to create the first Run." />}</ScrollArea>
+      <ScrollArea className="run-list" role="list">{runs.length ? runs.map((run) => <button role="listitem" key={run.run_id} className={`run-row ${selectedId === run.run_id ? 'is-selected' : ''}`} onClick={() => selectRun(run.run_id)}><span className="run-row-top"><strong>{run.loop ?? 'Unreadable run'}</strong><StatusBadge value={run.status} /></span><code title={run.working_directory}>{run.run_id}</code><span className="row-meta"><span>{formatDuration(run.duration_ms)}</span></span>{graceLabel(run) && <span className="row-grace">{graceLabel(run)}</span>}{run.error_summary && <span className="row-error">{run.error_category ? `[${run.error_category}] ` : ''}{run.error_summary}</span>}{run.parse_error && <span className="row-error">{run.parse_error}</span>}</button>) : <EmptyState title="No runs" detail="Start a Loop to create the first Run." />}</ScrollArea>
     </aside>
     <section className={`panel run-detail-panel ${hasIntervention ? 'has-intervention' : ''}`}>
-      {!detail ? <EmptyState title="Select a Run" detail="Phase execution and events appear here." /> : <>
-        <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="panel-header-text"><span className="eyebrow">{detail.loop}</span><h2 className="panel-title">{detail.run_id}</h2></div><span className="toolbar-meta">{formatDuration(detail.duration_ms)} · {detail.iteration_count} iteration{detail.iteration_count === 1 ? '' : 's'} · stream {detail.status === 'running' ? streamState : 'closed'}</span><div className="toolbar-actions"><StatusBadge value={detail.status} />{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('recover_retry') && <button aria-label={retryLabel} className={hasRespondAction ? 'secondary-button' : 'primary-button'} onClick={() => void act('recover_retry')}><RotateCcw size={14} />Retry</button>}{showContinue && <button aria-label={detail.allowed_actions.includes('recover_continue') ? continueLabel : continueUnavailableLabel} title={detail.allowed_actions.includes('recover_continue') ? continueLabel : 'Backend did not persist a durable session or this cancel boundary is atomic'} className="secondary-button" disabled={!detail.allowed_actions.includes('recover_continue')} onClick={() => void act('recover_continue')}><Play size={14} />Continue</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{detail.state && <details className="state-details"><summary aria-label="View run state" title="Run state"><Braces size={14} /></summary><pre className="scroll-area">{JSON.stringify(detail.state, null, 2)}</pre></details>}{selectedId && <IconButton label="Open file changes panel" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
+      {!detail ? <EmptyState title="Select a Run" detail="Agent execution and events appear here." /> : <>
+        <header className="panel-header run-toolbar"><div className="mobile-back"><IconButton label="Back to Runs" onClick={() => setMobilePane('list')}><ArrowLeft /></IconButton></div><div className="panel-header-text"><span className="eyebrow">{detail.loop}</span><h2 className="panel-title">{detail.run_id}</h2></div><span className="toolbar-meta">{formatDuration(detail.duration_ms)} · {detail.iteration_count} iteration{detail.iteration_count === 1 ? '' : 's'} · stream {detail.status === 'running' ? streamState : 'closed'}</span><div className="toolbar-actions"><StatusBadge value={detail.status} />{graceLabel(detail) && <span className="row-grace">{graceLabel(detail)}</span>}{detail.allowed_actions.includes('stop') && <button aria-label="Stop run" className="secondary-button" onClick={() => void act('stop')}><CircleStop size={14} />Stop</button>}{detail.allowed_actions.includes('recover_retry') && <button aria-label={retryLabel} className={hasRespondAction ? 'secondary-button' : 'primary-button'} onClick={() => void act('recover_retry')}><RotateCcw size={14} />Retry</button>}{showContinue && <button aria-label={detail.allowed_actions.includes('recover_continue') ? continueLabel : continueUnavailableLabel} title={detail.allowed_actions.includes('recover_continue') ? continueLabel : 'Backend did not persist a durable session or this cancel boundary is atomic'} className="secondary-button" disabled={!detail.allowed_actions.includes('recover_continue')} onClick={() => void act('recover_continue')}><Play size={14} />Continue</button>}{detail.allowed_actions.includes('rerun') && <button aria-label="Rerun run" className="secondary-button" onClick={() => void act('rerun')}><RotateCcw size={14} />Rerun</button>}{detail.allowed_actions.includes('reconcile') && <button aria-label="Reconcile run" className="secondary-button" onClick={() => void act('reconcile')}><RefreshCw size={14} />Reconcile</button>}{detail.state && <details className="state-details"><summary aria-label="View run state" title="Run state"><Braces size={14} /></summary><pre className="scroll-area">{JSON.stringify(detail.state, null, 2)}</pre></details>}{selectedId && <IconButton label="Open file changes panel" onClick={() => setMobilePane('process')}><PanelRight /></IconButton>}</div></header>
         {hasIntervention && <InterventionPanel runId={detail.run_id} items={interventions} onAnswered={async () => { await loadRuns(); const next = await api.run(detail.run_id); setDetail(next); if (next.status === 'waiting_input' || next.allowed_actions.includes('respond') || next.interventions?.length) { const page = await api.interventions(detail.run_id); setInterventions(page.items); } else { setInterventions(next.interventions ?? []); } }} onError={setError} />}
-        <PhaseGraph key={`${selectedId}-${mobilePane === 'list' ? 'hidden' : 'visible'}`} detail={detail} selectedPhaseId={selectedPhaseId} onSelect={(phaseId) => { setSelectedPhaseId(phaseId); setSelectedCallId(detail.calls.find((call) => call.phase_id === phaseId)?.call_id ?? null); setEventView('phase'); }} />
-        <section className="phase-detail"><div className="phase-detail-bar"><div className="phase-detail-title"><h3 className="section-title">{selectedOccurrence?.phase ?? 'Events'}</h3>{selectedOccurrence && <span className="section-meta">Occurrence {selectedOccurrence.occurrence}</span>}</div>
-          <div className="event-scope-tabs" role="tablist" aria-label="Event scope"><button role="tab" aria-selected={eventView === 'phase'} onClick={() => setEventView('phase')}>Events <span>{visibleEvents.length}</span></button>{detail.unattributed_count > 0 && <button role="tab" aria-selected={eventView === 'unattributed'} onClick={() => setEventView('unattributed')}>Unattributed <span>{detail.unattributed_count}</span></button>}{detail.malformed_count > 0 && <button role="tab" aria-selected={eventView === 'malformed'} onClick={() => setEventView('malformed')}>Malformed <span>{detail.malformed_count}</span></button>}</div>
+        {detail.error_summary && <div className="run-error-banner" role="alert">{detail.error_category && <StatusBadge value={detail.error_category} />}<span className="error-summary-text">{detail.error_summary}</span>{detail.error_traceback && <details className="error-traceback"><summary>Traceback</summary><pre className="code-preview scroll-area">{detail.error_traceback}</pre></details>}</div>}
+        <AgentGraph key={`${selectedId}-${mobilePane === 'list' ? 'hidden' : 'visible'}`} detail={detail} selectedCallId={selectedCallId} onSelect={(callId) => { setSelectedCallId(callId); }} />
+        <section className="agent-detail"><div className="agent-detail-bar"><div className="agent-detail-title"><h3 className="section-title">Events</h3></div>
+          <div className="event-scope-tabs" role="tablist"><button role="tab" aria-selected={eventScope === 'events'} onClick={() => setEventScope('events')}>Events</button>{detail.unattributed_count > 0 && <button role="tab" aria-selected={eventScope === 'unattributed'} onClick={() => setEventScope('unattributed')}>Unattributed {detail.unattributed_count}</button>}{detail.malformed_count > 0 && <button role="tab" aria-selected={eventScope === 'malformed'} onClick={() => setEventScope('malformed')}>Malformed {detail.malformed_count}</button>}</div>
           {detail.malformed_count > 0 && <span className="warning-text">{detail.malformed_count} malformed</span>}</div>
-          <div className={`call-event-grid ${eventView !== 'phase' || calls.length === 0 ? 'events-only' : ''}`}>{eventView === 'phase' && calls.length > 0 && <ScrollArea className="call-list"><SectionHeader title="Calls" />{calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong>{call.session ?? call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small>{call.call_id === selectedCall?.call_id && <small className="call-facts">{call.model ?? 'Default'} · exit {call.exit_code === null ? '—' : call.exit_code}</small>}</span><ChevronRight size={14} /></button>)}</ScrollArea>}<EventTimeline events={displayedEvents} title={eventView === 'phase' ? 'Phase events' : eventView === 'unattributed' ? 'Unattributed events' : 'Malformed events'} /></div>
+          <div className={`call-event-grid ${detail.calls.length === 0 || eventScope !== 'events' ? 'events-only' : ''}`}>{detail.calls.length > 0 && eventScope === 'events' && <ScrollArea className="call-list"><SectionHeader title="Calls" />{detail.calls.map((call) => <button key={call.call_id} className={call.call_id === selectedCall?.call_id ? 'is-selected' : ''} onClick={() => setSelectedCallId(call.call_id)}><Bot size={14} /><span><strong title={call.session ?? undefined}>{call.call_id}</strong><small>{call.backend ?? 'backend unknown'} · {call.status}</small>{call.call_id === selectedCall?.call_id && <small className="call-facts">{call.backend ?? '—'} · {call.model ?? 'Default'} · exit {call.exit_code === null ? '—' : call.exit_code} · {formatTime(call.started_at) || '—'}</small>}</span><ChevronRight size={14} /></button>)}</ScrollArea>}{eventScope === 'events' && <EventTimeline events={displayedEvents} title="Events" />}{eventScope === 'unattributed' && <EventTimeline events={detail.unattributed} title="Unattributed events" />}{eventScope === 'malformed' && <ScrollArea className="event-list"><SectionHeader title="Malformed events" meta={`${detail.malformed.length} 个事件`} />{detail.malformed.length ? detail.malformed.map((event, index) => <div className="event-row" key={`malformed-${index}`}><span className="event-marker" /><div className="event-body"><pre className="code-preview scroll-area">{JSON.stringify(event, null, 2)}</pre></div></div>) : <span className="muted">No malformed events</span>}</ScrollArea>}</div>
         </section>
       </>}
     </section>
-    <div className="inspector-column">{selectedId && <FileChangesPanel records={fileChangeRecords} selectedPhaseId={selectedPhaseId} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
+    <div className="inspector-column">{selectedId && detail && <FileChangesPanel records={fileChangeRecords} selectedCallId={selectedCallId} callOrder={detail.calls.map((c) => c.call_id)} runId={selectedId} onClose={() => setMobilePane('detail')} />}</div>
     {showNew && <NewRunDialog onClose={() => setShowNew(false)} onCreated={(run) => { setShowNew(false); void loadRuns(); selectRun(run.run_id); }} />}
     {error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}
   </section>;
@@ -193,44 +199,67 @@ function InterventionHistory({ items }: { items: InterventionSummary[] }) {
   return <details className="intervention-history"><summary>Requests <span>{items.length}</span></summary><div>{items.map((item) => <article key={item.request_id}><header><strong>{item.prompt}</strong><StatusBadge value={item.status} /></header><dl><div><dt>Key</dt><dd>{item.key}</dd></div><div><dt>Response</dt><dd>{item.status === 'answered' ? formatResponse(item.response) : item.status}</dd></div><div><dt>Responded</dt><dd>{item.responded_at ? formatTime(item.responded_at) : '—'}</dd></div></dl></article>)}</div></details>;
 }
 
-function PhaseNodeView({ data, selected }: NodeProps<Node<{ label: string; count: number; current: boolean; declared?: boolean; undeclared?: boolean }>>) {
-  return <div className={`phase-node ${selected ? 'is-selected' : ''} ${data.current ? 'is-current' : ''} ${data.declared ? 'is-declared' : ''} ${data.undeclared ? 'is-undeclared' : ''}`}><Handle type="target" position={Position.Left} /><span>{data.label}</span><small>{data.declared ? 'pending' : `${data.count} occurrence${data.count === 1 ? '' : 's'}`}</small><Handle type="source" position={Position.Right} /></div>;
+function AgentNodeView({ data, selected }: NodeProps<Node<{ label: string; agent_def: string | null; status: string }>>) {
+  const statusClass = data.status === 'running' ? 'is-running' : data.status === 'done' ? 'is-done' : data.status === 'failed' ? 'is-failed' : '';
+  return <div className={`agent-node ${selected ? 'is-selected' : ''} ${statusClass}`}><Handle type="target" position={Position.Left} /><span>{data.label}</span>{data.agent_def && <small>{data.agent_def}</small>}<Handle type="source" position={Position.Right} /></div>;
 }
 
-function PhaseGraph({ detail, selectedPhaseId, onSelect }: { detail: RunDetail; selectedPhaseId: string | null; onSelect: (phaseId: string) => void }) {
-  const nodeTypes = useMemo(() => ({ phase: PhaseNodeView }), []);
-  const phaseToOccurrence = new Map(detail.occurrences.map((item) => [item.phase, item.phase_id]));
-  const declaredTitles = new Set((detail.declared_phases ?? []).map((p) => p.title));
-  const runtimePhases = new Set(detail.graph.nodes.map((n) => n.phase));
-  // Merge: runtime nodes first, then declared phases not yet executed as pending placeholders
-  const mergedNodes: Array<{ phase: string; occurrence_count: number; is_current: boolean; is_declared?: boolean; is_undeclared?: boolean }> = [
-    ...detail.graph.nodes.map((n) => ({ phase: n.phase, occurrence_count: n.occurrence_count, is_current: n.is_current, is_undeclared: declaredTitles.size > 0 && !declaredTitles.has(n.phase) })),
-    ...(detail.declared_phases ?? []).filter((p) => !runtimePhases.has(p.title)).map((p) => ({ phase: p.title, occurrence_count: 0, is_current: false, is_declared: true })),
-  ];
-  const nodes: Node[] = mergedNodes.map((item, index) => ({ id: item.phase, type: 'phase', position: { x: 40 + (index % 4) * 190, y: 54 + Math.floor(index / 4) * 110 }, data: { label: item.phase, count: item.occurrence_count, current: item.is_current, declared: !!item.is_declared, undeclared: !!item.is_undeclared }, selected: phaseToOccurrence.get(item.phase) === selectedPhaseId }));
-  const edges: Edge[] = detail.graph.edges.map((item, index) => ({ id: `${item.from}-${item.to}-${index}`, source: item.from, target: item.to, animated: item.to === detail.current_phase, label: item.count > 1 ? String(item.count) : undefined, className: item.is_backedge ? 'backedge' : '' }));
-  return <section className={`phase-graph ${nodes.length > 4 ? 'is-multiline' : ''}`} aria-label="Phase graph"><SectionHeader title="Phase graph" meta={`${mergedNodes.length} phases`} />{nodes.length ? <div className="flow-canvas" data-testid="phase-flow"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.35} maxZoom={1.5} nodesDraggable={false} onNodeClick={(_, node) => { const occurrences = detail.occurrences.filter((item) => item.phase === node.id); onSelect(occurrences.at(-1)?.phase_id ?? ''); }}><Background color="#292d2c" gap={24} size={1} /><Controls showInteractive={false} /></ReactFlow></div> : <EmptyState title="No phase events" detail="Raw Run events remain available below." />}</section>;
+function AgentGraph({ detail, selectedCallId, onSelect }: { detail: RunDetail; selectedCallId: string | null; onSelect: (callId: string) => void }) {
+  const nodeTypes = useMemo(() => ({ agent: AgentNodeView }), []);
+  const { nodes, edges } = useMemo(() => {
+    const rawNodes: Node[] = (detail.agent_graph?.nodes ?? []).map((item) => ({
+      id: item.id, type: 'agent', position: { x: 0, y: 0 },
+      data: { label: item.label, agent_def: item.agent_def, status: item.status },
+      selected: item.id === selectedCallId,
+    }));
+    const rawEdges: Edge[] = (detail.agent_graph?.edges ?? []).map((item, index) => ({
+      id: `${item.from}-${item.to}-${index}`, source: item.from, target: item.to,
+      animated: item.to === detail.agent_graph?.current,
+      className: item.kind === 'fork' ? 'fork-edge' : item.kind === 'join' ? 'join-edge' : '',
+    }));
+    if (rawNodes.length === 0) return { nodes: [], edges: [] };
+    // Use dagre for DAG layout
+    const g = new dagre.graphlib.Graph();
+    g.setDefaultEdgeLabel(() => ({}));
+    g.setGraph({ rankdir: 'LR', nodesep: 60, ranksep: 120, marginx: 30, marginy: 30 });
+    for (const node of rawNodes) {
+      g.setNode(node.id, { width: 140, height: 50 });
+    }
+    for (const edge of rawEdges) {
+      g.setEdge(edge.source, edge.target);
+    }
+    dagre.layout(g);
+    const positioned = rawNodes.map((node) => {
+      const pos = g.node(node.id);
+      return { ...node, position: { x: pos.x - 70, y: pos.y - 25 } };
+    });
+    return { nodes: positioned, edges: rawEdges };
+  }, [detail.agent_graph, selectedCallId]);
+  return <section className={`phase-graph ${nodes.length > 4 ? 'is-multiline' : ''}`} aria-label="Agent graph"><SectionHeader title="Agent graph" meta={`${nodes.length} calls`} />{nodes.length ? <div className="flow-canvas" data-testid="agent-flow"><ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView minZoom={0.35} maxZoom={1.5} nodesDraggable={false} onNodeClick={(_, node) => onSelect(node.id)}><Background color="#292d2c" gap={24} size={1} /><Controls showInteractive={false} /></ReactFlow></div> : <EmptyState title="No agent calls" detail="Raw Run events remain available below." />}</section>;
 }
 
 function EventTimeline({ events, title }: { events: RunEvent[]; title: string }) {
-  return <ScrollArea className="event-list"><SectionHeader title={title} meta={`${events.length} events`} />{events.length ? events.map((event, index) => <div className="event-row" key={`${event.event_id ?? 'legacy'}-${index}`}><span className="event-marker" /><div className="event-body"><div className="event-meta"><span className="event-type">{eventLabel(event)}</span><time>{formatTime(event.ts)}</time></div><EventContent event={event} /></div></div>) : <span className="muted">No events for this selection</span>}</ScrollArea>;
+  return <ScrollArea className="event-list"><SectionHeader title={title} meta={`${events.length} 个事件`} />{events.length ? events.map((event, index) => <div className="event-row" key={`${event.event_id ?? 'legacy'}-${index}`}><span className="event-marker" /><div className="event-body"><div className="event-meta"><span className="event-type">{eventLabel(event)}</span><time>{formatTime(event.ts)}</time></div><EventContent event={event} /></div></div>) : <span className="muted">No events for this selection</span>}</ScrollArea>;
 }
 
-interface ObservedChange { action: FileChange['action']; size?: number; prev_size?: number; phase_id: string; seq: number }
-interface ChangeTreeFile { name: string; path: string; latest: ObservedChange; byPhase: Record<string, ObservedChange> }
+interface ObservedChange { action: FileChange['action']; size?: number; prev_size?: number; call_id: string; seq: number }
+interface ChangeTreeFile { name: string; path: string; latest: ObservedChange; is_new: boolean }
 interface ChangeTreeDir { label: string; dirs: ChangeTreeDir[]; files: ChangeTreeFile[] }
 
-function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
+function buildChangeTree(records: FileChangeRecord[], selectedCallId: string | null): ChangeTreeDir {
   const files = new Map<string, ChangeTreeFile>();
   for (const record of records) {
+    const isNew = selectedCallId !== null && record.call_id === selectedCallId;
     for (const change of record.changes) {
-      const info: ObservedChange = { action: change.action, size: change.size, prev_size: change.prev_size, phase_id: record.phase_id, seq: record.seq };
+      const info: ObservedChange = { action: change.action, size: change.size, prev_size: change.prev_size, call_id: record.call_id, seq: record.seq };
       const existing = files.get(change.path);
       if (existing) {
-        existing.byPhase[record.phase_id] = info;
-        if (record.seq >= existing.latest.seq) existing.latest = info;
+        if (record.seq >= existing.latest.seq) {
+          existing.latest = info;
+          existing.is_new = isNew;
+        }
       } else {
-        files.set(change.path, { name: change.path.split('/').pop() ?? change.path, path: change.path, latest: info, byPhase: { [record.phase_id]: info } });
+        files.set(change.path, { name: change.path.split('/').pop() ?? change.path, path: change.path, latest: info, is_new: isNew });
       }
     }
   }
@@ -261,21 +290,37 @@ function buildChangeTree(records: FileChangeRecord[]): ChangeTreeDir {
   return convert(root, '');
 }
 
-function FileChangesPanel({ records, selectedPhaseId, runId, onClose }: { records: FileChangeRecord[]; selectedPhaseId: string | null; runId: string; onClose: () => void }) {
-  const totalChanges = records.reduce((sum, record) => sum + record.changes.length, 0);
-  const tree = useMemo(() => buildChangeTree(records), [records]);
+function FileChangesPanel({ records, runId, selectedCallId, callOrder, onClose }: { records: FileChangeRecord[]; runId: string; selectedCallId: string | null; callOrder: string[]; onClose: () => void }) {
+  const cumulative = useMemo(() => {
+    if (!selectedCallId) return records;
+    // Find the max seq among records matching this call
+    const matching = records.filter((r) => r.call_id === selectedCallId);
+    let maxSeq: number;
+    if (matching.length > 0) {
+      maxSeq = Math.max(...matching.map((r) => r.seq));
+    } else {
+      // Call produced no file changes — find the last record from any preceding call
+      const callIdx = callOrder.indexOf(selectedCallId);
+      const precedingIds = new Set(callOrder.slice(0, callIdx + 1));
+      const preceding = records.filter((r) => precedingIds.has(r.call_id));
+      maxSeq = preceding.length > 0 ? Math.max(...preceding.map((r) => r.seq)) : 0;
+    }
+    return records.filter((r) => r.seq <= maxSeq);
+  }, [records, selectedCallId, callOrder]);
+  const deltaCount = selectedCallId ? records.filter((r) => r.call_id === selectedCallId).reduce((sum, r) => sum + r.changes.length, 0) : 0;
+  const totalChanges = cumulative.reduce((sum, record) => sum + record.changes.length, 0);
+  const tree = useMemo(() => buildChangeTree(cumulative, selectedCallId), [cumulative, selectedCallId]);
   const [previewPath, setPreviewPath] = useState<string | null>(null);
-  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} change{totalChanges === 1 ? '' : 's'}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{records.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} selectedPhaseId={selectedPhaseId} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} selectedPhaseId={selectedPhaseId} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
+  return <section className="panel file-changes-panel" data-testid="file-changes-panel" aria-label="File changes"><PanelHeader icon={<FileDiff size={15} />} title="File changes" actions={<><span className="count-badge">{totalChanges} file{totalChanges === 1 ? '' : 's'}{deltaCount > 0 && ` · ${deltaCount} new`}</span><div className="mobile-back"><IconButton label="Close file changes panel" onClick={onClose}><X /></IconButton></div></>} />{cumulative.length === 0 ? <div className="file-changes-empty"><span className="muted">No file changes observed</span></div> : <ScrollArea className="file-changes-tree"><ul className="change-tree">{tree.dirs.map((dir) => <ChangeTreeDirView key={dir.label} dir={dir} depth={0} onPreview={setPreviewPath} />)}{tree.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={0} onPreview={setPreviewPath} />)}</ul></ScrollArea>}{previewPath && <RunFilePreviewDialog runId={runId} path={previewPath} onClose={() => setPreviewPath(null)} />}</section>;
 }
 
-function ChangeTreeDirView({ dir, depth, selectedPhaseId, onPreview }: { dir: ChangeTreeDir; depth: number; selectedPhaseId: string | null; onPreview: (path: string) => void }) {
-  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }}><Folder size={12} /><span>{dir.label}</span></div><ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} selectedPhaseId={selectedPhaseId} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} selectedPhaseId={selectedPhaseId} onPreview={onPreview} />)}</ul></li>;
+function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; depth: number; onPreview: (path: string) => void }) {
+  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }}><Folder size={12} /><span>{dir.label}</span></div><ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} onPreview={onPreview} />)}</ul></li>;
 }
 
-function ChangeTreeFileView({ file, depth, selectedPhaseId, onPreview }: { file: ChangeTreeFile; depth: number; selectedPhaseId: string | null; onPreview: (path: string) => void }) {
-  const inPhase = selectedPhaseId ? file.byPhase[selectedPhaseId] : undefined;
-  const shown = inPhase ?? file.latest;
-  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}${inPhase ? ' is-in-phase' : ''}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
+function ChangeTreeFileView({ file, depth, onPreview }: { file: ChangeTreeFile; depth: number; onPreview: (path: string) => void }) {
+  const shown = file.latest;
+  return <li><button type="button" className={`change-tree-row is-file is-${shown.action}${file.is_new ? ' is-new' : ''}`} style={{ paddingLeft: `${10 + depth * 14}px` }} title={file.path} aria-label={`Preview ${file.path}`} onClick={() => onPreview(file.path)}><span className="file-change-action">{shown.action}</span><span className="change-tree-name">{file.name}</span>{file.is_new && <span className="file-change-badge">new</span>}{shown.size !== undefined && <small>{shown.prev_size !== undefined ? `${shown.prev_size} → ${shown.size}` : shown.size} B</small>}</button></li>;
 }
 
 function RunFilePreviewDialog({ runId, path, onClose }: { runId: string; path: string; onClose: () => void }) {
@@ -293,7 +338,7 @@ function EventContent({ event }: { event: RunEvent }) {
   const payload = eventPayload(event);
   const message = firstString(payload, 'content', 'message', 'text', 'error', 'summary');
   const details = Object.entries(payload).filter(([key]) => !['content', 'message', 'text', 'error', 'summary', 'session'].includes(key));
-  return <>{message && <div className="event-message markdown"><ReactMarkdown>{message}</ReactMarkdown></div>}{!message && event.type === 'phase' && <p className="event-message">Entered {event.phase ?? firstString(payload, 'title') ?? 'phase'}</p>}{!message && event.type === 'agent_start' && <p className="event-message">Agent started</p>}{!message && event.type === 'agent_done' && <p className="event-message">Agent completed</p>}{details.length > 0 && <dl className="event-details">{details.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{formatEventValue(value)}</dd></div>)}</dl>}{!message && details.length === 0 && !['phase', 'agent_start', 'agent_done'].includes(event.type) && <p className="event-message muted">Event recorded</p>}</>;
+  return <>{message && <div className="event-message markdown"><ReactMarkdown>{message}</ReactMarkdown></div>}{!message && event.type === 'agent_start' && <p className="event-message">Agent started</p>}{!message && event.type === 'agent_done' && <p className="event-message">Agent completed</p>}{details.length > 0 && <dl className="event-details">{details.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{formatEventValue(value)}</dd></div>)}</dl>}{!message && details.length === 0 && !['agent_start', 'agent_done'].includes(event.type) && <p className="event-message muted">Event recorded</p>}</>;
 }
 
 interface ArgEntry { key: string; value: string; required?: boolean }
@@ -309,6 +354,43 @@ function declaredEntries(items: LoopSummary[], name: string): ArgEntry[] {
     : [{ key: '', value: '' }];
 }
 
+function DirectoryPickerModal({ onSelect, onClose }: { onSelect: (path: string) => void; onClose: () => void }) {
+  const [listing, setListing] = useState<DirectoryListing | null>(null);
+  const [pathInput, setPathInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = (p?: string) => {
+    setLoading(true);
+    setError(null);
+    api.listDirectory(p).then((result) => { setListing(result); setPathInput(result.path); }).catch((cause) => setError(messageOf(cause))).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+  const navigate = (p: string) => { if (p) load(p); };
+  const submitPath = () => { if (pathInput.trim()) load(pathInput.trim()); };
+  const select = () => { if (listing) onSelect(listing.path); };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog dir-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="dir-picker-title">
+    <header><div><span className="eyebrow">Browse</span><h2 id="dir-picker-title">Select Directory</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header>
+    <div className="dir-picker-path-bar">
+      <input aria-label="Current path" value={pathInput} onChange={(event) => setPathInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submitPath()} placeholder="/absolute/path" spellCheck={false} />
+      <button type="button" className="secondary-button" onClick={submitPath} disabled={loading}>Go</button>
+    </div>
+    <div className="dir-picker-list">
+      {listing?.parent && <button type="button" className="dir-picker-entry dir-picker-parent" onClick={() => listing.parent && navigate(listing.parent)} disabled={loading}><span>..</span><span className="dir-picker-meta">parent</span></button>}
+      {loading && <div className="dir-picker-empty">Loading…</div>}
+      {!loading && listing?.entries.length === 0 && <div className="dir-picker-empty">No subdirectories</div>}
+      {!loading && listing?.entries.map((entry) => <button type="button" key={entry.path} className="dir-picker-entry" onClick={() => navigate(entry.path)}><Folder size={14} /><span>{entry.name}</span></button>)}
+      {error && <div className="dir-picker-empty dir-picker-error">{error}</div>}
+    </div>
+    <footer>
+      <span className="dir-picker-current">{listing?.path}</span>
+      <button className="secondary-button" onClick={onClose}>Cancel</button>
+      <button className="primary-button" onClick={select} disabled={!listing || loading}><Check size={14} />Select</button>
+    </footer>
+  </div></div>;
+}
+
 function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (run: RunSummary) => void }) {
   const [loops, setLoops] = useState<LoopSummary[]>([]);
   const [loop, setLoop] = useState('');
@@ -316,8 +398,7 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [entries, setEntries] = useState<ArgEntry[]>([{ key: '', value: '' }]);
   const [args, setArgs] = useState('{}');
   const [workdir, setWorkdir] = useState('');
-  const [browseSupported, setBrowseSupported] = useState(true);
-  const [browsing, setBrowsing] = useState(false);
+  const [showDirPicker, setShowDirPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     void api.loops().then((page) => {
@@ -328,17 +409,6 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
     });
   }, []);
   const selectLoop = (name: string) => { setLoop(name); setEntries(declaredEntries(loops, name)); };
-  const browse = async () => {
-    setBrowsing(true);
-    setError(null);
-    try {
-      const result = await api.pickDirectory();
-      if (!result.cancelled && result.path) setWorkdir(result.path);
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'not_supported') setBrowseSupported(false);
-      else setError(messageOf(cause));
-    } finally { setBrowsing(false); }
-  };
   const submit = async () => {
     try {
       let parsed: unknown;
@@ -358,7 +428,7 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
       onCreated(await api.createRun(body));
     } catch (cause) { setError(messageOf(cause)); }
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} />{browseSupported && <button type="button" className="secondary-button" disabled={browsing} onClick={() => void browse()}><Folder size={14} />{browsing ? 'Browsing…' : 'Browse…'}</button>}</div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} /><button type="button" className="secondary-button" onClick={() => setShowDirPicker(true)}><Folder size={14} />Browse…</button></div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div>{showDirPicker && <DirectoryPickerModal onSelect={(p) => { setWorkdir(p); setShowDirPicker(false); }} onClose={() => setShowDirPicker(false)} />}</div>;
 }
 
 function LoopsWorkspace() {
@@ -399,7 +469,15 @@ function LoopsWorkspace() {
     if (next === 'workflow') setFile(detail?.files.find((item) => item.path === 'workflow.py')?.path ?? 'workflow.py');
     if (next === 'agents') setFile(detail?.agents[0]?.path ?? '');
   };
-  return <section className={`workspace loops-workspace ${mobileList ? 'show-list' : 'show-detail'}`} data-testid="loops-workspace"><aside className="panel loop-list-panel"><PanelHeader icon={<GitBranch size={15} />} title="Loops" /><ScrollArea className="loop-list">{loops.map((loop) => <button key={loop.name} className={selected === loop.name ? 'is-selected' : ''} onClick={() => setSelected(loop.name)}><span><strong>{loop.name}</strong><small>{loop.description || 'No description'}</small></span><span className="loop-count">{loop.agent_count}</span>{!loop.valid && <StatusBadge value="failed" />}</button>)}</ScrollArea></aside><section className="panel loop-detail-panel">{detail ? <><header className="loop-definition-header"><div className="mobile-back"><IconButton label="Back to Loops" onClick={() => setMobileList(true)}><ArrowLeft /></IconButton></div><div className="loop-identity"><span className="eyebrow">Loop definition</span><h2 className="panel-title">{detail.name}</h2><p>{detail.description || 'No description'}</p></div><span className="muted">{detail.agents.length} Agents</span></header><nav className="loop-tabs" aria-label="Loop definition sections"><button aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => selectTab('overview')}>Overview</button><button aria-current={tab === 'workflow' ? 'page' : undefined} onClick={() => selectTab('workflow')}>Workflow</button><button aria-current={tab === 'agents' ? 'page' : undefined} onClick={() => selectTab('agents')}>Agents <span>{detail.agents.length}</span></button></nav><ScrollArea className="loop-content">{tab === 'overview' && <article className="definition-document markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article>}{tab === 'workflow' && <article className="definition-code"><header><span>workflow.py</span><span>Read only</span></header><pre className="code-preview scroll-area">{content}</pre></article>}{tab === 'agents' && (detail.agents.length ? <div className="agents-workspace"><div className="agent-grid">{detail.agents.map((agent) => <button key={agent.path} className={file === agent.path ? 'is-selected' : ''} onClick={() => setFile(agent.path)}><Bot size={16} /><span><strong>{agent.name}</strong><small>{agent.description || agent.path}</small></span><ChevronRight size={15} /></button>)}</div><article className="agent-definition markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article></div> : <EmptyState title="0 Agents" detail="This Loop has no Agent definitions." />)}</ScrollArea></> : <EmptyState title="No Loop selected" detail="Select a declaration from the list." />}</section>{error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}</section>;
+  const unpause = async () => {
+    if (!selected) return;
+    try {
+      setDetail(await api.unpauseLoop(selected));
+      const page = await api.loops();
+      setLoops(page.items);
+    } catch (cause) { setError(messageOf(cause)); }
+  };
+  return <section className={`workspace loops-workspace ${mobileList ? 'show-list' : 'show-detail'}`} data-testid="loops-workspace"><aside className="panel loop-list-panel"><PanelHeader icon={<GitBranch size={15} />} title="Loops" /><ScrollArea className="loop-list">{loops.map((loop) => <button key={loop.name} className={selected === loop.name ? 'is-selected' : ''} onClick={() => setSelected(loop.name)}><span><strong>{loop.name}</strong><small>{loop.description || 'No description'}</small></span><span className="loop-count">{loop.agent_count}</span>{(loop.consecutive_failures ?? 0) > 0 && <small className="streak-badge">streak ×{loop.consecutive_failures}</small>}{loop.paused && <StatusBadge value="paused" />}{!loop.valid && <StatusBadge value="failed" />}</button>)}</ScrollArea></aside><section className="panel loop-detail-panel">{detail ? <><header className="loop-definition-header"><div className="mobile-back"><IconButton label="Back to Loops" onClick={() => setMobileList(true)}><ArrowLeft /></IconButton></div><div className="loop-identity"><span className="eyebrow">Loop definition</span><h2 className="panel-title">{detail.name}</h2><p>{detail.description || 'No description'}</p></div><span className="muted">{detail.agents.length} Agents</span>{(detail.consecutive_failures ?? 0) > 0 && <span className="muted streak-note">failure streak ×{detail.consecutive_failures}</span>}{detail.paused && <span className="loop-paused"><StatusBadge value="paused" /><span className="paused-reason">{detail.paused_reason}</span><button aria-label="Unpause loop" className="secondary-button" onClick={() => void unpause()}><Play size={14} />Unpause</button></span>}</header><nav className="loop-tabs" aria-label="Loop definition sections"><button aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => selectTab('overview')}>Overview</button><button aria-current={tab === 'workflow' ? 'page' : undefined} onClick={() => selectTab('workflow')}>Workflow</button><button aria-current={tab === 'agents' ? 'page' : undefined} onClick={() => selectTab('agents')}>Agents <span>{detail.agents.length}</span></button></nav><ScrollArea className="loop-content">{tab === 'overview' && <article className="definition-document markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article>}{tab === 'workflow' && <article className="definition-code"><header><span>workflow.py</span><span>Read only</span></header><pre className="code-preview scroll-area">{content}</pre></article>}{tab === 'agents' && (detail.agents.length ? <div className="agents-workspace"><div className="agent-grid">{detail.agents.map((agent) => <button key={agent.path} className={file === agent.path ? 'is-selected' : ''} onClick={() => setFile(agent.path)}><Bot size={16} /><span><strong>{agent.name}</strong><small>{agent.description || agent.path}</small></span><ChevronRight size={15} /></button>)}</div><article className="agent-definition markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article></div> : <EmptyState title="0 Agents" detail="This Loop has no Agent definitions." />)}</ScrollArea></> : <EmptyState title="No Loop selected" detail="Select a declaration from the list." />}</section>{error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}</section>;
 }
 
 function BackendsWorkspace() {
@@ -452,13 +530,14 @@ function BackendsWorkspace() {
 }
 
 function formatDuration(ms: number | null) { if (ms === null) return '—'; if (ms < 1000) return `${ms} ms`; const seconds = Math.round(ms / 1000); return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`; }
+function graceLabel(run: RunSummary) { const remaining = run.stale_grace_remaining_seconds; if (run.status !== 'stale' || remaining === null || remaining === undefined || remaining <= 0) return null; const hours = Math.floor(remaining / 3600); const minutes = Math.floor((remaining % 3600) / 60); return `Unreachable (grace period) · ${hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`} left`; }
 function formatTime(value: unknown) { if (typeof value !== 'string') return ''; const date = new Date(value); return Number.isNaN(date.valueOf()) ? value : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
 function formatResponse(value: unknown) { return typeof value === 'string' ? value : value === undefined ? '—' : value === null ? 'null' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
 function interventionOptions(item: InterventionSummary) { if (item.options?.length) return item.options; return item.schema?.type === 'boolean' ? ['true', 'false'] : []; }
 function defaultResponse(item: InterventionSummary) { const options = interventionOptions(item); return item.allow_custom === false && options.length === 1 ? options[0] : ''; }
-function eventPayload(event: RunEvent): Record<string, unknown> { return event.payload ?? Object.fromEntries(Object.entries(event).filter(([key]) => !['version', 'event_id', 'type', 'ts', 'run_id', 'phase', 'phase_id', 'call_id'].includes(key))); }
+function eventPayload(event: RunEvent): Record<string, unknown> { return event.payload ?? Object.fromEntries(Object.entries(event).filter(([key]) => !['version', 'event_id', 'type', 'ts', 'run_id', 'call_id'].includes(key))); }
 function firstString(value: Record<string, unknown>, ...keys: string[]) { for (const key of keys) if (typeof value[key] === 'string' && value[key]) return value[key] as string; return null; }
-function eventLabel(event: RunEvent) { return (({ phase: 'Phase entered', agent_start: 'Agent started', agent_message: 'Agent message', agent_message_chunk: 'Agent message', agent_done: 'Agent completed', log: 'Log', error: 'Error' } as Record<string, string>)[event.type] ?? event.type.replaceAll('_', ' ')) || 'Malformed event'; }
+function eventLabel(event: RunEvent) { return (({ agent_start: 'Agent started', agent_message: 'Agent message', agent_message_chunk: 'Agent message', agent_done: 'Agent completed', log: 'Log', error: 'Error' } as Record<string, string>)[event.type] ?? event.type.replaceAll('_', ' ')) || 'Malformed event'; }
 function formatEventValue(value: unknown) { return typeof value === 'string' ? value : value === null ? '—' : typeof value === 'object' ? JSON.stringify(value) : String(value); }
 function stripFrontmatter(value: string) { return value.replace(/^---\s*\r?\n[\s\S]*?\r?\n---\s*\r?\n?/, ''); }
 function messageOf(cause: unknown) { return cause instanceof ApiError ? `${cause.code}: ${cause.message}` : cause instanceof Error ? cause.message : 'Unexpected error'; }

@@ -1,4 +1,4 @@
-import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunFileContent, RunSummary, SystemMeta } from './types';
+import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunFileContent, RunSummary, SystemMeta, DirectoryListing } from './types';
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public status: number, public details: Record<string, unknown> = {}) {
@@ -29,11 +29,14 @@ export const api = {
   loops: () => request<Page<LoopSummary>>('/loops'),
   loop: (name: string) => request<LoopDetail>(`/loops/${encodeURIComponent(name)}`),
   loopFile: (name: string, path: string) => request<{ content: string; media_type: string; size: number }>(`/loops/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`),
+  unpauseLoop: (name: string) => request<LoopDetail>(`/loops/${encodeURIComponent(name)}/unpause`, { method: 'POST' }),
   backends: () => request<{ items: Backend[] }>('/backends'),
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),
   fileChanges: (id: string) => request<{ items: FileChangeRecord[]; count: number }>(`/runs/${encodeURIComponent(id)}/file-changes`),
   runFile: (id: string, path: string) => request<RunFileContent>(`/runs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
+  /** @deprecated ADR-0053 — use listDirectory() instead */
   pickDirectory: () => request<{ path: string | null; cancelled: boolean }>('/system/pick-directory', { method: 'POST' }),
+  listDirectory: (path?: string) => request<DirectoryListing>(`/system/list-directory${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   systemMeta: () => request<SystemMeta>('/system/meta'),
 };
 

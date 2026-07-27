@@ -7,7 +7,10 @@ import sys
 from pathlib import Path
 from typing import Callable
 
-from loopflow.infrastructure.queue import list_queue, dequeue, queue_size
+from loopflow.infrastructure import loop_state
+from loopflow.infrastructure.queue import (
+    list_queue, dequeue, queue_size, mark_status, effective_status,
+)
 from loopflow.infrastructure.lock import acquire_resources, release_resources
 
 
@@ -18,13 +21,18 @@ def dispatch(run_func: Callable[[str, dict], None] | None = None) -> dict:
         run_func: Optional callable(loop_name, args) to execute a loop.
                   Defaults to _run_loop_subprocess. Injected for testing.
 
-    Returns a summary dict with keys: processed, skipped, errors.
+    Returns a summary dict with keys: processed, skipped, deferred,
+    superseded, errors. Superseded tasks are skipped and cleaned up; tasks
+    whose resources are locked are marked deferred and stay in the queue
+    (ADR-0047). Neither counts as an error. The legacy ``skipped`` key is
+    kept at 0 for backward compatibility.
     Each call is idempotent — safe to call repeatedly via cron/launchd.
     """
     if run_func is None:
         run_func = _run_loop_subprocess
 
-    summary = {"processed": 0, "skipped": 0, "errors": 0}
+    summary = {"processed": 0, "skipped": 0, "errors": 0,
+               "deferred": 0, "superseded": 0}
 
     if queue_size() == 0:
         return summary
@@ -36,13 +44,29 @@ def dispatch(run_func: Callable[[str, dict], None] | None = None) -> dict:
         resources = entry.get("resources", {})
         task_args = entry.get("args", {})
 
+        # Superseded tasks are skipped and cleaned up (ADR-0047 §3)
+        if effective_status(entry) == "superseded":
+            dequeue(path)
+            summary["superseded"] += 1
+            continue
+
+        # Circuit breaker (ADR-0045 §3 / BR-050): a paused loop's tasks are
+        # marked deferred and stay in the queue; they do not count as errors.
+        state = loop_state.load(loop_name)
+        if state["paused"]:
+            reason = state["paused_reason"] or "paused"
+            mark_status(path, "deferred", reason=f"loop paused: {reason}")
+            summary["deferred"] += 1
+            continue
+
         # Try to acquire all resource locks
         locks = []
         try:
             if resources:
                 locks = acquire_resources(resources)
-        except RuntimeError:
-            summary["skipped"] += 1
+        except RuntimeError as exc:
+            mark_status(path, "deferred", reason=str(exc))
+            summary["deferred"] += 1
             continue
 
         # Remove from queue and execute

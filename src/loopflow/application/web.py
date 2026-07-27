@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -11,6 +12,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from loopflow import __version__
+from loopflow.infrastructure import loop_state
 from loopflow.infrastructure.web_resources import BackendRepository, LoopRepository, QueueRepository
 from loopflow.infrastructure.web_events import project_events, replay_file_changes, replay_v2
 from loopflow.infrastructure.intervention import (
@@ -82,7 +84,7 @@ class WebApplication:
         return self.runs.read_detail(self._run_dir(run_id))
 
     def create_run(self, body: dict[str, Any]) -> dict[str, Any]:
-        _fields(body, {"loop", "args", "backend", "model", "mock", "from_phase", "only_phase", "working_directory"})
+        _fields(body, {"loop", "args", "backend", "model", "mock", "working_directory"})
         loop = body.get("loop")
         if not isinstance(loop, str) or not loop:
             raise ApplicationError("validation_failed", "loop must be a non-empty string")
@@ -115,11 +117,6 @@ class WebApplication:
                     {"reason": "not_a_directory"},
                 )
         options = self._execution_options(body)
-        only_phase, from_phase = options.get("only_phase"), options.get("from_phase")
-        if only_phase is not None and from_phase not in (None, only_phase):
-            raise ApplicationError("validation_failed", "only_phase conflicts with from_phase")
-        if only_phase is not None:
-            options["from_phase"] = only_phase
         if self.executor is None:
             raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
         run_id = self.executor.start(loop, args, options, working_directory=working_directory)
@@ -329,6 +326,14 @@ class WebApplication:
             raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
         return self.loops.detail(loop_dir)
 
+    def unpause_loop(self, name: str) -> dict[str, Any]:
+        """Manual circuit-breaker release (BR-051): clear paused and the streak."""
+        loop_dir = self.loops.find(name)
+        if loop_dir is None:
+            raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
+        loop_state.unpause(name)
+        return self.loops.detail(loop_dir)
+
     def preview_loop_file(self, name: str, relative: str) -> dict[str, Any]:
         loop_dir = self.loops.find(name)
         if loop_dir is None:
@@ -373,7 +378,10 @@ class WebApplication:
         return {"version": __version__}
 
     def pick_directory(self) -> dict[str, Any]:
-        """Launch the OS-native folder picker on the server machine (ADR-0042).
+        """[Deprecated: ADR-0053] Launch the OS-native folder picker on the server machine (ADR-0042).
+
+        Superseded by ``list_directory()`` + Web modal picker. Retained for backward
+        compatibility — the frontend no longer calls this endpoint.
 
         macOS only: osascript `choose folder`. A user cancel (exit -128) or a
         timeout is reported as {"path": None, "cancelled": True}; other
@@ -396,6 +404,30 @@ class WebApplication:
             return {"path": None, "cancelled": True}
         path = result.stdout.strip().rstrip("/") or "/"
         return {"path": path, "cancelled": False}
+
+    def list_directory(self, path: str | None = None) -> dict[str, Any]:
+        """List subdirectories of a path for the WebUI directory picker (ADR-0053).
+
+        Cross-platform: uses os.scandir. Validates absolute + exists + is_dir.
+        Returns only directories (not files). Hidden dirs included.
+        """
+        target = Path(path) if path else Path.cwd()
+        if not target.is_absolute():
+            raise ApplicationError("validation_failed", "Path must be absolute", {"reason": "not_absolute"})
+        if not target.exists():
+            raise ApplicationError("file_not_found", f"Path not found: {target}")
+        if not target.is_dir():
+            raise ApplicationError("validation_failed", "Path is not a directory", {"reason": "not_a_directory"})
+        entries = []
+        try:
+            scanned = sorted(os.scandir(target), key=lambda e: e.name)
+        except PermissionError:
+            scanned = []
+        for entry in scanned:
+            if entry.is_dir(follow_symlinks=False):
+                entries.append({"name": entry.name, "path": str(entry.path)})
+        parent = str(target.parent) if target.parent != target else None
+        return {"path": str(target), "parent": parent, "entries": entries}
 
     def diagnose_backend(self, name: str, timeout_ms: int) -> dict[str, Any]:
         if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 100 <= timeout_ms <= 30000:
@@ -540,7 +572,7 @@ class WebApplication:
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
         # working_directory is validated and consumed by create_run itself
-        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args", "working_directory"}
+        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "loop", "args", "working_directory"}
         _fields(body, allowed)
         backend = body.get("backend")
         if backend is not None and (not isinstance(backend, str) or self.allowed_backends and backend not in self.allowed_backends):
@@ -551,10 +583,7 @@ class WebApplication:
         mock = body.get("mock")
         if mock not in (None, "bash", "auto"):
             raise ApplicationError("validation_failed", "mock must be bash, auto, or null")
-        for key in ("from_phase", "only_phase"):
-            if key in body and body[key] is not None and (not isinstance(body[key], str) or not body[key]):
-                raise ApplicationError("validation_failed", f"{key} must be non-empty or null")
-        return {key: body.get(key) for key in ("backend", "model", "mock", "from_phase", "only_phase") if key in body}
+        return {key: body.get(key) for key in ("backend", "model", "mock") if key in body}
 
 
 def _fields(body: dict[str, Any], allowed: set[str]) -> None:
