@@ -176,3 +176,32 @@ def test_fork_with_no_preceding_agent_has_no_fork_edges(tmp_path):
 
     assert _pairs(proj, "fork") == set()
     assert _pairs(proj, "join") == {("B", "D"), ("C", "D")}
+
+
+def test_back_to_back_join_edges_present_before_fork_end(tmp_path):
+    """Live-run fix: when fork_end hasn't been written yet, join edges from
+    the previous fork's children to the current fork's children are already
+    present (emitted in agent_start, not deferred to fork_end)."""
+    writer = EventWriter()
+    run = tmp_path / "run"
+    # A → parallel(B, C) → fork_start → agent_start(D) ← fork_end not yet written
+    writer.append(run, "agent_start", run_id="r", call_id="A", payload={"label": "a"})
+    writer.append(run, "agent_done", run_id="r", call_id="A", payload={"exit_code": 0})
+    writer.append(run, "fork_start", run_id="r", call_id="A")
+    writer.append(run, "agent_start", run_id="r", call_id="B", payload={"label": "b"})
+    writer.append(run, "agent_done", run_id="r", call_id="B", payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="r", call_id="C", payload={"label": "c"})
+    writer.append(run, "agent_done", run_id="r", call_id="C", payload={"exit_code": 0})
+    writer.append(run, "fork_end", run_id="r", call_id="A")
+    writer.append(run, "fork_start", run_id="r", call_id="C")
+    writer.append(run, "agent_start", run_id="r", call_id="D", payload={"label": "d"})
+    # No agent_done(D), no fork_end — live run in progress
+
+    proj = project_events(run / "events.jsonl")
+
+    # Fork edges from first fork: A → B, A → C
+    assert _pairs(proj, "fork") == {("A", "B"), ("A", "C")}
+    # Join edges already present (emitted in agent_start, not deferred to fork_end)
+    assert _pairs(proj, "join") == {("B", "D"), ("C", "D")}
+    # Node D exists
+    assert any(n["id"] == "D" for n in proj.agent_graph["nodes"])
