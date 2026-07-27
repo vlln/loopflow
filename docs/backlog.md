@@ -34,3 +34,5 @@
 | BL-026 | WebUI/API 默认工作目录隔离 | `BackgroundRunExecutor.start()` 在 `working_directory` 未提供时 fallback 到 `Path.cwd()`（server cwd，通常为项目根），导致 file observer 误捕获外部进程的文件变更。CLI 已有 `--work-dir ""` 隔离模式（BL-020），WebUI/API 路径缺少等价机制。修复：未提供时默认创建 `run_dir/work` 隔离目录，与 CLI `--work-dir ""` 对齐 | deep-research run bf862b1d 实测 2026-07-27 | done | 0097 |
 | BL-027 | SSE stream 结束后 detail 不刷新 | run 结束（done/failed）后 SSE `stream_end` 只设 `streamState`，不重新拉取 `detail`，导致 UI 卡在 running 状态、error_banner 不显示 error_summary。秒败的 run 尤为明显 | deep-research run 实测 2026-07-27 | done | 0099 |
 | BL-028 | agent graph live-run join 边缺失 | `project_events()` back-to-back join 边只在 fork_end 生成，live run 期间 verifier 节点出现但无边连接 researcher，独立平铺在画布中 | deep-research run 实测 2026-07-27 | done | 0098 |
+| BL-029 | Loops 页面切换延迟 | `read_summary()` 中 `project_events()` 死代码导致每次切 loop 全量解析所有 run 的 events.jsonl；`detail()` 重复读 frontmatter；`rglob` 无隐藏目录过滤 | 用户报告 2026-07-27 | done | 0096 |
+| BL-030 | reconcile 宽限期阻止逻辑移除 | 宽限期阻止已确认死亡的进程被清理，无安全收益；频繁重启 server 导致 stale run 永远无法清理（ADR-0046 修订） | 用户报告 2026-07-27 | done | 0096 |

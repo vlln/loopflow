@@ -145,7 +145,8 @@ def test_run_lifecycle_commands_preserve_contract(api):
     assert conflict.status == 409 and conflict.json()["error"]["code"] == "invalid_run_transition"
 
 
-def test_ac029_b1_reconcile_within_grace_returns_run_in_grace(api):
+def test_ac029_b1_reconcile_within_grace_succeeds(api):
+    """ADR-0046 updated: grace period no longer blocks reconcile — process is confirmed dead, clean up immediately."""
     client, factory, _ = api
     stale = factory.create_run(
         "stale-grace",
@@ -154,12 +155,13 @@ def test_ac029_b1_reconcile_within_grace_returns_run_in_grace(api):
         process_started_at="gone",
         stale_since=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
     )
-    before = (stale / "run.json").read_bytes()
 
     response = client.request("POST", "/api/v1/runs/stale-grace/reconcile")
 
-    assert response.status == 409 and response.json()["error"]["code"] == "run_in_grace"
-    assert (stale / "run.json").read_bytes() == before
+    assert response.status == 200 and response.json()["status"] == "failed"
+    metadata = json.loads((stale / "run.json").read_text())
+    assert "stale_since" not in metadata and "pid" not in metadata
+    assert metadata["error_summary"] and metadata["finished_at"]
 
 
 def test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since(api):

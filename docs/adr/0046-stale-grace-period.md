@@ -20,7 +20,9 @@ created: 2026-07-25T00:00:00Z
 
 ### 2. 宽限期与 reconcile 语义
 
-宽限期默认 24h（覆盖隔夜睡眠）。宽限期内显式 reconcile 返回 409 `run_in_grace`（新错误码）；期满后按 BR-032 既有流程转 failed。
+> 2026-07-27 修订：移除宽限期对 reconcile 的阻止。reconcile 在检查进程是否存活后（`_identity_matches`），如果进程已确认死亡，直接清理为 `failed`，不再等待宽限期过期。`stale_since` 仍记录并供 UI 显示，但不再阻塞 reconcile。原因：reconcile 本身已做进程探活——如果进程活着返回 `process_alive` 不做破坏性操作，如果死了直接清理是正确行为。宽限期阻止一个已确认死亡的 run 被清理没有安全收益，反而在频繁重启 server 的场景下导致 stale run 永远无法清理。
+
+宽限期默认 24h（覆盖隔夜睡眠）。`stale_since` 记录宽限期起点，供 UI 呈现剩余时间。reconcile 不再被宽限期阻止——进程探活已确认死亡即立即清理。
 
 ### 3. worker 恢复优先
 
@@ -42,7 +44,7 @@ created: 2026-07-25T00:00:00Z
 - BR-052（对 BR-032 的补充约束，BR-032 原文不变）；由 AC-029 验收
 - `web_storage.py` 的 `read_summary` 从纯读操作变为**首次 stale 时写 `stale_since`**，原子写复用 BR-031 既有机制
 - legacy run 无 `stale_since`，按首次判定 stale 时记录，自然进入宽限期
-- reconcile 调用方需处理新错误码 409 `run_in_grace`
+- reconcile 调用方不再需要处理 `run_in_grace` 错误码（保留在错误映射表中向后兼容，但不再触发）
 
 ## Architecture Boundary
 
