@@ -359,9 +359,6 @@ class RunRepository:
             # First stale detection happens on the reconcile path: record the
             # timestamp, the grace period starts now (BR-052 / ADR-0046 §2)
             stale_since = self._record_stale_since(run_dir, metadata)
-        remaining = stale_grace_remaining(stale_since)
-        if remaining is None or remaining > 0:
-            raise ValueError("run_in_grace")
         finished = now_iso()
         metadata.update(
             {

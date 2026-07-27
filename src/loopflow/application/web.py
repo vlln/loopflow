@@ -309,10 +309,6 @@ class WebApplication:
             raise ApplicationError("run_not_stale", f"Run '{run_id}' is not stale")
         try:
             return self.runs.reconcile(run_dir)
-        except ValueError as error:
-            if str(error) == "run_in_grace":
-                raise ApplicationError("run_in_grace", f"Run '{run_id}' is within the stale grace period") from error
-            raise
         except RuntimeError as error:
             raise ApplicationError("process_alive", f"Run '{run_id}' process is alive") from error
 
