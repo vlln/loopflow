@@ -19,6 +19,7 @@ created: 2026-07-27T12:30:00Z
 修复方向：
 - `json.loads` 成功后补 schema 校验
 - 校验失败时先尝试类型兜底（string→number/bool、number→string 等可兼容转换）
+- 兜底后的值必须通过 `validate_json` 二次校验才接受
 - 兜底失败后 retry hint 汇总所有检测到的错误（字段路径、期望类型、实际值、兜底尝试结果）
 
 ## 步骤
@@ -29,29 +30,34 @@ created: 2026-07-27T12:30:00Z
    def coerce_json(obj: dict, schema: dict) -> tuple[dict | None, list[str]]:
        """尝试将 obj 中的值做兼容类型转换以满足 schema。
 
-       返回 (coerced_obj | None, errors)。errors 记录所有尝试过的转换
-       （即使成功也记录，供 retry hint 汇总）。
+       返回 (coerced_obj | None, errors)。
+       - coerced_obj 非 None = 类型转换已应用（但不含值约束检查，调用方必须 re-validate）
+       - coerced_obj 为 None = 存在无法兼容转换的字段
+       - errors 记录所有尝试过的转换（成功和失败均记录，供 retry hint 汇总）
        """
    ```
 
    兜底规则（仅做安全兼容转换，不做语义猜测）：
 
    | Schema 期望 | 实际值 | 兜底动作 | 示例 |
-  -------------|--------|---------|------|
-   | `number`/`integer` | string 可 parse | `float(s)` / `int(s)` | `"95"` → `95` |
+   |-------------|--------|---------|------|
+   | `number` | string 可 `float()` | `float(s)` | `"95"` → `95.0` |
+   | `integer` | string 可 `int()` 且无小数点 | `int(s)` | `"95"` → `95`；`"95.5"` → 失败 |
    | `boolean` | string `"true"`/`"false"` | `True` / `False` | `"true"` → `True` |
    | `string` | number/bool | `str(v)` | `95` → `"95"` |
-   | `array` of T | 单个非 array 值 | `[v]`（仅当 schema min_items=1） | `"a"` → `["a"]` |
-   | `enum` | string 大小写不同 | 匹配 enum 值 | `"pass"` → `"PASS"` |
+   | `array` of T | 单个非 array 值 | `[v]`（仅当 schema `min_items` 未限制为 >1） | `"a"` → `["a"]` |
+   | `enum` | string 大小写不同 | 精确匹配 enum 值（若唯一匹配；多匹配则失败） | `"pass"` → `"PASS"` |
 
    **不做**的转换：类型完全不同且无兼容路径（如 object → string）、值超出范围、结构不匹配（缺 required 字段、多余字段不裁剪）。
+
+   **不递归**：兜底只处理顶层字段。如果 schema 有嵌套 object/array of objects，嵌套层不做类型转换。理由：递归兜底复杂度高且误转换风险大；agent 如果嵌套结构都不对，靠兜底修不了。
 
 2. **`domain/marshalling.py` — `extract_json()`/`validate_json()` 返回错误详情**
 
    - `validate_json(obj, schema)` 返回 `(bool, str | None)` — 失败时携带 `jsonschema.ValidationError` 的 `absolute_path` + `expected` + `found`。
    - `extract_json(text, schema)` 返回 `(dict | None, str | None)` — 失败时携带校验错误信息。
 
-3. **`application/runner.py:446-451` — `json.loads` 成功后补 schema 校验 + 兜底**
+3. **`application/runner.py:446-451` — `json.loads` 成功后补 schema 校验 + 兜底 + 二次校验**
 
    ```python
    try:
@@ -62,8 +68,19 @@ created: 2026-07-27T12:30:00Z
            # 2. 校验失败 → 尝试兜底
            coerced, coercion_errors = coerce_json(result, schema)
            if coerced is not None:
-               # 兜底成功 → 接受
-               result = coerced
+               # 3. 兜底成功 → 二次校验（值约束：maximum/minimum/pattern 等）
+               re_valid, re_error = validate_json(coerced, schema)
+               if re_valid:
+                   result = coerced
+               else:
+                   # 类型修了但值约束仍不满足 → 记录错误，走 retry
+                   last_errors = [val_error] + coercion_errors + [re_error]
+                   if attempt >= max_retries:
+                       raise AgentError(
+                           f"Schema validation failed after {max_retries} retries. "
+                           f"Last errors: {'; '.join(last_errors)}"
+                       )
+                   continue  # retry with aggregated hint
            else:
                # 兜底也失败 → 记录所有错误，走 retry
                last_errors = [val_error] + coercion_errors
@@ -78,10 +95,8 @@ created: 2026-07-27T12:30:00Z
    except json.JSONDecodeError:
        extracted, extract_error = extract_json(text, schema)
        if extracted is not None:
-           # extract_json 内部已做 validate_json，extracted 是通过校验的
            self._write_cache(...)
            return extracted, backend_sid
-       # extract 也失败 → 走 retry
        last_errors = [extract_error or "JSON extraction failed"]
        if attempt >= max_retries:
            raise AgentError(f"... {last_errors[-1]}")
@@ -109,8 +124,9 @@ created: 2026-07-27T12:30:00Z
 6. **测试**
 
    - 单元测试：`coerce_json` 各转换规则（string→number、string→bool、number→string、enum case、array wrap）
-   - 单元测试：`coerce_json` 不做的转换（object→string、缺 required 字段）
-   - 单元测试：mock agent 返回纯 JSON `{"score":"95"}`（schema 要求 number），验证兜底成功，不触发 retry
+   - 单元测试：`coerce_json` 不做的转换（object→string、缺 required 字段、`"95.5"` → integer 失败、enum 多匹配失败）
+   - 单元测试：兜底后值约束仍不满足（schema `maximum:10`，值 `"95"` → coerce 成 `95` → re-validate 失败 → retry）
+   - 单元测试：mock agent 返回纯 JSON `{"score":"95"}`（schema 要求 number，无值约束），验证兜底 + 二次校验成功，不触发 retry
    - 单元测试：mock agent 返回 `{"verdict":"pass"}`（schema enum 要求大写），验证兜底成功
    - 单元测试：mock agent 返回 `{"score":"abc"}`（非数字字符串），验证兜底失败，retry hint 包含字段路径和兜底失败原因
    - 单元测试：mock agent 返回非纯 JSON（文字包裹），`extract_json` 提取后 schema 校验，retry hint 包含详情
@@ -120,25 +136,31 @@ created: 2026-07-27T12:30:00Z
 
 ## AC 覆盖
 
-- AC-026-N-4（新增）：schema 校验失败时 retry hint 包含具体字段路径
-- AC-026-N-5（新增）：string "95" → number 95 兜底成功，不触发 retry
-- AC-026-E-2（新增）：retry 耗尽后 AgentError 消息包含最后一次校验错误
+- AC-026-N-5（新增）：string "95" → number 95 兜底 + 二次校验成功，不触发 retry
+- AC-026-B-3（新增）：兜底类型成功但值约束仍不满足 → 触发 retry，hint 包含值约束错误
+- AC-026-E-2（新增）：retry 耗尽后 AgentError 消息包含最后一次校验错误 + 兜底失败原因
+- AC-026-E-3（新增）：schema 校验 + 兜底均失败 → retry hint 包含具体字段路径、兜底尝试结果
+
+## 非范围
+
+- 不做递归嵌套兜底（嵌套 object/array of objects 内部不做类型转换）
+- 不映射 native structured output（`--json-schema`/`--output-schema` 是后端原生能力，与本 Plan 的 prompt 注入 + 兜底路径正交）
+- 不改 `extract_json` 的 brace-matching 扫描逻辑（ADR-0024 不变）
+- 不改 retry 次数和退避策略（ADR-0011/0044 不变）
 
 ## Constraints
 
-- 不改 `extract_json` 的 brace-matching 扫描逻辑（ADR-0024 不变）
-- 不改 retry 次数和退避策略（ADR-0011/0044 不变）
 - 兜底只做安全兼容转换，不做语义猜测（如不猜 `"yes"` → `True`，只认 `"true"`/`"false"`）
+- 兜底转换后的值必须通过 `validate_json` 二次校验才接受（值约束：maximum/minimum/pattern/enum-values 等）
 - retry hint 长度不超过 500 字符（截断长错误列表）
 - `validate_json`/`extract_json` 返回值变更需更新所有调用方
-- 兜底转换后的值必须通过 `validate_json` 二次校验才接受
 
 ## Checkpoint
 
 - `domain/marshalling.py`：新增 `coerce_json()`；`extract_json`/`validate_json` 返回值变更
-- `application/runner.py`：schema 校验 + 兜底流程；retry hint 从错误列表构建
+- `application/runner.py`：schema 校验 + 兜底 + 二次校验流程；retry hint 从错误列表构建
 - `application/execution.py`：AgentError 消息丰富
-- 测试全绿（含新 `coerce_json` 单元测试）
+- 测试全绿（含新 `coerce_json` 单元测试 + 二次校验测试）
 
 ## 风险
 

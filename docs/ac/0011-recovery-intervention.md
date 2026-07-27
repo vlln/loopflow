@@ -201,14 +201,25 @@ created: 2026-07-22T06:35:57Z
 |------|----------|----------|----------|----------|
 | AC-026-F-1 | 后端上报 quota 失败 | run 失败后尝试 recover --mode continue | 按既有 continue 规则处理（durable session 满足则可续接），分类不改变恢复边界 | 自动化 |
 
-> 2026-07-27 追加（BL-031）：retry hint 携带具体 schema 校验错误 + 框架类型兜底。E-2 插入既有异常表（上），N-4/N-5 新增正常场景（下）。
+> 2026-07-27 追加（BL-031）：retry hint 携带具体 schema 校验错误 + 框架类型兜底。E-2 插入既有异常表，N-5 新增正常场景，B-3/E-3 新增场景如下。
 
 ### 正常场景（追加）
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-026-N-4 | agent 返回合法 JSON 但 schema 校验失败（字段 `verdict` 应为 enum `[REPRODUCED, PARTIAL, FAILED, BLOCKED]` 但返回 `"pass"`），兜底也失败 | 检查 retry hint | hint 包含具体字段路径（`verdict`）、期望类型、实际值、兜底尝试结果；hint 不包含 "not valid JSON" 措辞 | 自动化 |
-| AC-026-N-5 | agent 返回 `{"score": "95"}`，schema 要求 `score` 为 number | 检查 agent() 返回值 | 框架兜底成功，返回 `{"score": 95}`（number），不触发 retry | 自动化 |
+| AC-026-N-5 | agent 返回 `{"score": "95"}`，schema 要求 `score` 为 number 且无值约束 | 检查 agent() 返回值 | 框架兜底 + 二次校验成功，返回 `{"score": 95.0}`（number），不触发 retry | 自动化 |
+
+### 边界场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-B-3 | agent 返回 `{"score": "95"}`，schema 要求 `score` 为 number 且 `maximum: 10` | 检查 agent() 行为 | 兜底类型转换成功（"95"→95），但二次校验值约束失败（95 > 10），触发 retry；hint 包含类型转换成功 + 值约束失败两个错误 | 自动化 |
+
+### 异常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-026-E-3 | agent 返回合法 JSON 但 schema 校验失败（字段 `verdict` 应为 enum `[REPRODUCED, PARTIAL, FAILED, BLOCKED]` 但返回 `"pass"`），兜底也失败 | 检查 retry hint | hint 包含具体字段路径（`verdict`）、期望类型、实际值、兜底尝试结果；hint 不包含 "not valid JSON" 措辞 | 自动化 |
 
 ---
 
