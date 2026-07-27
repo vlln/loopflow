@@ -32,8 +32,6 @@ class EventWriter:
         event_type: str,
         *,
         run_id: str,
-        phase: str | None = None,
-        phase_id: str | None = None,
         call_id: str | None = None,
         payload: dict[str, Any] | None = None,
         ts: str | None = None,
@@ -50,10 +48,6 @@ class EventWriter:
                 "run_id": run_id,
                 "payload": payload or {},
             }
-            if phase is not None:
-                event["phase"] = phase
-            if phase_id is not None:
-                event["phase_id"] = phase_id
             if call_id is not None:
                 event["call_id"] = call_id
             with path.open("a", encoding="utf-8") as stream:

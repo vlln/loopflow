@@ -83,7 +83,7 @@ class WebApplication:
         return self.runs.read_detail(self._run_dir(run_id))
 
     def create_run(self, body: dict[str, Any]) -> dict[str, Any]:
-        _fields(body, {"loop", "args", "backend", "model", "mock", "from_phase", "only_phase", "working_directory"})
+        _fields(body, {"loop", "args", "backend", "model", "mock", "working_directory"})
         loop = body.get("loop")
         if not isinstance(loop, str) or not loop:
             raise ApplicationError("validation_failed", "loop must be a non-empty string")
@@ -116,11 +116,6 @@ class WebApplication:
                     {"reason": "not_a_directory"},
                 )
         options = self._execution_options(body)
-        only_phase, from_phase = options.get("only_phase"), options.get("from_phase")
-        if only_phase is not None and from_phase not in (None, only_phase):
-            raise ApplicationError("validation_failed", "only_phase conflicts with from_phase")
-        if only_phase is not None:
-            options["from_phase"] = only_phase
         if self.executor is None:
             raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
         run_id = self.executor.start(loop, args, options, working_directory=working_directory)
@@ -553,7 +548,7 @@ class WebApplication:
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
         # working_directory is validated and consumed by create_run itself
-        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "from_phase", "only_phase", "loop", "args", "working_directory"}
+        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "loop", "args", "working_directory"}
         _fields(body, allowed)
         backend = body.get("backend")
         if backend is not None and (not isinstance(backend, str) or self.allowed_backends and backend not in self.allowed_backends):
@@ -564,10 +559,7 @@ class WebApplication:
         mock = body.get("mock")
         if mock not in (None, "bash", "auto"):
             raise ApplicationError("validation_failed", "mock must be bash, auto, or null")
-        for key in ("from_phase", "only_phase"):
-            if key in body and body[key] is not None and (not isinstance(body[key], str) or not body[key]):
-                raise ApplicationError("validation_failed", f"{key} must be non-empty or null")
-        return {key: body.get(key) for key in ("backend", "model", "mock", "from_phase", "only_phase") if key in body}
+        return {key: body.get(key) for key in ("backend", "model", "mock") if key in body}
 
 
 def _fields(body: dict[str, Any], allowed: set[str]) -> None:

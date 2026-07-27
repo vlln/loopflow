@@ -84,11 +84,9 @@ def test_replay_rejects_legacy_and_out_of_range_cursor(tmp_path):
 
 def test_runtime_context_writes_v2_but_keeps_resume_cache_flat(tmp_path):
     from loopflow.infrastructure.context import RunContext, _append_cache, _write_event, set_context
-    from loopflow.presentation.events import _emit_phase
 
     context = RunContext(run_id="run-1", run_dir=tmp_path)
     set_context(context)
-    _emit_phase("Review")
     session = context.next_session()
     _write_event({"type": "agent_start", "session": session})
     cache = tmp_path / "0001.jsonl"
@@ -97,6 +95,6 @@ def test_runtime_context_writes_v2_but_keeps_resume_cache_flat(tmp_path):
     events = [json.loads(line) for line in (tmp_path / "events.jsonl").read_text().splitlines()]
     flat = json.loads(cache.read_text())
 
-    assert events[0]["phase"] == "Review" and events[0]["phase_id"] == "phase-1"
-    assert events[1]["call_id"] == "0001" and events[1]["phase_id"] == "phase-1"
+    assert events[0]["version"] == 2 and events[0]["type"] == "agent_start"
+    assert events[0]["call_id"] == "0001"
     assert flat == {"type": "agent_done", "exit_code": 0}
