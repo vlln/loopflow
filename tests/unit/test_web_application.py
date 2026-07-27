@@ -777,7 +777,7 @@ def test_list_directory_default_cwd(tmp_path, monkeypatch):
 
 
 def test_list_directory_relative_path_rejected(tmp_path, monkeypatch):
-    """AC-025-B-10: relative path → validation_failed."""
+    """Relative path is rejected with validation_failed."""
     service, _, _ = app(tmp_path)
     with pytest.raises(ApplicationError) as error:
         service.list_directory("relative/path")

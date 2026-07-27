@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 import App from './App';
 import { backends, detail, loopDetail, loopSummary, runs } from './test/fixtures';
@@ -25,6 +25,7 @@ type FetchOptions = boolean | {
   fileChanges?: Record<string, { seq: number; call_id: string; label: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
   runFile?: { status?: number; body?: unknown };
   pickDirectory?: { status?: number; body?: unknown };
+  listDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
   declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
   detailOverride?: Record<string, unknown>;
@@ -43,6 +44,8 @@ function installFetch(config: FetchOptions = true) {
   const runFileBody = typeof config === 'boolean' ? null : config.runFile?.body ?? null;
   const pickStatus = typeof config === 'boolean' ? 200 : config.pickDirectory?.status ?? 200;
   const pickBody = typeof config === 'boolean' ? null : config.pickDirectory?.body ?? null;
+  const listStatus = typeof config === 'boolean' ? 200 : config.listDirectory?.status ?? 200;
+  const listBody = typeof config === 'boolean' ? null : config.listDirectory?.body ?? null;
   const metaStatus = typeof config === 'boolean' ? 200 : config.systemMeta?.status ?? 200;
   const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
   const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
@@ -94,6 +97,13 @@ function installFetch(config: FetchOptions = true) {
     if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
     if (path === '/api/v1/backends') return response({ items: backends });
     if (path === '/api/v1/system/pick-directory') return response(pickBody ?? { path: '/tmp/lf-picked', cancelled: false }, pickStatus);
+    if (path.startsWith('/api/v1/system/list-directory')) {
+      if (listStatus !== 200) return response(listBody, listStatus);
+      const queryPath = path.match(/[?&]path=([^&]+)/)?.[1];
+      const decoded = queryPath ? decodeURIComponent(queryPath) : '/tmp';
+      if (decoded === '/tmp/lf-picked') return response({ path: '/tmp/lf-picked', parent: '/tmp', entries: [] });
+      return response({ path: decoded, parent: '/', entries: [{ name: 'lf-picked', path: '/tmp/lf-picked' }] });
+    }
     if (path === '/api/v1/system/meta') return response(metaBody ?? { version: '0.19.1' }, metaStatus);
     if (path.includes('/diagnostics')) return response({ name: 'codex', status: 'available', reason: null, exit_code: 0, stdout: 'codex 1.0.0', stderr: '', diagnosed_at: '2026-07-18T22:00:00Z' });
     return response({ error: { code: 'not_found', message: 'missing', details: {} } }, 404);
@@ -456,39 +466,50 @@ it('AC-025-E-3: previewing a deleted file shows a friendly not-found message', a
   expect(await screen.findByRole('alert')).toHaveTextContent('File no longer exists');
 });
 
-// --- AC-025: native directory picker / AC-014: arguments editor ---
+// --- AC-025: Web directory browser / AC-014: arguments editor ---
 
-it('AC-025-N-6: Browse fills the working directory from the native picker', async () => {
-  const calls = installFetch({ pickDirectory: { body: { path: '/tmp/lf-picked', cancelled: false } } });
+it('AC-025-N-6: Browse fills the working directory via Web directory picker', async () => {
+  const calls = installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
   fireEvent.click(screen.getByRole('button', { name: /New/ }));
   fireEvent.click(await screen.findByRole('button', { name: /Browse/ }));
+  // Modal shows directory listing; navigate into lf-picked then Select
+  expect(await screen.findByRole('dialog', { name: 'Select Directory' })).toBeVisible();
+  const entry = await screen.findByRole('button', { name: /lf-picked/ });
+  fireEvent.click(entry);
+  await waitFor(() => expect(screen.getByText('No subdirectories')).toBeVisible());
+  fireEvent.click(screen.getByRole('button', { name: 'Select' }));
   const workdir = screen.getByRole('textbox', { name: 'Working directory' });
   await waitFor(() => expect(workdir).toHaveValue('/tmp/lf-picked'));
   fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
   await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ working_directory: '/tmp/lf-picked' })));
 });
 
-it('AC-025-B-6: cancelling the picker leaves the working directory unchanged', async () => {
-  installFetch({ pickDirectory: { body: { path: null, cancelled: true } } });
+it('AC-025-B-6: cancelling the directory picker leaves the working directory unchanged', async () => {
+  installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
   fireEvent.click(screen.getByRole('button', { name: /New/ }));
   const workdir = await screen.findByRole('textbox', { name: 'Working directory' });
   fireEvent.change(workdir, { target: { value: '/tmp/manual' } });
   fireEvent.click(screen.getByRole('button', { name: /Browse/ }));
-  await waitFor(() => expect(screen.getByRole('button', { name: /Browse/ })).toBeEnabled());
+  expect(await screen.findByRole('dialog', { name: 'Select Directory' })).toBeVisible();
+  const modal = screen.getByRole('dialog', { name: 'Select Directory' });
+  fireEvent.click(within(modal).getByRole('button', { name: 'Cancel' }));
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Select Directory' })).not.toBeInTheDocument());
   expect(workdir).toHaveValue('/tmp/manual');
 });
 
-it('AC-025-B-7: unsupported platform hides the Browse button', async () => {
-  installFetch({ pickDirectory: { status: 501, body: { error: { code: 'not_supported', message: 'Directory picker is only supported on macOS', details: {} } } } });
+it('AC-025-B-7: Browse button is always available on all platforms', async () => {
+  installFetch();
   render(<App />);
   await screen.findByRole('heading', { name: 'run-live' });
   fireEvent.click(screen.getByRole('button', { name: /New/ }));
-  fireEvent.click(await screen.findByRole('button', { name: /Browse/ }));
-  await waitFor(() => expect(screen.queryByRole('button', { name: /Browse/ })).not.toBeInTheDocument());
+  const browseButton = await screen.findByRole('button', { name: /Browse/ });
+  expect(browseButton).toBeVisible();
+  fireEvent.click(browseButton);
+  expect(await screen.findByRole('dialog', { name: 'Select Directory' })).toBeVisible();
   expect(screen.getByRole('textbox', { name: 'Working directory' })).toBeVisible();
 });
 

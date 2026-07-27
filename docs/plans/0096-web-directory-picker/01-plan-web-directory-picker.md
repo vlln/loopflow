@@ -29,4 +29,4 @@ created: 2026-07-27T07:50:00Z
 
 ## 风险
 
-- 前端构建产物需 commit（`static/` 目录），确保 CI 与本地一致
+- 前端构建产物在 `.gitignore` 中（hatchling artifacts），部署时需 `npm run build` 生成 `src/loopflow/presentation/web/static/`
