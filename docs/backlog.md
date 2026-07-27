@@ -31,3 +31,4 @@
 | BL-023 | agent_graph fan-in 投影修复 | `project_events()` back-to-back parallel 的 join 边不生成、`pending_join` 跨组合并、fork source 解析错误；join-edge 无 CSS 区分 | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-024 | agent 节点详情面板 | 点击节点仅过滤事件/文件，无合并详情面板（events + files + call info 一起展示） | 0.24.0 发布后排查 | done | 0.24.1 |
 | BL-025 | Playwright fixture phase_id 清理 | `webui.spec.ts` mock fixture 仍含 `phase_id` 字段 | 0.24.0 发布后排查 | done | 0.24.1 |
+| BL-028 | agent graph live-run join 边缺失 | `project_events()` back-to-back join 边只在 fork_end 生成，live run 期间 verifier 节点出现但无边连接 researcher，独立平铺在画布中 | deep-research run 实测 2026-07-27 | done | 0098 |
