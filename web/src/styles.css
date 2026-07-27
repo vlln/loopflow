@@ -214,7 +214,11 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .status-cancelled { color: var(--muted); }
 .run-row.is-selected .status { background: var(--surface-soft); }
 
-.run-error-banner { display: flex; align-items: center; gap: 8px; padding: 8px 14px; color: var(--danger); font-size: 12px; }
+.run-error-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; color: var(--danger); font-size: 12px; }
+.run-error-banner .error-summary-text { word-break: break-word; flex: 1; }
+.run-error-banner .error-traceback { width: 100%; }
+.run-error-banner .error-traceback summary { cursor: pointer; font-size: 11px; color: var(--muted); }
+.run-error-banner .error-traceback pre { margin: 4px 0 0; font-size: 10px; max-height: 200px; }
 .streak-badge { color: var(--warning); font-size: 9px; }
 .loop-paused { display: inline-flex; align-items: center; gap: 8px; }
 .loop-paused .paused-reason { color: var(--muted); font-size: 11px; }

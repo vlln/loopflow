@@ -108,6 +108,7 @@ def execute_workflow(
         module.run(**accepted_kwargs(module.run, kwargs))
     except KeyboardInterrupt:
         status, error = "cancelled", None
+        error_traceback = None
     except Exception as exc:
         from loopflow.infrastructure.intervention import InterventionPending
         from loopflow.infrastructure.recovery import ReplayDiverged
@@ -118,13 +119,19 @@ def execute_workflow(
             status, error = "failed", "replay_diverged"
         else:
             status, error = "failed", str(exc)
+        import traceback as _tb
+        error_traceback = "".join(_tb.format_exception(exc))
     except BaseException as exc:
         status, error = "failed", str(exc)
+        import traceback as _tb
+        error_traceback = "".join(_tb.format_exception(exc))
     else:
         if recover and context.recovery_target_call_id and not context.recovery_target_reached:
             status, error = "failed", "replay_diverged"
+            error_traceback = None
         else:
             status, error = "done", None
+            error_traceback = None
     # Final file observation: capture files written after the last agent call
     if context.file_observer is not None:
         try:
@@ -133,7 +140,7 @@ def execute_workflow(
         except Exception:
             pass
     finished = now_iso()
-    run_metadata.update({"status": status, "counter": context._counter, "finished_at": finished, "updated_at": finished, "error_summary": error})
+    run_metadata.update({"status": status, "counter": context._counter, "finished_at": finished, "updated_at": finished, "error_summary": error, "error_traceback": error_traceback})
     if recover:
         run_metadata["recovery_verification"] = (
             "unverified" if context.legacy_recovery else "verified"

@@ -13,6 +13,7 @@ export interface RunSummary {
   iteration_count: number;
   error_summary: string | null;
   error_category?: string | null;
+  error_traceback?: string | null;
   parse_error: string | null;
   execution_epoch?: number | null;
   stale_since?: string | null;
