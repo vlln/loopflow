@@ -254,6 +254,11 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .react-flow__controls button { border: 0; border-bottom: 1px solid var(--line); background: var(--surface-raised); fill: var(--muted); }
 
 .phase-detail, .agent-detail { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.agent-detail-panel { padding: 0 14px; border-bottom: 1px solid var(--line); }
+.agent-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; padding: 6px 0 10px; margin: 0; }
+.agent-meta > div { display: flex; align-items: baseline; gap: 4px; }
+.agent-meta dt { color: var(--quiet); font-size: 9px; font-weight: 650; text-transform: uppercase; }
+.agent-meta dd { color: var(--text); font-size: 11px; margin: 0; }
 .warning-text { color: var(--warning); font-size: 10px; }
 .phase-detail-bar, .agent-detail-bar { display: flex; min-height: 48px; align-items: center; gap: 22px; padding: 0 14px; border-bottom: 1px solid var(--line); }
 .phase-detail-title, .agent-detail-title { display: flex; min-width: 130px; align-items: baseline; gap: 8px; }
