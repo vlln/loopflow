@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -404,6 +405,30 @@ class WebApplication:
             return {"path": None, "cancelled": True}
         path = result.stdout.strip().rstrip("/") or "/"
         return {"path": path, "cancelled": False}
+
+    def list_directory(self, path: str | None = None) -> dict[str, Any]:
+        """List subdirectories of a path for the WebUI directory picker (ADR-0053).
+
+        Cross-platform: uses os.scandir. Validates absolute + exists + is_dir.
+        Returns only directories (not files). Hidden dirs included.
+        """
+        target = Path(path) if path else Path.cwd()
+        if not target.is_absolute():
+            raise ApplicationError("validation_failed", "Path must be absolute", {"reason": "not_absolute"})
+        if not target.exists():
+            raise ApplicationError("file_not_found", f"Path not found: {target}")
+        if not target.is_dir():
+            raise ApplicationError("validation_failed", "Path is not a directory", {"reason": "not_a_directory"})
+        entries = []
+        try:
+            scanned = sorted(os.scandir(target), key=lambda e: e.name)
+        except PermissionError:
+            scanned = []
+        for entry in scanned:
+            if entry.is_dir(follow_symlinks=False):
+                entries.append({"name": entry.name, "path": str(entry.path)})
+        parent = str(target.parent) if target.parent != target else None
+        return {"path": str(target), "parent": parent, "entries": entries}
 
     def diagnose_backend(self, name: str, timeout_ms: int) -> dict[str, Any]:
         if isinstance(timeout_ms, bool) or not isinstance(timeout_ms, int) or not 100 <= timeout_ms <= 30000:
