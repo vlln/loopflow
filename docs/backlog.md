@@ -36,3 +36,4 @@
 | BL-028 | agent graph live-run join 边缺失 | `project_events()` back-to-back join 边只在 fork_end 生成，live run 期间 verifier 节点出现但无边连接 researcher，独立平铺在画布中 | deep-research run 实测 2026-07-27 | done | 0098 |
 | BL-029 | Loops 页面切换延迟 | `read_summary()` 中 `project_events()` 死代码导致每次切 loop 全量解析所有 run 的 events.jsonl；`detail()` 重复读 frontmatter；`rglob` 无隐藏目录过滤 | 用户报告 2026-07-27 | done | 0096 |
 | BL-030 | reconcile 宽限期阻止逻辑移除 | 宽限期阻止已确认死亡的进程被清理，无安全收益；频繁重启 server 导致 stale run 永远无法清理（ADR-0046 修订） | 用户报告 2026-07-27 | done | 0096 |
+| BL-031 | agent 失败重试缺乏详细错误原因 | run/agent 失败时 `error_summary` 仅记录顶层错误类别（如 `validation_failed`），不包含具体原因（如 schema 校验失败时应显示哪个字段不匹配、期望类型 vs 实际值）。应在 `error_summary`/`error_traceback` 中补充上下文信息，降低排查成本 | 用户报告 2026-07-27 | candidate | — |
