@@ -29,6 +29,14 @@ created: 2026-07-24T05:30:00Z
 |------|----------|----------|----------|----------|
 | AC-025-N-7 | CLI 进程 cwd 为 `/A`，无 `--work-dir` 参数 | `loop run hello --backend mock`（不传 `--work-dir`） | run 在 `/A` 执行；workflow 创建的文件出现在 `/A`；行为与 `cd /A && loop run` 一致（向后兼容） | 自动化 |
 
+> 2026-07-27 追加（BL-009 / [ADR-0053](../adr/0053-web-directory-picker.md)）：Web 端跨平台目录浏览器替代 macOS-only osascript。新增 N-8 验证 Web 目录浏览器正常流程，修改 B-7 为非 macOS 平台使用 list-directory 端点。
+
+### 正常场景（追加 2）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-025-N-8 | WebUI 打开 New Run 对话框，server cwd 为 `/A`，`/A/sub` 为已存在子目录 | 点击 Browse → 模态框显示 `/A` 子目录列表 → 点击 `sub` → 点击 Select | working directory 输入填充为 `/A/sub`；`GET /api/v1/system/list-directory`（不传 path）返回 200 含 `sub`；`GET ...?path=/A/sub` 返回 200 | 自动化 |
+
 ### 边界场景（追加）
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
@@ -58,7 +66,9 @@ created: 2026-07-24T05:30:00Z
 | AC-025-B-4 | run 的 working_directory 为 `/B` | `GET /api/v1/runs/{run_id}/file?path=../A/secret.txt`（resolve 后越出 `/B`） | 返回 403 `path_forbidden`；不返回文件内容 | 自动化 |
 | AC-025-B-5 | run 的 working_directory 为 `/B`，`/B/blob.bin` 为二进制文件或超过 1 MiB | `GET /api/v1/runs/{run_id}/file?path=blob.bin` | 返回 422 `file_not_previewable`；不返回文件内容 | 自动化 |
 | AC-025-B-6 | server 运行于 macOS，用户在系统目录选择器中点击取消 | `POST /api/v1/system/pick-directory` | 返回 200 `{"path": null, "cancelled": true}`；WebUI 不改变输入框内容 | 自动化 |
-| AC-025-B-7 | server 运行于非 macOS 平台 | `POST /api/v1/system/pick-directory` | 返回 501 `not_supported`；WebUI 隐藏 Browse 按钮，回退手动输入 | 自动化 |
+| AC-025-B-7 | server 运行于非 macOS 平台 | `GET /api/v1/system/list-directory`（不传 path） | 返回 200，含 server cwd 的子目录列表；WebUI Browse 按钮始终可用，打开 Web 目录浏览器模态框（ADR-0053） | 自动化 |
+| AC-025-B-10 | `/nonexistent` 不存在 | `GET /api/v1/system/list-directory?path=/nonexistent` | 返回 404 `file_not_found` | 自动化 |
+| AC-025-B-11 | `/etc/hostname` 是文件而非目录 | `GET /api/v1/system/list-directory?path=/etc/hostname` | 返回 422 `validation_failed`，details 指明 `not_a_directory` | 自动化 |
 
 ## 异常场景
 

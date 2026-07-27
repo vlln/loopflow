@@ -516,14 +516,28 @@ stdout/stderr 在响应前执行最小 secret redaction：对大小写不敏感�
 
 ### `POST /system/pick-directory`
 
+> 已废弃（ADR-0053）。前端不再调用此端点，改用 `GET /system/list-directory` + Web 模态目录浏览器。macOS 本地场景仍可用。
+
 在 server 所在机器上调起操作系统原生目录选择器（供 WebUI New Run 对话框的 Browse 按钮使用，ADR-0042）。
 
 200（选中）：`{"path": "/absolute/dir", "cancelled": false}`（返回绝对路径）
 200（取消）：`{"path": null, "cancelled": true}`
 
-平台支持：macOS（osascript `choose folder`）；其他平台返回 501 `not_supported`，前端回退为手动输入。
+平台支持：macOS（osascript `choose folder`）；其他平台返回 501 `not_supported`。
 
 错误：501 `not_supported`。
+
+### `GET /system/list-directory`
+
+列出 server 端指定路径下的子目录（供 WebUI New Run 对话框的 Web 目录浏览器使用，ADR-0053）。跨平台，使用 `os.scandir`。
+
+参数：`path`（可选，绝对路径；缺省 = server cwd）
+
+200：`{"path": "/absolute/dir", "parent": "/absolute", "entries": [{"name": "subdir", "path": "/absolute/dir/subdir"}, ...]}`
+- `entries` 只包含子目录（不含文件），按名称排序
+- `parent` 为父目录绝对路径；已是根目录时为 `null`
+
+错误：404 `file_not_found`（路径不存在）；422 `validation_failed`（相对路径 / 非目录）。
 
 ## 八、服务启动约束
 
