@@ -14,7 +14,7 @@
 | BL-006 | loop 嵌套编排 | workflow 嵌套/组合的下一个大特性，方向未想好 | loopany-platform 调研 2026-07-25 | candidate | — |
 | BL-007 | web profile manifest 漂移修复 | 以 test 容器补齐 web profile AC manifest | 0.20.0 发布评估 | candidate | — |
 | BL-008 | loop args schema 服务端校验 | Web/API 侧对 loop args 做 schema 校验 | 0.20.0 发布评估 | candidate | — |
-| BL-009 | 非 macOS 目录选择器 | Web UI 目录选择器在非 macOS 平台的适配 | 0.20.0 发布评估 | candidate | — |
+| BL-009 | 非 macOS 目录选择器 | Web UI 目录选择器在非 macOS 平台的适配（ADR-0053：GET /system/list-directory + Web 模态浏览器替代 osascript） | 0.20.0 发布评估 | done | 0096-web-directory-picker |
 | BL-010 | AC-010-N-2/E-2 契约漂移裁决 | AC 文本期望 loop.md 缺失/坏 YAML 时回退 workflow.py meta，但 ADR-0031 后实现为强制 loop.md 缺失即跳过；需 DESIGN 裁决对齐文档或实现 | 0081 scheduling profile 落地时发现 | done | 0.21.0 |
 | BL-011 | npm audit 既有失败修复 | brace-expansion 经 @vitest/coverage-v8 链 5 high，中断 mr-gate 链 | 0081 mr-gate 验证时发现 | candidate | — |
 | BL-012 | SSE file_changes OSError 未按 topic 隔离 | AC-016-F-3 实证发现：fc 读取 OSError 落入 server 通用 except，发无 topic 的 stream_error，与 AC-016-E-3 的 topic 隔离行为不一致；需裁决是缺陷还是可接受形态 | 0086 清理时发现 | candidate | — |
