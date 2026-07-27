@@ -91,7 +91,7 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
 
     assign(
-        "AC-026-N-1 AC-026-N-2 AC-026-N-3 AC-026-B-1 AC-026-B-2 AC-026-E-1",
+        "AC-026-N-1 AC-026-N-2 AC-026-N-3 AC-026-N-4 AC-026-N-5 AC-026-B-1 AC-026-B-2 AC-026-B-3 AC-026-E-1 AC-026-E-2 AC-026-E-3",
         "unit:failure-classification",
     )
     assign("AC-026-F-1", "POST /api/v1/runs/{run_id}/recover")

@@ -56,6 +56,7 @@ def _targets() -> dict[str, list[str]]:
         "ui:runs",
     )
     assign("AC-014-N-11", "GET /api/v1/system/meta", "ui:layout")
+    assign("AC-014-B-6", "GET /api/v1/runs", "ui:runs")
     assign(
         "AC-014-F-1",
         "POST /api/v1/runs/{run_id}/stop",
@@ -98,7 +99,7 @@ def _targets() -> dict[str, list[str]]:
     )
 
     assign(
-        "AC-019-N-1 AC-019-N-2 AC-019-N-5 AC-019-B-1 AC-019-B-2 AC-019-B-3 AC-019-E-1 AC-019-E-2 AC-019-F-1 AC-019-F-2",
+        "AC-019-N-1 AC-019-N-2 AC-019-N-5 AC-019-B-1 AC-019-B-2 AC-019-B-3 AC-019-B-4 AC-019-E-1 AC-019-E-2 AC-019-F-1 AC-019-F-2",
         "ui:layout",
     )
     assign("AC-019-N-3 AC-019-N-4 AC-019-F-3", "process:loop-web")

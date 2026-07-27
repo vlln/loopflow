@@ -215,7 +215,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .run-row.is-selected .status { background: var(--surface-soft); }
 
 .run-error-banner { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 14px; color: var(--danger); font-size: 12px; }
-.run-error-banner .error-summary-text { word-break: break-word; flex: 1; }
+.run-error-banner .error-summary-text { word-break: break-word; flex: 1; max-height: 3em; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .run-error-banner .error-traceback { width: 100%; }
 .run-error-banner .error-traceback summary { cursor: pointer; font-size: 11px; color: var(--muted); }
 .run-error-banner .error-traceback pre { margin: 4px 0 0; font-size: 10px; max-height: 200px; }
