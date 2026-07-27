@@ -7,7 +7,7 @@ import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, File
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer } from './eventReducer';
-import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, RunDetail, RunEvent, RunFileContent, RunSummary } from './types';
+import type { Backend, Diagnostic, FileChange, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, RunDetail, RunEvent, RunFileContent, RunSummary, DirectoryListing } from './types';
 import { EmptyState, IconButton, PanelHeader, ScrollArea, SectionHeader, StatusBadge } from './ui';
 
 type View = 'runs' | 'loops' | 'backends';
@@ -347,6 +347,43 @@ function declaredEntries(items: LoopSummary[], name: string): ArgEntry[] {
     : [{ key: '', value: '' }];
 }
 
+function DirectoryPickerModal({ onSelect, onClose }: { onSelect: (path: string) => void; onClose: () => void }) {
+  const [listing, setListing] = useState<DirectoryListing | null>(null);
+  const [pathInput, setPathInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = (p?: string) => {
+    setLoading(true);
+    setError(null);
+    api.listDirectory(p).then((result) => { setListing(result); setPathInput(result.path); }).catch((cause) => setError(messageOf(cause))).finally(() => setLoading(false));
+  };
+  useEffect(() => { load(); }, []);
+  const navigate = (p: string) => { if (p) load(p); };
+  const submitPath = () => { if (pathInput.trim()) load(pathInput.trim()); };
+  const select = () => { if (listing) onSelect(listing.path); };
+
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog dir-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="dir-picker-title">
+    <header><div><span className="eyebrow">Browse</span><h2 id="dir-picker-title">Select Directory</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header>
+    <div className="dir-picker-path-bar">
+      <input aria-label="Current path" value={pathInput} onChange={(event) => setPathInput(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submitPath()} placeholder="/absolute/path" spellCheck={false} />
+      <button type="button" className="secondary-button" onClick={submitPath} disabled={loading}>Go</button>
+    </div>
+    <div className="dir-picker-list">
+      {listing?.parent && <button type="button" className="dir-picker-entry dir-picker-parent" onClick={() => listing.parent && navigate(listing.parent)} disabled={loading}><span>..</span><span className="dir-picker-meta">parent</span></button>}
+      {loading && <div className="dir-picker-empty">Loading…</div>}
+      {!loading && listing?.entries.length === 0 && <div className="dir-picker-empty">No subdirectories</div>}
+      {!loading && listing?.entries.map((entry) => <button type="button" key={entry.path} className="dir-picker-entry" onClick={() => navigate(entry.path)}><Folder size={14} /><span>{entry.name}</span></button>)}
+      {error && <div className="dir-picker-empty dir-picker-error">{error}</div>}
+    </div>
+    <footer>
+      <span className="dir-picker-current">{listing?.path}</span>
+      <button className="secondary-button" onClick={onClose}>Cancel</button>
+      <button className="primary-button" onClick={select} disabled={!listing || loading}><Check size={14} />Select</button>
+    </footer>
+  </div></div>;
+}
+
 function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: (run: RunSummary) => void }) {
   const [loops, setLoops] = useState<LoopSummary[]>([]);
   const [loop, setLoop] = useState('');
@@ -354,8 +391,7 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [entries, setEntries] = useState<ArgEntry[]>([{ key: '', value: '' }]);
   const [args, setArgs] = useState('{}');
   const [workdir, setWorkdir] = useState('');
-  const [browseSupported, setBrowseSupported] = useState(true);
-  const [browsing, setBrowsing] = useState(false);
+  const [showDirPicker, setShowDirPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     void api.loops().then((page) => {
@@ -366,17 +402,6 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
     });
   }, []);
   const selectLoop = (name: string) => { setLoop(name); setEntries(declaredEntries(loops, name)); };
-  const browse = async () => {
-    setBrowsing(true);
-    setError(null);
-    try {
-      const result = await api.pickDirectory();
-      if (!result.cancelled && result.path) setWorkdir(result.path);
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'not_supported') setBrowseSupported(false);
-      else setError(messageOf(cause));
-    } finally { setBrowsing(false); }
-  };
   const submit = async () => {
     try {
       let parsed: unknown;
@@ -396,7 +421,7 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
       onCreated(await api.createRun(body));
     } catch (cause) { setError(messageOf(cause)); }
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} />{browseSupported && <button type="button" className="secondary-button" disabled={browsing} onClick={() => void browse()}><Folder size={14} />{browsing ? 'Browsing…' : 'Browse…'}</button>}</div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div></div>;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} /><button type="button" className="secondary-button" onClick={() => setShowDirPicker(true)}><Folder size={14} />Browse…</button></div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div>{showDirPicker && <DirectoryPickerModal onSelect={(p) => { setWorkdir(p); setShowDirPicker(false); }} onClose={() => setShowDirPicker(false)} />}</div>;
 }
 
 function LoopsWorkspace() {

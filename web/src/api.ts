@@ -1,4 +1,4 @@
-import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunFileContent, RunSummary, SystemMeta } from './types';
+import type { Backend, Diagnostic, FileChangeRecord, InterventionSummary, LoopDetail, LoopSummary, Page, RunDetail, RunEvent, RunFileContent, RunSummary, SystemMeta, DirectoryListing } from './types';
 
 export class ApiError extends Error {
   constructor(public code: string, message: string, public status: number, public details: Record<string, unknown> = {}) {
@@ -35,6 +35,7 @@ export const api = {
   fileChanges: (id: string) => request<{ items: FileChangeRecord[]; count: number }>(`/runs/${encodeURIComponent(id)}/file-changes`),
   runFile: (id: string, path: string) => request<RunFileContent>(`/runs/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
   pickDirectory: () => request<{ path: string | null; cancelled: boolean }>('/system/pick-directory', { method: 'POST' }),
+  listDirectory: (path?: string) => request<DirectoryListing>(`/system/list-directory${path ? `?path=${encodeURIComponent(path)}` : ''}`),
   systemMeta: () => request<SystemMeta>('/system/meta'),
 };
 
