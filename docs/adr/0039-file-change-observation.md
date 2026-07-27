@@ -2,7 +2,7 @@
 title: ADR 0039 — 工作目录文件变化观察层
 description: 以 phase 边界快照 diff 追踪工作目录文件变化，独立 file_changes.jsonl 持久化，不参与业务事件流和确定性重放
 type: adr
-status: accepted
+status: superseded
 created: 2026-07-23T12:00:00Z
 ---
 

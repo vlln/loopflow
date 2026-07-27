@@ -25,7 +25,7 @@ def execute_workflow(
     run_dir: Path,
 ) -> None:
     """Execute one workflow in the current process and persist its lifecycle."""
-    from loopflow.runtime import agent, intervene, log, parallel, phase, pipeline, set_mock, workflow
+    from loopflow.runtime import agent, intervene, log, parallel, pipeline, set_mock, workflow
 
     recover = bool(options.get("recover") or options.get("resume"))
     module, metadata, loop_dir = load_loop(loop)
@@ -113,7 +113,7 @@ def execute_workflow(
         # Baseline snapshot (ADR-0043): pre-existing files are not "created"
         context.file_observer.seed()
     set_context(context)
-    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "phase": phase, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
+    kwargs = {"agent": agent, "parallel": parallel, "pipeline": pipeline, "log": log, "args": args, "workflow": workflow, "intervene": intervene}
     kwargs["state"] = state
     try:
         module.run(**accepted_kwargs(module.run, kwargs))
@@ -136,6 +136,13 @@ def execute_workflow(
             status, error = "failed", "replay_diverged"
         else:
             status, error = "done", None
+    # Final file observation: capture files written after the last agent call
+    if context.file_observer is not None:
+        try:
+            call_id = getattr(context, '_current_call_id', None) or "unknown"
+            context.file_observer.observe(call_id, call_id)
+        except Exception:
+            pass
     finished = now_iso()
     run_metadata.update({"status": status, "counter": context._counter, "finished_at": finished, "updated_at": finished, "error_summary": error})
     if recover:

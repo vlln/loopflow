@@ -85,8 +85,8 @@ class TestFileChangeObserver:
         record = observer.observe("采集", "phase-1")
         assert record is not None
         assert record["seq"] == 1
-        assert record["phase"] == "采集"
-        assert record["phase_id"] == "phase-1"
+        assert record["call_id"] == "采集"
+        assert record["label"] == "phase-1"
         assert [c["path"] for c in record["changes"]] == ["b.txt"]
         assert record["changes"][0]["action"] == "created"
 

@@ -294,7 +294,6 @@ def _write_cache(
             "exit_code": exit_code,
         }
         _append_cache(cache_path, done_event)
-        _write_event({"type": "agent_message", "content": text})
         _write_event(done_event)
     except OSError:
         pass

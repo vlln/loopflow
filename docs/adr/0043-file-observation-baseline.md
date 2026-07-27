@@ -2,7 +2,7 @@
 title: ADR 0043 — 文件观察基线快照语义
 description: run 启动时建立基线快照，phase diff 针对基线或上一快照，使"created"真正表示 phase 期间新建；实现向 AC-024-B-1 的文档语义对齐，纠正首次快照全量标记 created 的权宜行为
 type: adr
-status: accepted
+status: superseded
 created: 2026-07-24T05:30:00Z
 ---
 

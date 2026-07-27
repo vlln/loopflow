@@ -232,11 +232,17 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
         execution_options=run_meta["execution_options"],
     )
     set_context(ctx)
-    if from_phase:
-        ctx.from_phase = from_phase
-    if only_phase:
-        ctx.from_phase = only_phase  # --only-phase implies --from-phase
-        ctx.only_phase = only_phase
+
+    # File change observation (ADR-0039): initialize observer from loop meta
+    from loopflow.infrastructure.file_observation import FileChangeObserver, FileObservationConfig
+    obs_config = FileObservationConfig.from_meta(meta)
+    if obs_config.enabled:
+        ctx.file_observer = FileChangeObserver(
+            run_dir=run_dir,
+            working_dir=Path.cwd(),
+            config=obs_config,
+        )
+        ctx.file_observer.seed()
 
     # Create state from meta declaration
     from loopflow.runtime import State
@@ -250,11 +256,18 @@ def run(name, wf_args, mock, watch, from_phase, only_phase, backend, transport, 
         # Build kwargs, only pass state if run() accepts it
         run_kwargs = dict(
             agent=agent, parallel=parallel, pipeline=pipeline,
-            phase=phase, log=log, args=args_dict, workflow=workflow,
+            log=log, args=args_dict, workflow=workflow,
             intervene=intervene,
         )
         run_kwargs["state"] = state
         result = mod.run(**accepted_kwargs(mod.run, run_kwargs))
+        # Final file observation
+        if ctx.file_observer is not None:
+            try:
+                call_id = getattr(ctx, '_current_call_id', None) or "unknown"
+                ctx.file_observer.observe(call_id, call_id)
+            except Exception:
+                pass
     except KeyboardInterrupt:
         print("\n[loopflow] Interrupted", file=sys.stderr)
         _finish_run(run_meta, "stopped")

@@ -48,21 +48,17 @@ test.beforeEach(async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Runs' })).toBeVisible();
 });
 
-test('operates Runs without overflow and renders a nonblank phase graph', async ({ page }, testInfo) => {
+test('operates Runs without overflow and renders a nonblank agent graph', async ({ page }, testInfo) => {
   const mobile = testInfo.project.name === 'chromium-390';
   const tablet = testInfo.project.name === 'chromium-1024';
   const liveRun = page.getByRole('listitem').filter({ hasText: 'run-live' }).first();
   await expect(liveRun).toBeVisible();
   if (mobile) await liveRun.click();
-  await expect(page.getByRole('heading', { name: 'Phase graph' })).toBeVisible();
-  await expect(page.getByRole('tab', { name: /Unattributed/ })).toBeVisible();
-  await page.getByRole('tab', { name: /Unattributed/ }).click();
-  await expect(page.getByRole('heading', { name: 'Unattributed events' })).toBeVisible();
-  await page.getByRole('tab', { name: /^Events/ }).click();
+  await expect(page.getByRole('heading', { name: 'Agent graph' })).toBeVisible();
   await expect(page.getByText('workflow output').first()).toBeVisible();
   await expect(page.getByText(/"content":/)).toHaveCount(0);
 
-  const flow = page.getByTestId('phase-flow');
+  const flow = page.getByTestId('agent-flow');
   const nodes = flow.locator('.react-flow__node');
   await expect(nodes).toHaveCount(2);
   const flowBox = await flow.boundingBox();

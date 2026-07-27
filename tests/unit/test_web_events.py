@@ -6,29 +6,27 @@ import pytest
 from loopflow.infrastructure.web_events import EventWriter, project_events, replay_v2
 
 
-def test_projects_repeated_phase_occurrences_and_parallel_calls(tmp_path):
+def test_projects_agent_graph_from_agent_start_events(tmp_path):
     writer = EventWriter()
     run = tmp_path / "run-1"
-    for phase, phase_id, occurrence in (("Review", "p1", 1), ("Fix", "p2", 1), ("Review", "p3", 2)):
-        writer.append(run, "phase", run_id="run-1", phase=phase, phase_id=phase_id, payload={"occurrence": occurrence})
-    for call_id in ("c1", "c2"):
-        writer.append(run, "agent_start", run_id="run-1", phase="Review", phase_id="p3", call_id=call_id, payload={"session": call_id})
-        writer.append(run, "agent_done", run_id="run-1", phase="Review", phase_id="p3", call_id=call_id, payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="run-1", call_id="c1", payload={"label": "planner", "agent_def": "planner"})
+    writer.append(run, "agent_done", run_id="run-1", call_id="c1", payload={"exit_code": 0})
+    writer.append(run, "agent_start", run_id="run-1", call_id="c2", payload={"label": "researcher", "agent_def": "researcher"})
+    writer.append(run, "agent_done", run_id="run-1", call_id="c2", payload={"exit_code": 0})
 
     result = project_events(run / "events.jsonl")
 
-    assert result.graph["nodes"] == [
-        {"phase": "Review", "occurrence_count": 2, "is_current": True},
-        {"phase": "Fix", "occurrence_count": 1, "is_current": False},
-    ]
-    assert result.graph["edges"][-1] == {"from": "Fix", "to": "Review", "count": 1, "is_backedge": True}
-    assert result.occurrences[-1]["call_ids"] == ["c1", "c2"]
-    assert {call["call_id"] for call in result.calls} == {"c1", "c2"}
+    assert result.agent_graph["current"] == "c2"
+    assert len(result.agent_graph["nodes"]) == 2
+    assert result.agent_graph["nodes"][0] == {"id": "c1", "label": "planner", "agent_def": "planner", "status": "done"}
+    assert result.agent_graph["nodes"][1] == {"id": "c2", "label": "researcher", "agent_def": "researcher", "status": "done"}
+    assert result.agent_graph["edges"] == [{"from": "c1", "to": "c2", "kind": "sequential"}]
+    assert len(result.calls) == 2
 
 
 def test_malformed_v2_is_not_treated_as_unattributed(tmp_path):
     path = tmp_path / "events.jsonl"
-    path.write_text(json.dumps({"version": 2, "event_id": 1, "type": "agent_start", "ts": "x", "run_id": "r", "payload": {}, "call_id": "c"}) + "\n")
+    path.write_text(json.dumps({"version": 2, "event_id": 1, "type": "agent_start", "ts": "x", "run_id": "r", "payload": {}}) + "\n")
 
     result = project_events(path)
 

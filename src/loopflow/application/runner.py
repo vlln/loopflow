@@ -202,6 +202,8 @@ class AgentRunner:
         Returns:
             Parsed dict (if schema) or raw text.
         """
+        self._label = params.pop("label", None)
+        self._agent_def_name = params.pop("agent_def", None)
         # 1. Marshal capabilities
         caps = self.backend.capabilities if self.backend else Capabilities()
         resolved, detected_schema, native_goal = marshal(
@@ -269,6 +271,7 @@ class AgentRunner:
             result, backend_sid = self._execute_once(
                 resolved, schema, model, isolation, max_retries,
             )
+            self._observe_file_changes()
             if isinstance(result, str) and result.startswith("Goal ["):
                 return AgentResult(status="blocked", reason=result)
             return AgentResult(status="complete", value=result)
@@ -277,7 +280,18 @@ class AgentRunner:
         result = self._execute_once(
             resolved, schema, model, isolation, max_retries,
         )[0]
+        self._observe_file_changes()
         return AgentResult(status="complete", value=result)
+
+    def _observe_file_changes(self) -> None:
+        """Observe file changes after an agent call completes."""
+        if self.ctx.file_observer is not None:
+            try:
+                call_id = getattr(self.ctx, '_current_call_id', None) or "unknown"
+                label = self._label or call_id
+                self.ctx.file_observer.observe(call_id, label)
+            except Exception:
+                pass
 
     # ── internal ─────────────────────────────────────────────────────────
 
@@ -404,7 +418,9 @@ class AgentRunner:
                     "type": "agent_start",
                     "session": session,
                     "call_id": call_id,
-                    "phase": getattr(self.ctx, '_current_phase', None),
+                    "label": self._label,
+                    "agent_def": self._agent_def_name,
+                    "backend": self.backend_name,
                 })
                 if self._mock_mode == "auto":
                     text, exit_code = self._mock_auto_fn(schema)
@@ -562,7 +578,9 @@ class AgentRunner:
                 "type": "agent_start",
                 "session": session,
                 "call_id": call_id,
-                "phase": getattr(self.ctx, '_current_phase', None),
+                "label": self._label,
+                "agent_def": self._agent_def_name,
+                "backend": self.backend_name,
             })
 
             events = self._invoke(
