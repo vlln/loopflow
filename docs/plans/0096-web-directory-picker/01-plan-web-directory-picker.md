@@ -2,7 +2,7 @@
 title: Plan — Web 端跨平台目录选择器
 description: 实现 GET /system/list-directory 端点 + 前端模态目录浏览器，替代 macOS-only osascript（BL-009）
 type: plan
-status: pending
+status: done
 created: 2026-07-27T07:50:00Z
 ---
 

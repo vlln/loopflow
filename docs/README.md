@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` complete (v0.24.1) |
-| **设计评估** | 0.24.1 残留收尾完成：phase 残留清理(BL-022) + agent_graph fan-in 修复(BL-023) + 节点详情面板(BL-024) + Playwright/WebUI fixture 清理(BL-025) + 累积 file changes 视图 + file observer 线程安全修复。tag v0.24.1，main + develop 已同步。 |
+| **当前阶段** | `DEVELOP` — BL-009 Web 端跨平台目录选择器已合并 develop，全量测试通过（Python 508 passed / 前端 42 passed），待下一轮 RELEASE |
+| **设计评估** | BL-009 完成：GET /system/list-directory + 前端模态目录浏览器替代 macOS-only osascript（ADR-0053 accepted）。旧 POST /system/pick-directory 标注 deprecated，保留向后兼容。develop 上全量回归通过。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
