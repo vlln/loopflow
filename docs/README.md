@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` (v0.24.0) |
-| **设计评估** | 0.24.0 发布完成：移除 Phase 抽象 → Agent 实例图（ADR-0052）。tag v0.24.0，main + develop 已同步。 |
+| **当前阶段** | `DESIGN` (v0.24.1) |
+| **设计评估** | 0.24.0 残留收尾：phase 残留清理(BL-022) + agent_graph fan-in 修复(BL-023) + 节点详情面板(BL-024) + Playwright fixture 清理(BL-025)。ADR-0052 已 accepted，本轮为完成度修补，无新 ADR。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
