@@ -119,6 +119,8 @@ def agent(
                 isolation=isolation,
                 max_retries=max_retries,
                 goal_max_iterations=goal_max_iterations,
+                label=label,
+                agent_def=agent_def,
                 **kwargs,
             )
         if result.status != "complete":
@@ -134,6 +136,12 @@ def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
     errors: list[BaseException | None] = [None] * len(thunks)
     ctx = _ctx_module._ctx
     namespaces = ctx.reserve_parallel(len(thunks))
+
+    # Record fork in agent graph and emit fork event
+    current_call_id = getattr(ctx, '_current_call_id', None)
+    if getattr(ctx, 'agent_graph', None) is not None:
+        ctx.agent_graph.record_fork(current_call_id or "unknown")
+    _write_event({"type": "fork_start", "call_id": current_call_id, "count": len(thunks)})
 
     def _run(idx: int, fn: Callable[[], Any]) -> None:
         ctx.enter_call_namespace(namespaces[idx])
@@ -152,6 +160,12 @@ def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
         threads.append(t)
     for t in threads:
         t.join()
+
+    # Record join in agent graph and emit fork_end event
+    if getattr(ctx, 'agent_graph', None) is not None:
+        ctx.agent_graph.record_join()
+    _write_event({"type": "fork_end", "call_id": current_call_id})
+
     if ctx.resume:
         first = next((error for error in errors if error is not None), None)
         if first is not None:

@@ -716,3 +716,73 @@ it('shows paused loop badge with streak and unpauses via API', async () => {
   await waitFor(() => expect(calls).toContain('POST /api/v1/loops/review-loop/unpause'));
   await waitFor(() => expect(screen.queryByText('failure_streak:5')).not.toBeInTheDocument());
 });
+
+// --- AC-015-N-9: call-list display (BL-021) ---
+
+it('AC-015-N-9: call-list shows call_id as primary, session_id in tooltip', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(screen.getByText('call-a')).toBeTruthy();
+  const callA = screen.getByText('call-a');
+  expect(callA.closest('button')?.querySelector('strong')?.title).toBe('wf-review-a');
+  fireEvent.click(screen.getByText('Plan', { selector: '.phase-node span' }));
+  expect(screen.getByText('call-plan')).toBeTruthy();
+  const callPlan = screen.getByText('call-plan');
+  expect(callPlan.closest('button')?.querySelector('strong')?.title).toBe('wf-plan');
+});
+
+// --- AC-015-B-5: call without session_id (BL-021) ---
+
+it('AC-015-B-5: call without session_id shows call_id and no empty row', async () => {
+  installFetch({
+    detailOverride: {
+      calls: [{ call_id: 'call-no-session', phase_id: 'plan-1', session: null, status: 'done', started_at: null, finished_at: null, exit_code: 0, backend: 'kimi', model: null }],
+      graph: { nodes: [{ phase: 'Plan', occurrence_count: 1, is_current: false }], edges: [], current_phase_id: 'plan-1' },
+      occurrences: [{ phase_id: 'plan-1', phase: 'Plan', occurrence: 1, started_at: null, ended_at: null, call_ids: ['call-no-session'] }],
+      events: [{ version: 2, event_id: 1, type: 'phase', ts: '2026-07-18T22:00:00Z', phase: 'Plan', phase_id: 'plan-1', payload: {} }],
+      unattributed_count: 0, malformed_count: 0,
+    },
+  });
+  render(<App />);
+  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(screen.getByText('call-no-session')).toBeVisible();
+  const callEl = screen.getByText('call-no-session');
+  expect(callEl.closest('button')?.querySelector('strong')?.title).toBeFalsy();
+});
+
+// --- AC-015-E-4: occurrence and event counts (BL-021) ---
+
+it('AC-015-E-4: phase node shows ×N, detail shows occurrence and event counts', async () => {
+  installFetch({
+    detailOverride: {
+      graph: { nodes: [{ phase: 'Review', occurrence_count: 5, is_current: true }], edges: [], current_phase_id: 'review-3' },
+      occurrences: [
+        { phase_id: 'review-1', phase: 'Review', occurrence: 1, started_at: '2026-07-18T22:00:00Z', ended_at: '2026-07-18T22:00:01Z', call_ids: ['call-a'] },
+        { phase_id: 'review-2', phase: 'Review', occurrence: 2, started_at: '2026-07-18T22:00:02Z', ended_at: '2026-07-18T22:00:03Z', call_ids: ['call-b'] },
+        { phase_id: 'review-3', phase: 'Review', occurrence: 3, started_at: '2026-07-18T22:00:04Z', ended_at: null, call_ids: ['call-c'] },
+      ],
+      calls: [{ call_id: 'call-c', phase_id: 'review-3', session: 'wf-review-c', status: 'running', started_at: null, finished_at: null, exit_code: null, backend: 'kimi', model: null }],
+      events: Array.from({ length: 12 }, (_, i) => ({ version: 2, event_id: i + 1, type: 'agent_message', ts: '2026-07-18T22:00:00Z', phase: 'Review', phase_id: 'review-3', call_id: 'call-c', payload: { content: `msg ${i}` } })),
+      unattributed_count: 0, malformed_count: 0,
+    },
+  });
+  render(<App />);
+  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(screen.getByText('×5')).toBeTruthy();
+  expect(screen.getByText('第 3 次执行')).toBeTruthy();
+  expect(screen.getByText('12 个事件')).toBeTruthy();
+});
+
+// --- AC-015-F-4: legacy events without call_id are unattributed (BL-021) ---
+
+it('AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls', async () => {
+  installFetch();
+  render(<App />);
+  expect(await screen.findByText('Phase graph')).toBeVisible();
+  expect(screen.getByText('call-a')).toBeTruthy();
+  expect(screen.getByRole('tab', { name: 'Unattributed 1' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
+  expect(screen.getByText(/legacy/)).toBeVisible();
+  expect(screen.queryByText('call-a')).toBeFalsy();
+});

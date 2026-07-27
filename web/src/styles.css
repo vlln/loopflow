@@ -223,7 +223,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .run-detail-panel.has-intervention { grid-template-rows: auto auto 250px minmax(0, 1fr); }
 .run-detail-panel:has(.phase-graph.is-multiline) { grid-template-rows: auto 320px minmax(0, 1fr); }
 .run-detail-panel.has-intervention:has(.phase-graph.is-multiline) { grid-template-rows: auto auto 320px minmax(0, 1fr); }
-.run-toolbar, .phase-graph, .phase-detail { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.run-toolbar, .phase-graph, .agent-detail { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 .run-toolbar { min-height: 60px; }
 .run-toolbar .panel-title { max-width: 290px; }
 .toolbar-meta { flex: 0 1 auto; overflow: hidden; color: var(--quiet); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -253,15 +253,15 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .react-flow__controls { overflow: hidden; border: 1px solid var(--line); border-radius: 9px; box-shadow: none; }
 .react-flow__controls button { border: 0; border-bottom: 1px solid var(--line); background: var(--surface-raised); fill: var(--muted); }
 
-.phase-detail { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
+.phase-detail, .agent-detail { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .warning-text { color: var(--warning); font-size: 10px; }
-.phase-detail-bar { display: flex; min-height: 48px; align-items: center; gap: 22px; padding: 0 14px; border-bottom: 1px solid var(--line); }
-.phase-detail-title { display: flex; min-width: 130px; align-items: baseline; gap: 8px; }
-.phase-detail-title h3 { font-size: 12px; }.phase-detail-title span { color: var(--quiet); font-size: 9px; }
+.phase-detail-bar, .agent-detail-bar { display: flex; min-height: 48px; align-items: center; gap: 22px; padding: 0 14px; border-bottom: 1px solid var(--line); }
+.phase-detail-title, .agent-detail-title { display: flex; min-width: 130px; align-items: baseline; gap: 8px; }
+.phase-detail-title h3, .agent-detail-title h3 { font-size: 12px; }.phase-detail-title span { color: var(--quiet); font-size: 9px; }
 .event-scope-tabs { display: flex; min-height: 47px; align-items: center; gap: 18px; overflow-x: auto; }
 .event-scope-tabs button { display: inline-flex; height: 37px; align-items: center; gap: 6px; padding: 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--quiet); font-size: 9px; font-weight: 650; }
 .event-scope-tabs button[aria-selected="true"] { border-bottom-color: var(--mint-strong); color: var(--text); }.event-scope-tabs button span { color: var(--quiet); font-size: 8px; }
-.phase-detail-bar .warning-text { margin-left: auto; }
+.phase-detail-bar .warning-text, .agent-detail-bar .warning-text { margin-left: auto; }
 .call-event-grid { display: grid; flex: 1; min-height: 0; grid-template-columns: minmax(180px, .34fr) minmax(0, 1fr); }
 .call-event-grid.events-only { grid-template-columns: minmax(0, 1fr); }
 .call-list, .event-list { min-height: 0; overflow: auto; background: var(--surface-deep); }
@@ -426,7 +426,7 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
   .mobile-back { display: block; }.panel-header { padding: 0 12px; }.run-toolbar { min-height: 62px; }.run-toolbar .panel-title { max-width: 120px; }.toolbar-actions .status { display: none; }.toolbar-actions .secondary-button { min-height: 34px; padding: 0 8px; }.toolbar-actions .secondary-button:not(:first-of-type) { display: none; }
   .run-detail-panel { grid-template-rows: auto minmax(210px, 38%) minmax(0, 1fr); gap: 8px; padding: 0; }.run-detail-panel.has-intervention { grid-template-rows: auto auto minmax(190px, 30%) minmax(0, 1fr); }.run-toolbar, .phase-graph, .phase-detail { border-radius: 10px; }
   .intervention-panel { grid-template-columns: minmax(0, 1fr); align-items: stretch; }.intervention-field, .intervention-json { grid-template-columns: minmax(0, 1fr); }.intervention-actions { flex-wrap: wrap; }
-  .flow-canvas { min-height: 150px; }.phase-detail-bar { gap: 12px; padding: 0 12px; }.phase-detail-title { min-width: 0; }.phase-detail-title span { display: none; }.call-event-grid { grid-template-columns: 1fr; }.call-list { max-height: 104px; }.call-list > button { min-height: 42px; }
+  .flow-canvas { min-height: 150px; }.phase-detail-bar, .agent-detail-bar { gap: 12px; padding: 0 12px; }.phase-detail-title, .agent-detail-title { min-width: 0; }.phase-detail-title span { display: none; }.call-event-grid { grid-template-columns: 1fr; }.call-list { max-height: 104px; }.call-list > button { min-height: 42px; }
   .loops-workspace .loop-list-panel, .loops-workspace .loop-detail-panel { display: none; }.loops-workspace.show-list .loop-list-panel, .loops-workspace.show-detail .loop-detail-panel { display: flex; }.loop-layout { grid-template-columns: 1fr; gap: 8px; padding: 0 10px 10px; }.file-tree { max-height: 142px; }.file-tree button { min-height: 34px; }.loop-detail-panel .panel-header > .muted { display: none; }
   .loop-definition-header { padding: 12px 14px; }.loop-identity p { max-width: 210px; }.loop-definition-header > .muted { display: none; }.loop-tabs { gap: 20px; padding: 0 16px; }.loop-content { padding: 22px 16px 28px; }.agent-grid { grid-template-columns: 1fr; }.agent-definition { min-height: 260px; padding-top: 22px; }
   .backends-workspace { padding: 14px; }.backends-header { min-height: 92px; }.backends-header p { max-width: 210px; line-height: 1.45; }.backends-actions { flex-direction: column; }.backend-overview { grid-template-columns: 1fr; grid-template-rows: auto auto; }.backend-health { min-height: 250px; }.health-score { width: 96px; height: 96px; margin: 18px auto; }.backend-status-panel { min-height: 340px; }.backend-table { padding: 0 8px 8px; }.table-head { display: none; }.backend-table > button { min-width: 0; min-height: 76px; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 10px; padding: 10px; }.backend-table > button > .status { grid-column: 2; grid-row: 1; }.backend-table > button > code { grid-column: 1 / -1; grid-row: 2; }.backend-table > button > span:nth-child(4) { grid-column: 1; grid-row: 3; }.backend-table > button > span:nth-child(5) { grid-column: 2; grid-row: 3; }.backend-table > button > svg { display: none; }.diagnostic-context { display: none; }

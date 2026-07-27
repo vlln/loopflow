@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import threading
-from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -103,20 +102,17 @@ def is_valid_v2(event: dict[str, Any]) -> bool:
     if not isinstance(event["payload"], dict):
         return False
     event_type = event.get("type", "")
-    if event_type == "phase" and not all(event.get(key) for key in ("phase", "phase_id")):
-        return False
     if event_type.startswith("agent_") or event_type in {
         "tool_call", "tool_call_update", "usage_update", "message", "retry"
     }:
-        if not all(event.get(key) for key in ("phase", "phase_id", "call_id")):
+        if not event.get("call_id"):
             return False
     return True
 
 
 @dataclass
 class EventProjection:
-    graph: dict[str, Any] = field(default_factory=lambda: {"nodes": [], "edges": [], "current_phase_id": None})
-    occurrences: list[dict[str, Any]] = field(default_factory=list)
+    agent_graph: dict[str, Any] = field(default_factory=lambda: {"nodes": [], "edges": [], "current": None})
     calls: list[dict[str, Any]] = field(default_factory=list)
     events: list[dict[str, Any]] = field(default_factory=list)
     unattributed: list[dict[str, Any]] = field(default_factory=list)
@@ -128,14 +124,14 @@ def project_events(path: Path) -> EventProjection:
     projection = EventProjection()
     raw = read_complete_jsonl(path)
     projection.events = raw
-    phase_order: list[tuple[str, str]] = []
-    occurrence_by_id: dict[str, dict[str, Any]] = {}
     calls: dict[str, dict[str, Any]] = {}
-    node_counts: Counter[str] = Counter()
-    edge_counts: Counter[tuple[str, str]] = Counter()
-    seen_phases: set[str] = set()
-    backedges: set[tuple[str, str]] = set()
-    previous_phase: str | None = None
+    agent_nodes: list[dict[str, Any]] = []
+    agent_edges: list[dict[str, Any]] = []
+    seen_call_ids: set[str] = set()
+    previous_call_id: str | None = None
+    fork_parent: str | None = None  # call_id of the agent before fork
+    fork_children: list[str] = []    # call_ids of parallel agents
+    pending_join: list[str] = []     # fork children waiting for join edges
 
     for event in raw:
         if event.get("version") == 2:
@@ -143,37 +139,28 @@ def project_events(path: Path) -> EventProjection:
                 projection.malformed.append(event)
                 continue
             event_type = event["type"]
-            phase = event.get("phase")
-            phase_id = event.get("phase_id")
             call_id = event.get("call_id")
-            if event_type == "phase":
-                occurrence = {
-                    "phase_id": phase_id,
-                    "phase": phase,
-                    "occurrence": event["payload"].get("occurrence", node_counts[phase] + 1),
-                    "started_at": event.get("ts"),
-                    "ended_at": None,
-                    "call_ids": [],
-                }
-                if phase_order and phase_order[-1][1] in occurrence_by_id:
-                    occurrence_by_id[phase_order[-1][1]]["ended_at"] = event.get("ts")
-                occurrence_by_id[phase_id] = occurrence
-                projection.occurrences.append(occurrence)
-                phase_order.append((phase, phase_id))
-                node_counts[phase] += 1
-                if previous_phase is not None:
-                    edge = (previous_phase, phase)
-                    edge_counts[edge] += 1
-                    if phase in seen_phases:
-                        backedges.add(edge)
-                seen_phases.add(phase)
-                previous_phase = phase
-            elif call_id:
+            if event_type == "fork_start":
+                fork_parent = previous_call_id
+                fork_children = []
+                continue
+            if event_type == "fork_end":
+                if fork_parent is not None and fork_children:
+                    for child_id in fork_children:
+                        agent_edges.append({
+                            "from": fork_parent,
+                            "to": child_id,
+                            "kind": "fork",
+                        })
+                    pending_join.extend(fork_children)
+                fork_parent = None
+                fork_children = []
+                continue
+            if call_id:
                 call = calls.setdefault(
                     call_id,
                     {
                         "call_id": call_id,
-                        "phase_id": phase_id,
                         "session": None,
                         "status": "pending",
                         "started_at": None,
@@ -192,42 +179,53 @@ def project_events(path: Path) -> EventProjection:
                 if event_type == "agent_start":
                     call["status"] = "running"
                     call["started_at"] = event.get("ts")
+                    if call_id not in seen_call_ids:
+                        seen_call_ids.add(call_id)
+                        label = payload.get("label", call_id)
+                        agent_def = payload.get("agent_def")
+                        agent_nodes.append({
+                            "id": call_id,
+                            "label": label,
+                            "agent_def": agent_def,
+                            "status": "running",
+                        })
+                        # Add join edges from pending fork children to this agent
+                        if pending_join and fork_parent is None:
+                            for child_id in pending_join:
+                                if child_id != call_id:
+                                    agent_edges.append({
+                                        "from": child_id,
+                                        "to": call_id,
+                                        "kind": "join",
+                                    })
+                            pending_join = []
+                        if fork_parent is not None:
+                            # Inside a fork: track as child
+                            fork_children.append(call_id)
+                        elif previous_call_id is not None:
+                            agent_edges.append({
+                                "from": previous_call_id,
+                                "to": call_id,
+                                "kind": "sequential",
+                            })
+                        previous_call_id = call_id
                 elif event_type == "agent_done":
                     call["exit_code"] = payload.get("exit_code")
                     call["status"] = "done" if payload.get("exit_code") == 0 else "failed"
                     call["finished_at"] = event.get("ts")
+                    for node in agent_nodes:
+                        if node["id"] == call_id:
+                            node["status"] = call["status"]
                 elif event_type == "retry":
                     call["status"] = "retrying"
-                if phase_id in occurrence_by_id and call_id not in occurrence_by_id[phase_id]["call_ids"]:
-                    occurrence_by_id[phase_id]["call_ids"].append(call_id)
         else:
             projection.legacy = True
-            if event.get("type") == "phase" and event.get("title"):
-                phase = event["title"]
-                phase_id = event.get("phase_id") or f"legacy-phase-{len(phase_order) + 1}"
-                occurrence = {
-                    "phase_id": phase_id,
-                    "phase": phase,
-                    "occurrence": node_counts[phase] + 1,
-                    "started_at": None,
-                    "ended_at": None,
-                    "call_ids": [],
-                }
-                occurrence_by_id[phase_id] = occurrence
-                projection.occurrences.append(occurrence)
-                phase_order.append((phase, phase_id))
-                node_counts[phase] += 1
-                if previous_phase is not None:
-                    edge_counts[(previous_phase, phase)] += 1
-                previous_phase = phase
-            elif event.get("phase_id") and event.get("call_id"):
+            if event.get("type") == "agent_start" and event.get("call_id"):
                 call_id = str(event["call_id"])
-                phase_id = str(event["phase_id"])
                 call = calls.setdefault(
                     call_id,
                     {
                         "call_id": call_id,
-                        "phase_id": phase_id,
                         "session": event.get("session"),
                         "status": "pending",
                         "started_at": None,
@@ -239,26 +237,18 @@ def project_events(path: Path) -> EventProjection:
                     },
                 )
                 call["events"].append(event)
+            elif event.get("type") != "agent_start" and event.get("call_id"):
+                call_id = str(event["call_id"])
+                if call_id in calls:
+                    calls[call_id]["events"].append(event)
             elif event.get("type") != "phase":
                 projection.unattributed.append(event)
 
     projection.calls = list(calls.values())
-    current_phase_id = phase_order[-1][1] if phase_order else None
-    projection.graph = {
-        "nodes": [
-            {"phase": phase, "occurrence_count": count, "is_current": phase_order[-1][0] == phase}
-            for phase, count in node_counts.items()
-        ],
-        "edges": [
-            {
-                "from": source,
-                "to": target,
-                "count": count,
-                "is_backedge": (source, target) in backedges,
-            }
-            for (source, target), count in edge_counts.items()
-        ],
-        "current_phase_id": current_phase_id,
+    projection.agent_graph = {
+        "nodes": agent_nodes,
+        "edges": agent_edges,
+        "current": previous_call_id,
     }
     return projection
 

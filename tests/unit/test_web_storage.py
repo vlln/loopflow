@@ -123,7 +123,7 @@ def test_run_detail_missing_events_and_state_and_find_nested(tmp_path):
 
     assert detail["working_directory"] == "lf-project"
     assert detail["state"] is None
-    assert detail["events"] == [] and detail["graph"]["nodes"] == []
+    assert detail["events"] == [] and detail["agent_graph"]["nodes"] == []
     assert detail["allowed_actions"] == ["rerun"]
 
 

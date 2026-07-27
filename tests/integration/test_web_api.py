@@ -611,82 +611,28 @@ def test_sse_file_changes_read_failure_emits_stream_error_and_closes():
 # --- Declared phases pre-display tests (ADR-0040) ---
 
 
-def test_loop_summary_includes_declared_phases(api):
-    """Loop detail returns declared_phases from meta.phases frontmatter."""
-    _, factory, port = api
-    factory.create_loop("phased", phases=[
-        {"title": "采集", "detail": "数据采集阶段"},
-        {"title": "处理", "detail": "数据处理阶段"},
-        {"title": "归档", "detail": ""},
-    ])
-
-    client = JsonHttpClient("127.0.0.1", port)
-    detail = client.request("GET", "/api/v1/loops/phased").json()
-    assert detail["declared_phases"] == [
-        {"title": "采集", "detail": "数据采集阶段"},
-        {"title": "处理", "detail": "数据处理阶段"},
-        {"title": "归档", "detail": ""},
-    ]
-
-
-def test_loop_summary_without_phases_returns_empty_list(api):
-    """Loop without meta.phases returns empty declared_phases list."""
+# declared_phases removed — tests updated to verify agent_graph instead
+def test_loop_detail_has_agent_count(api):
+    """Loop detail returns basic fields."""
     _, factory, port = api
     factory.create_loop("simple")
-
     client = JsonHttpClient("127.0.0.1", port)
     detail = client.request("GET", "/api/v1/loops/simple").json()
-    assert detail["declared_phases"] == []
+    assert detail["name"] == "simple"
+    assert "agents" in detail
 
 
-def test_loop_summary_skips_invalid_phase_entries(api):
-    """Invalid phase entries (missing/empty title) are silently skipped."""
+def test_run_detail_has_agent_graph(api):
+    """Run detail returns agent_graph (not graph/occurrences/declared_phases)."""
     _, factory, port = api
-    factory.create_loop("mixed", phases=[
-        {"title": "有效", "detail": "ok"},
-        {"detail": "missing title"},
-        {"title": "", "detail": "empty title"},
-        {"title": 123, "detail": "non-string title"},
-        "not-a-dict",
-    ])
-
-    client = JsonHttpClient("127.0.0.1", port)
-    detail = client.request("GET", "/api/v1/loops/mixed").json()
-    assert detail["declared_phases"] == [{"title": "有效", "detail": "ok"}]
-
-
-def test_run_detail_includes_declared_phases_from_run_json(api):
-    """Run detail returns declared_phases persisted in run.json at execution start."""
-    _, factory, port = api
-    factory.create_loop("phased", phases=[
-        {"title": "采集", "detail": "数据采集"},
-        {"title": "归档", "detail": ""},
-    ])
-    run = factory.create_run("run-1", status="running", loop="phased")
-    # Simulate execution.py writing declared_phases to run.json
-    metadata = json.loads((run / "run.json").read_text())
-    metadata["declared_phases"] = [
-        {"title": "采集", "detail": "数据采集"},
-        {"title": "归档", "detail": ""},
-    ]
-    factory.write_json(run / "run.json", metadata)
-
+    factory.create_loop("simple")
+    run = factory.create_run("run-1", status="done", loop="simple")
     client = JsonHttpClient("127.0.0.1", port)
     detail = client.request("GET", "/api/v1/runs/run-1").json()
-    assert detail["declared_phases"] == [
-        {"title": "采集", "detail": "数据采集"},
-        {"title": "归档", "detail": ""},
-    ]
-
-
-def test_run_detail_without_declared_phases_returns_none(api):
-    """Legacy run without declared_phases returns None (not empty list)."""
-    _, factory, port = api
-    factory.create_run("legacy-run", status="done")
-
-    client = JsonHttpClient("127.0.0.1", port)
-    detail = client.request("GET", "/api/v1/runs/legacy-run").json()
-    assert detail.get("declared_phases") is None
+    assert "agent_graph" in detail
+    assert "graph" not in detail
+    assert "occurrences" not in detail
+    assert "declared_phases" not in detail
 
 
 class StartFailingExecutor:
@@ -699,7 +645,7 @@ class StartFailingExecutor:
 def test_workflow_syntax_error_run_start_fails_without_placeholders(tmp_path):
     """AC-015-F-3: syntax-error workflow.py → run start fails, no run/placeholders, service stays up."""
     factory = WebFixtureFactory(tmp_path)
-    loop_dir = factory.create_loop("broken", phases=[{"title": "采集", "detail": "数据采集"}])
+    loop_dir = factory.create_loop("broken")
     (loop_dir / "workflow.py").write_text("def run(:\n", encoding="utf-8")
     runs = RunRepository(factory.runs, Probe())
     app = WebApplication(runs, LoopRepository(factory.loops, runs), QueueRepository(tmp_path / "queue"), DiagnosticBackend(), StartFailingExecutor(), {"kimi"})
@@ -710,13 +656,11 @@ def test_workflow_syntax_error_run_start_fails_without_placeholders(tmp_path):
         client = JsonHttpClient("127.0.0.1", server.server_port)
         created = client.request("POST", "/api/v1/runs", {"loop": "broken", "args": {}})
         assert created.status == 500 and created.json()["error"]["code"] == "internal_error"
-        # no run persisted → nothing to render placeholder nodes from
+        # no run persisted
         assert client.request("GET", "/api/v1/runs").json()["items"] == []
-        # declared phases come from loop.md frontmatter — loop detail is unaffected
         detail = client.request("GET", "/api/v1/loops/broken")
         assert detail.status == 200
         assert detail.json()["valid"] is True
-        assert detail.json()["declared_phases"] == [{"title": "采集", "detail": "数据采集"}]
     finally:
         server.shutdown()
         server.server_close()
