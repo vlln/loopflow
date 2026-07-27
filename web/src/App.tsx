@@ -205,7 +205,7 @@ function AgentGraph({ detail, selectedCallId, onSelect }: { detail: RunDetail; s
     const rawEdges: Edge[] = (detail.agent_graph?.edges ?? []).map((item, index) => ({
       id: `${item.from}-${item.to}-${index}`, source: item.from, target: item.to,
       animated: item.to === detail.agent_graph?.current,
-      className: item.kind === 'fork' ? 'fork-edge' : '',
+      className: item.kind === 'fork' ? 'fork-edge' : item.kind === 'join' ? 'join-edge' : '',
     }));
     if (rawNodes.length === 0) return { nodes: [], edges: [] };
     // Use dagre for DAG layout
