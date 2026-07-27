@@ -240,13 +240,11 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .section-meta { margin-left: auto; color: var(--quiet); font-size: 9px; }
 .phase-graph { display: flex; min-height: 0; flex-direction: column; overflow: hidden; }
 .flow-canvas { min-height: 0; flex: 1; margin: 0 8px 8px; overflow: hidden; border-radius: 6px; background: var(--surface-deep); }
-.phase-node { display: grid; min-width: 126px; gap: 3px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--text); }
-.phase-node span { font-size: 12px; font-weight: 650; }
-.phase-node small { color: var(--muted); font-size: 9px; }
-.phase-node.is-selected, .phase-node.is-current { border-color: var(--accent); background: var(--accent-soft-bg); color: var(--text); }
-.phase-node.is-selected small, .phase-node.is-current small { color: var(--mint-strong); }
-.phase-node.is-declared { border-style: dashed; border-color: var(--muted); opacity: 0.65; }
-.phase-node.is-undeclared { border-color: var(--accent-undeclared); }
+.agent-node { display: grid; min-width: 126px; gap: 3px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 7px; background: var(--surface-raised); color: var(--text); }
+.agent-node span { font-size: 12px; font-weight: 650; }
+.agent-node small { color: var(--muted); font-size: 9px; }
+.agent-node.is-selected { border-color: var(--accent); background: var(--accent-soft-bg); color: var(--text); }
+.agent-node.is-selected small { color: var(--mint-strong); }
 .react-flow__handle { width: 7px; height: 7px; border: 0; background: var(--mint-strong); }
 .react-flow__edge-path { stroke: var(--edge); stroke-width: 1.5; }
 .react-flow__edge.animated .react-flow__edge-path { stroke: var(--mint-strong); }
