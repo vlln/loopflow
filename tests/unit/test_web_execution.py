@@ -97,8 +97,10 @@ def test_background_executor_uses_shared_target(tmp_path, monkeypatch):
     while json.loads(run_json.read_text())["status"] == "running" and time.monotonic() < deadline:
         time.sleep(0.01)
     assert json.loads(run_json.read_text())["status"] == "done"
+    # ADR-0054: default isolation — working_directory is run_dir/work, not server cwd
+    expected_workdir = str(run_json.parent / "work")
     index = [json.loads(line) for line in (tmp_path / "runs" / "runs_index.jsonl").read_text().splitlines()]
-    assert index == [{"working_directory": str(Path.cwd()), "runs_directory": str(run_json.parent.parent), "run_id": run_id}]
+    assert index == [{"working_directory": expected_workdir, "runs_directory": str(run_json.parent.parent), "run_id": run_id}]
 
 
 def test_recovery_fails_when_workflow_ends_before_target(tmp_path, monkeypatch):
@@ -363,3 +365,95 @@ def test_recover_reuses_persisted_working_directory(tmp_path, monkeypatch):
     assert (workdir / "recovered.txt").read_text() == "ok"
     metadata = json.loads(run_json.read_text())
     assert metadata["working_directory"] == str(workdir.resolve())
+
+
+def test_default_working_directory_creates_isolated_dir(tmp_path, monkeypatch):
+    """AC-025-N-9: no working_directory → run.json records run_dir/work,
+    run dir lands in lf_<server_cwd>/ namespace."""
+    loops = tmp_path / "loops"
+    create_loop(loops)
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    executor = BackgroundRunExecutor(tmp_path / "runs")
+
+    run_id = executor.start("hello", {}, {})
+    run_json = next((tmp_path / "runs").glob(f"lf_*/{run_id}/run.json"))
+    assert _wait_terminal(run_json) == "done"
+
+    metadata = json.loads(run_json.read_text())
+    expected_workdir = str(run_json.parent / "work")
+    assert metadata["working_directory"] == expected_workdir
+    assert (run_json.parent / "work").is_dir()
+
+
+def test_default_working_directory_observer_scans_isolated_dir(tmp_path, monkeypatch):
+    """AC-025-B-1 / F-3: workflow runs in run_dir/work; file_changes.jsonl
+    records files created there, not files in the server cwd."""
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    (loop / "workflow.py").write_text(
+        "from pathlib import Path\n"
+        "def run(**kwargs):\n"
+        "    Path('output.txt').write_text('isolated')\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    # Create a file in the server cwd that the observer should NOT see
+    (tmp_path / "external-noise.txt").write_text("noise")
+    executor = BackgroundRunExecutor(tmp_path / "runs")
+
+    run_id = executor.start("hello", {}, {})
+    run_json = next((tmp_path / "runs").glob(f"lf_*/{run_id}/run.json"))
+    assert _wait_terminal(run_json) == "done"
+
+    run_dir = run_json.parent
+    assert (run_dir / "work" / "output.txt").read_text() == "isolated"
+    records = [
+        json.loads(line)
+        for line in (run_dir / "file_changes.jsonl").read_text().splitlines()
+    ]
+    changes = [change for record in records for change in record["changes"]]
+    assert any(c["path"] == "output.txt" and c["action"] == "created" for c in changes)
+    assert all(c["path"] != "external-noise.txt" for c in changes)
+
+
+def test_recover_uses_persisted_server_cwd_not_isolated(tmp_path, monkeypatch):
+    """AC-025-B-12: old run (ADR-0054 before) with server cwd in run.json
+    → recover reuses the persisted value, does not create run_dir/work."""
+    loops = tmp_path / "loops"
+    loop = create_loop(loops)
+    (loop / "workflow.py").write_text(
+        "from pathlib import Path\n"
+        "def run(**kwargs):\n"
+        "    Path('recovered.txt').write_text('ok')\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    workdir = tmp_path / "workdir"
+    workdir.mkdir()
+    executor = BackgroundRunExecutor(tmp_path / "runs")
+
+    # Simulate an old run: create run_dir with run.json that has server cwd
+    # as working_directory (pre-ADR-0054 behavior)
+    encoded = str(workdir.resolve()).lstrip("/").replace("/", "-")
+    run_dir = tmp_path / "runs" / f"lf_{encoded}" / "old-run-001"
+    run_dir.mkdir(parents=True)
+    (run_dir / "run.json").write_text(json.dumps({
+        "loop": "hello",
+        "run_id": "old-run-001",
+        "status": "failed",
+        "args": {},
+        "counter": 0,
+        "created": "old",
+        "execution_epoch": 1,
+        "execution_options": {},
+        "working_directory": str(workdir.resolve()),
+    }))
+
+    executor.start(
+        "hello",
+        {},
+        {"recover": True, "recovery_mode": "retry"},
+        run_id="old-run-001",
+    )
+    assert _wait_terminal(run_dir / "run.json") == "done"
+    # Recover should use the persisted working_directory, not create run_dir/work
+    assert not (run_dir / "work").is_dir()
+    assert (workdir / "recovered.txt").read_text() == "ok"

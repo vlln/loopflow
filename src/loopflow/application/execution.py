@@ -228,15 +228,30 @@ class BackgroundRunExecutor:
         run_id = run_id or uuid.uuid4().hex
         recover = bool(options.get("recover") or options.get("resume"))
         run_dir = self._existing(run_id) if recover else None
+        explicit = working_directory is not None
         if recover and run_dir is not None:
             # Recover/rerun reuse the persisted working directory (ADR-0042);
             # a new value never overrides it
             persisted = read_json(run_dir / "run.json").get("working_directory")
-            working_directory = persisted if isinstance(persisted, str) and persisted else None
-        working_directory = Path(working_directory) if working_directory is not None else Path.cwd()
-        encoded = str(working_directory.resolve()).lstrip("/").replace("/", "-")
+            if isinstance(persisted, str) and persisted:
+                working_directory = persisted
+                explicit = True
+            else:
+                working_directory = None
+                explicit = False
+        # For run_dir naming: use explicit working_directory or server cwd (ADR-0054)
+        base = Path(working_directory) if working_directory is not None else Path.cwd()
+        encoded = str(base.resolve()).lstrip("/").replace("/", "-")
         run_dir = run_dir or self.runs_root / f"lf_{encoded}" / run_id
         run_dir.mkdir(parents=True, exist_ok=True)
+        # Default isolation (ADR-0054): when no explicit working_directory,
+        # create run_dir/work so the file observer and agent output stay
+        # isolated from the server's cwd (typically the project root).
+        if not explicit:
+            working_directory = run_dir / "work"
+            working_directory.mkdir(parents=True, exist_ok=True)
+        else:
+            working_directory = Path(working_directory)
         previous_epoch = None
         if recover:
             previous_epoch = int(read_json(run_dir / "run.json").get("execution_epoch", 0))
