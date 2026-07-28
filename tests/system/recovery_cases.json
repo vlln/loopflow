@@ -1003,7 +1003,7 @@
       "fixture": "agent 返回合法 JSON 但 schema 校验失败（如 `decisions` 应为对象数组但返回字符串数组），兜底也无法转换，连续 max_retries 次均如此",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "抛 AgentError，消息中包含最后一次的 schema 校验错误 + 兜底失败原因（字段路径 + 期望类型 + 兜底尝试）；run.json 的 error_summary 包含该错误列表",
-      "test_node": "planned::ac-026-e-2",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_e2_schema_and_fallback_exhausted_agent_error_and_summary",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1035,7 +1035,7 @@
       "fixture": "agent 返回 `{\"score\": \"95\"}`，schema 要求 `score` 为 number 且无值约束",
       "action": "检查 agent() 返回值",
       "assertion": "框架兜底 + 二次校验成功，返回 `{\"score\": 95.0}`（number），不触发 retry",
-      "test_node": "planned::ac-026-n-5",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_n5_string_number_coerced_without_retry",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1051,7 +1051,7 @@
       "fixture": "agent 返回 `{\"score\": \"95\"}`，schema 要求 `score` 为 number 且 `maximum: 10`",
       "action": "检查 agent() 行为",
       "assertion": "兜底类型转换成功（\"95\"→95），但二次校验值约束失败（95 > 10），触发 retry；hint 包含类型转换成功 + 值约束失败两个错误",
-      "test_node": "planned::ac-026-b-3",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_b3_coerced_value_constraint_failure_hint_lists_both",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1067,7 +1067,7 @@
       "fixture": "agent 返回合法 JSON 但 schema 校验失败（字段 `verdict` 应为 enum `[REPRODUCED, PARTIAL, FAILED, BLOCKED]` 但返回 `\"pass\"`），兜底也失败",
       "action": "检查 retry hint",
       "assertion": "hint 包含具体字段路径（`verdict`）、期望类型、实际值、兜底尝试结果；hint 不包含 \"not valid JSON\" 措辞",
-      "test_node": "planned::ac-026-e-3",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_e3_enum_fallback_failure_hint_carries_details",
       "targets": [
         "unit:failure-classification"
       ],
