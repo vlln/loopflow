@@ -3,7 +3,7 @@ import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import ReactMarkdown from 'react-markdown';
-import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, Moon, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Sun, Terminal, X, Zap } from 'lucide-react';
+import { Activity, ArrowLeft, Bot, Braces, Check, ChevronDown, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, Moon, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Sun, Terminal, X, Zap } from 'lucide-react';
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer } from './eventReducer';
@@ -42,9 +42,9 @@ function AppShell() {
       <span className="rail-version">{version ? `v${version}` : 'v—'}</span>
     </nav>
     <main className="app-main">
-      {view === 'runs' && <RunsWorkspace />}
-      {view === 'loops' && <LoopsWorkspace />}
-      {view === 'backends' && <BackendsWorkspace />}
+      <div className="workspace-container" hidden={view !== 'runs'}><RunsWorkspace /></div>
+      <div className="workspace-container" hidden={view !== 'loops'}><LoopsWorkspace /></div>
+      <div className="workspace-container" hidden={view !== 'backends'}><BackendsWorkspace /></div>
     </main>
   </div>;
 }
@@ -91,6 +91,7 @@ function RunsWorkspace() {
   }, [selectedId]);
   useEffect(() => {
     if (!selectedId) { setDetail(null); setInterventions([]); setFileChangeRecords([]); return; }
+    setDetail(null);  // BL-039: clear stale detail immediately to avoid rendering old run's data
     void api.run(selectedId).then((value) => {
       setDetail(value);
       setEventScope('events');
@@ -315,7 +316,8 @@ function FileChangesPanel({ records, runId, selectedCallId, callOrder, onClose }
 }
 
 function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; depth: number; onPreview: (path: string) => void }) {
-  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }}><Folder size={12} /><span>{dir.label}</span></div><ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} onPreview={onPreview} />)}</ul></li>;
+  const [open, setOpen] = useState(true);
+  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }} role="button" tabIndex={0} onClick={() => setOpen(v => !v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(v => !v); } }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<Folder size={12} /><span>{dir.label}</span></div>{open && <ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} onPreview={onPreview} />)}</ul>}</li>;
 }
 
 function ChangeTreeFileView({ file, depth, onPreview }: { file: ChangeTreeFile; depth: number; onPreview: (path: string) => void }) {
@@ -440,7 +442,7 @@ function LoopsWorkspace() {
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [mobileList, setMobileList] = useState(true);
-  useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setSelected(page.items[0]?.name ?? null); }); }, []);
+  useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setSelected(page.items[0]?.name ?? null); }).catch((cause) => setError(messageOf(cause))); }, []);
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -469,15 +471,7 @@ function LoopsWorkspace() {
     if (next === 'workflow') setFile(detail?.files.find((item) => item.path === 'workflow.py')?.path ?? 'workflow.py');
     if (next === 'agents') setFile(detail?.agents[0]?.path ?? '');
   };
-  const unpause = async () => {
-    if (!selected) return;
-    try {
-      setDetail(await api.unpauseLoop(selected));
-      const page = await api.loops();
-      setLoops(page.items);
-    } catch (cause) { setError(messageOf(cause)); }
-  };
-  return <section className={`workspace loops-workspace ${mobileList ? 'show-list' : 'show-detail'}`} data-testid="loops-workspace"><aside className="panel loop-list-panel"><PanelHeader icon={<GitBranch size={15} />} title="Loops" /><ScrollArea className="loop-list">{loops.map((loop) => <button key={loop.name} className={selected === loop.name ? 'is-selected' : ''} onClick={() => setSelected(loop.name)}><span><strong>{loop.name}</strong><small>{loop.description || 'No description'}</small></span><span className="loop-count">{loop.agent_count}</span>{(loop.consecutive_failures ?? 0) > 0 && <small className="streak-badge">streak ×{loop.consecutive_failures}</small>}{loop.paused && <StatusBadge value="paused" />}{!loop.valid && <StatusBadge value="failed" />}</button>)}</ScrollArea></aside><section className="panel loop-detail-panel">{detail ? <><header className="loop-definition-header"><div className="mobile-back"><IconButton label="Back to Loops" onClick={() => setMobileList(true)}><ArrowLeft /></IconButton></div><div className="loop-identity"><span className="eyebrow">Loop definition</span><h2 className="panel-title">{detail.name}</h2><p>{detail.description || 'No description'}</p></div><span className="muted">{detail.agents.length} Agents</span>{(detail.consecutive_failures ?? 0) > 0 && <span className="muted streak-note">failure streak ×{detail.consecutive_failures}</span>}{detail.paused && <span className="loop-paused"><StatusBadge value="paused" /><span className="paused-reason">{detail.paused_reason}</span><button aria-label="Unpause loop" className="secondary-button" onClick={() => void unpause()}><Play size={14} />Unpause</button></span>}</header><nav className="loop-tabs" aria-label="Loop definition sections"><button aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => selectTab('overview')}>Overview</button><button aria-current={tab === 'workflow' ? 'page' : undefined} onClick={() => selectTab('workflow')}>Workflow</button><button aria-current={tab === 'agents' ? 'page' : undefined} onClick={() => selectTab('agents')}>Agents <span>{detail.agents.length}</span></button></nav><ScrollArea className="loop-content">{tab === 'overview' && <article className="definition-document markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article>}{tab === 'workflow' && <article className="definition-code"><header><span>workflow.py</span><span>Read only</span></header><pre className="code-preview scroll-area">{content}</pre></article>}{tab === 'agents' && (detail.agents.length ? <div className="agents-workspace"><div className="agent-grid">{detail.agents.map((agent) => <button key={agent.path} className={file === agent.path ? 'is-selected' : ''} onClick={() => setFile(agent.path)}><Bot size={16} /><span><strong>{agent.name}</strong><small>{agent.description || agent.path}</small></span><ChevronRight size={15} /></button>)}</div><article className="agent-definition markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article></div> : <EmptyState title="0 Agents" detail="This Loop has no Agent definitions." />)}</ScrollArea></> : <EmptyState title="No Loop selected" detail="Select a declaration from the list." />}</section>{error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}</section>;
+  return <section className={`workspace loops-workspace ${mobileList ? 'show-list' : 'show-detail'}`} data-testid="loops-workspace"><aside className="panel loop-list-panel"><PanelHeader icon={<GitBranch size={15} />} title="Loops" /><ScrollArea className="loop-list">{loops.map((loop) => <button key={loop.name} className={selected === loop.name ? 'is-selected' : ''} onClick={() => setSelected(loop.name)}><span><strong>{loop.name}</strong><small>{loop.description || 'No description'}</small></span><span className="loop-count">{loop.agent_count}</span>{!loop.valid && <StatusBadge value="failed" />}</button>)}</ScrollArea></aside><section className="panel loop-detail-panel">{detail ? <><header className="loop-definition-header"><div className="mobile-back"><IconButton label="Back to Loops" onClick={() => setMobileList(true)}><ArrowLeft /></IconButton></div><div className="loop-identity"><span className="eyebrow">Loop definition</span><h2 className="panel-title">{detail.name}</h2><p>{detail.description || 'No description'}</p></div>{!detail.valid && <StatusBadge value="failed" />}</header><nav className="loop-tabs" aria-label="Loop definition sections"><button aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => selectTab('overview')}>Overview</button><button aria-current={tab === 'workflow' ? 'page' : undefined} onClick={() => selectTab('workflow')}>Workflow</button><button aria-current={tab === 'agents' ? 'page' : undefined} onClick={() => selectTab('agents')}>Agents <span>{detail.agents.length}</span></button></nav><ScrollArea className="loop-content">{tab === 'overview' && <article className="definition-document markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article>}{tab === 'workflow' && <article className="definition-code"><header><span>workflow.py</span><span>Read only</span></header><pre className="code-preview scroll-area">{content}</pre></article>}{tab === 'agents' && (detail.agents.length ? <div className="agents-workspace"><div className="agent-grid">{detail.agents.map((agent) => <button key={agent.path} className={file === agent.path ? 'is-selected' : ''} onClick={() => setFile(agent.path)}><Bot size={16} /><span><strong>{agent.name}</strong><small>{agent.description || agent.path}</small></span><ChevronRight size={15} /></button>)}</div><article className="agent-definition markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article></div> : <EmptyState title="0 Agents" detail="This Loop has no Agent definitions." />)}</ScrollArea></> : <EmptyState title="No Loop selected" detail="Select a declaration from the list." />}</section>{error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}</section>;
 }
 
 function BackendsWorkspace() {
