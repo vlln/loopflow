@@ -174,6 +174,12 @@ class AgentRunner:
         self._mock_fn = mock_fn
         self._mock_auto_fn = mock_auto_fn
         self.backend_name = backend_name
+        # BL-036: resolve display name from backend instance when auto-detected
+        self._display_backend = backend_name
+        if backend is not None and not backend_name:
+            resolved = getattr(backend, 'backend_name', None)
+            if isinstance(resolved, str):
+                self._display_backend = resolved
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -434,7 +440,7 @@ class AgentRunner:
                     "call_id": call_id,
                     "label": self._label,
                     "agent_def": self._agent_def_name,
-                    "backend": self.backend_name,
+                    "backend": self._display_backend,
                 })
                 if self._mock_mode == "auto":
                     text, exit_code = self._mock_auto_fn(schema)
@@ -627,14 +633,15 @@ class AgentRunner:
                     },
                 )
 
-            self._write_event({
-                "type": "agent_start",
-                "session": session,
-                "call_id": call_id,
-                "label": self._label,
-                "agent_def": self._agent_def_name,
-                "backend": self.backend_name,
-            })
+            if infra_attempt == 0:
+                self._write_event({
+                    "type": "agent_start",
+                    "session": session,
+                    "call_id": call_id,
+                    "label": self._label,
+                    "agent_def": self._agent_def_name,
+                    "backend": self._display_backend,
+                })
 
             events = self._invoke(
                 prompt + retry_hint,

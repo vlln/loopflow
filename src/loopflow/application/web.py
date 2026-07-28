@@ -349,7 +349,7 @@ class WebApplication:
         run_dir = self._run_dir(run_id)
         root = self.runs.resolve_working_directory(run_dir)
         if root is None:
-            raise ApplicationError("file_not_found", f"File '{relative}' was not found")
+            raise ApplicationError("file_not_found", f"Working directory for run '{run_id}' is not available on this server")
         return self.loops.preview(root, relative)
 
     def list_queue(self, *, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
