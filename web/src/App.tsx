@@ -42,9 +42,9 @@ function AppShell() {
       <span className="rail-version">{version ? `v${version}` : 'v—'}</span>
     </nav>
     <main className="app-main">
-      {view === 'runs' && <RunsWorkspace />}
-      {view === 'loops' && <LoopsWorkspace />}
-      {view === 'backends' && <BackendsWorkspace />}
+      <div className="workspace-container" hidden={view !== 'runs'}><RunsWorkspace /></div>
+      <div className="workspace-container" hidden={view !== 'loops'}><LoopsWorkspace /></div>
+      <div className="workspace-container" hidden={view !== 'backends'}><BackendsWorkspace /></div>
     </main>
   </div>;
 }
@@ -442,7 +442,7 @@ function LoopsWorkspace() {
   const [content, setContent] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [mobileList, setMobileList] = useState(true);
-  useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setSelected(page.items[0]?.name ?? null); }); }, []);
+  useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setSelected(page.items[0]?.name ?? null); }).catch((cause) => setError(messageOf(cause))); }, []);
   useEffect(() => {
     if (!selected) return;
     let active = true;
