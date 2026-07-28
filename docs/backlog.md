@@ -43,3 +43,9 @@
 | BL-035 | Events 重复渲染 | `agent_start` 在 infra-retry 每次迭代都写入 events.jsonl（重试时多余）；`agent_session` 同一 session_id 被写入多次。需去重 | 用户报告 2026-07-28 | done | 0.25.1 |
 | BL-036 | Claude Code 后端显示为 unknown | auto-detect 后 `backend_name` 仍为 None 传给 AgentRunner，`agent_start` 事件 backend 字段为空，前端显示 "backend unknown" | 用户报告 2026-07-28 | done | 0.25.1 |
 | BL-037 | File changes 文件夹不可折叠 | `ChangeTreeDirView` 无展开/折叠功能，树始终全展开。需加 toggle state + chevron 图标 | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-038 | Loops 页面混入运行时状态 | Loops 定义页显示 paused/failure_streak 等 run 级状态，应只展示定义信息 | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-039 | 切换 Runs 时卡顿 | 切换 run 时旧 detail 未清空，React 用旧数据重渲染（含 AgentGraph key 变化导致重挂载） | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-040 | Backends API 对 missing 后端也调用 _make_backend | 9 个后端中 7 个 missing 也创建实例只为读 capabilities，浪费开销 | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-041 | 切换页面卡顿 + missing catch | tab 切换卸载/重挂载组件丢失 state 重新发 API；LoopsWorkspace api.loops() 缺 .catch() | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-038 | 跨 agent 文件依赖声明与校验 | agent 定义可声明产物文件（output）与前置依赖文件（input 引用上游产物），框架在 agent 调用前校验依赖文件存在性，缺失时报错/重试。当前各 loop 只能在 workflow.py 手写 `Path.exists` 检查防 LLM 幻觉完成（返回 complete 但未写产物），属于通用需求 | bio-reproducer loop 迁移 0.25.1 讨论 2026-07-28 | candidate | — |
+| BL-039 | phase 级重做入口（replay 缓存作废） | recover 仅支持失败点 retry/continue，缺少"从指定 call/label 起作废 replay 缓存并重新执行"的原生机制（如 validate 发现问题后需重做上游 run 阶段）。当前 loop 侧只能用 workflow 参数（resume_from）跳过已完成调用，是业务层补丁；引擎层应考虑 recover --from <call_id/label> 或按 label 的缓存作废 | bio-reproducer loop 迁移 0.25.1 讨论 2026-07-28 | candidate | — |
