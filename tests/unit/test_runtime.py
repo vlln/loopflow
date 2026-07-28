@@ -1029,69 +1029,138 @@ class TestJsonExtraction:
     def test_pure_json_parses_directly(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
-        result = extract_json('{"verdict": "PASS"}', schema)
+        result, err = extract_json('{"verdict": "PASS"}', schema)
         assert result == {"verdict": "PASS"}
+        assert err is None
 
     def test_json_in_markdown(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
         text = '以下是分析结果：\n\n{"verdict": "PASS", "score": 95}\n\n以上是完整报告。'
-        result = extract_json(text, schema)
+        result, err = extract_json(text, schema)
         assert result == {"verdict": "PASS", "score": 95}
+        assert err is None
 
     def test_json_in_code_block(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         text = '```json\n{"verdict": "PASS"}\n```'
-        result = extract_json(text, schema)
+        result, err = extract_json(text, schema)
         assert result == {"verdict": "PASS"}
+        assert err is None
 
-    def test_wrong_type_rejected(self):
+    def test_wrong_type_coerced(self):
+        """Number → string coercion: 123 → '123'."""
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
-        result = extract_json('{"verdict": 123}', schema)
-        assert result is None  # 123 is not string
+        result, err = extract_json('{"verdict": 123}', schema)
+        assert result == {"verdict": "123"}
+        assert err is None
+
+    def test_uncoercible_type_rejected(self):
+        """Object → string cannot be coerced."""
+        from loopflow.domain import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
+        result, err = extract_json('{"verdict": {"nested": "obj"}}', schema)
+        assert result is None
 
     def test_enum_mismatch_rejected(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["PASS", "FAIL"]}}}
-        result = extract_json('{"verdict": "UNKNOWN"}', schema)
-        assert result is None  # UNKNOWN not in enum
+        result, err = extract_json('{"verdict": "UNKNOWN"}', schema)
+        assert result is None  # UNKNOWN not in enum, no case match
+
+    def test_enum_case_coerced(self):
+        """Enum case-insensitive match: 'pass' → 'PASS'."""
+        from loopflow.domain import extract_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["PASS", "FAIL"]}}}
+        result, err = extract_json('{"verdict": "pass"}', schema)
+        assert result == {"verdict": "PASS"}
+        assert err is None
+
+    def test_string_to_number_coerced(self):
+        """String → number coercion: '95' → 95.0."""
+        from loopflow.domain import extract_json
+        schema = {"type": "object", "properties": {"score": {"type": "number"}}}
+        result, err = extract_json('{"score": "95"}', schema)
+        assert result == {"score": 95.0}
+        assert err is None
 
     def test_missing_key_rejected(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}, "score": {"type": "number"}}}
-        result = extract_json('{"verdict": "PASS"}', schema)
+        result, err = extract_json('{"verdict": "PASS"}', schema)
         assert result is None  # missing "score" key
 
     def test_multiple_json_blocks_first_match(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
         text = '{"other": 1}\n{"verdict": "PASS"}\n{"more": 2}'
-        result = extract_json(text, schema)
+        result, err = extract_json(text, schema)
         assert result == {"verdict": "PASS"}
 
     def test_no_matching_json(self):
         from loopflow.domain import extract_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
-        result = extract_json("no json here at all", schema)
+        result, err = extract_json("no json here at all", schema)
         assert result is None
 
     def test_empty_schema_properties(self):
         from loopflow.domain import extract_json
         schema = {"type": "object"}
-        result = extract_json('{"anything": "goes"}', schema)
+        result, err = extract_json('{"anything": "goes"}', schema)
         assert result is None  # no properties to match against
 
     def test_validate_json_accepts_valid(self):
         from loopflow.domain import validate_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
-        assert validate_json({"verdict": "PASS"}, schema) is True
+        valid, err = validate_json({"verdict": "PASS"}, schema)
+        assert valid is True
+        assert err is None
 
     def test_validate_json_rejects_invalid(self):
         from loopflow.domain import validate_json
         schema = {"type": "object", "properties": {"verdict": {"type": "string"}}}
-        assert validate_json({"verdict": 123}, schema) is False
+        valid, err = validate_json({"verdict": 123}, schema)
+        assert valid is False
+        assert err is not None  # error message includes field path
+
+    def test_coerce_json_string_to_number(self):
+        from loopflow.domain import coerce_json
+        schema = {"type": "object", "properties": {"score": {"type": "number"}}}
+        coerced, errors = coerce_json({"score": "95"}, schema)
+        assert coerced == {"score": 95.0}
+        assert len(errors) == 1
+
+    def test_coerce_json_string_to_integer_float_rejected(self):
+        from loopflow.domain import coerce_json
+        schema = {"type": "object", "properties": {"count": {"type": "integer"}}}
+        coerced, errors = coerce_json({"count": "95.5"}, schema)
+        # coercion attempts but fails for integer with decimal
+        assert any("decimal" in e for e in errors)
+
+    def test_coerce_json_enum_case_match(self):
+        from loopflow.domain import coerce_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["PASS", "FAIL"]}}}
+        coerced, errors = coerce_json({"verdict": "pass"}, schema)
+        assert coerced == {"verdict": "PASS"}
+
+    def test_coerce_json_enum_multiple_match_fails(self):
+        from loopflow.domain import coerce_json
+        schema = {"type": "object", "properties": {"verdict": {"type": "string", "enum": ["Pass", "pass"]}}}
+        coerced, errors = coerce_json({"verdict": "pass"}, schema)
+        # Multiple matches → ambiguous → not coerced
+        assert coerced is None or all("multiple" in e for e in errors if "multiple" in e)
+
+    def test_coerce_json_value_constraint_not_checked(self):
+        """coerce_json fixes types but not value constraints — caller must re-validate."""
+        from loopflow.domain import coerce_json, validate_json
+        schema = {"type": "object", "properties": {"score": {"type": "number", "maximum": 10}}}
+        coerced, errors = coerce_json({"score": "95"}, schema)
+        assert coerced == {"score": 95.0}  # type coercion succeeds
+        # But re-validation should fail (95 > 10)
+        valid, err = validate_json(coerced, schema)
+        assert valid is False
 
 
 # ── state ─────────────────────────────────────────────────────────────────────

@@ -16,9 +16,9 @@
 | BL-008 | loop args schema 服务端校验 | Web/API 侧对 loop args 做 schema 校验 | 0.20.0 发布评估 | candidate | — |
 | BL-009 | 非 macOS 目录选择器 | Web UI 目录选择器在非 macOS 平台的适配（ADR-0053：GET /system/list-directory + Web 模态浏览器替代 osascript） | 0.20.0 发布评估 | done | 0096-web-directory-picker |
 | BL-010 | AC-010-N-2/E-2 契约漂移裁决 | AC 文本期望 loop.md 缺失/坏 YAML 时回退 workflow.py meta，但 ADR-0031 后实现为强制 loop.md 缺失即跳过；需 DESIGN 裁决对齐文档或实现 | 0081 scheduling profile 落地时发现 | done | 0.21.0 |
-| BL-011 | npm audit 既有失败修复 | brace-expansion 经 @vitest/coverage-v8 链 5 high，中断 mr-gate 链 | 0081 mr-gate 验证时发现 | candidate | — |
+| BL-011 | npm audit 既有失败修复 | brace-expansion 经 @vitest/coverage-v8 链 5 high，中断 mr-gate 链 | 0081 mr-gate 验证时发现 | planned | 0.25.0 |
 | BL-012 | SSE file_changes OSError 未按 topic 隔离 | AC-016-F-3 实证发现：fc 读取 OSError 落入 server 通用 except，发无 topic 的 stream_error，与 AC-016-E-3 的 topic 隔离行为不一致；需裁决是缺陷还是可接受形态 | 0086 清理时发现 | candidate | — |
-| BL-013 | 版本号单源化 | 版本号双写（pyproject.toml + src/loopflow/__init__.py）易不同步，0.21.0 release 冒烟时暴露 | 0.21.0 复盘 | candidate | — |
+| BL-013 | 版本号单源化 | 版本号双写（pyproject.toml + src/loopflow/__init__.py）易不同步，0.21.0 release 冒烟时暴露 | 0.21.0 复盘 | planned | 0.25.0 |
 | BL-014 | 采用官方 Python ACP SDK 替换手搓 ACP 管道 | acp.py/acp_backend.py 手搓 JSON-RPC 是未验证 stub（runtime 从不传 transport=acp，ACP 路径生产里是死的）；用官方 agent-client-protocol 替换协议管道，保留 loopflow 自己的 session/recovery/queue；CLI 保留为主传输，ACP 成为真正可用的可选路径 | 0.21.0 后架构调研（acpx 对比） | done | 0.22.0 |
 | BL-015 | agent-client-protocol 划为可选 extra [acp] | 0.22.0 实现阶段放主依赖区，ADR-0049 §8 定位为可选 extra 未落地；默认安装不应含 pydantic | 0.22.0 复盘 | candidate | — |
 | BL-016 | grok ACP `_meta` system prompt 在 SDK 路径的等价处理 | SDK session/new 不接受 _meta，0089 改走 prompt 文本拼接，需验证 grok 行为不回归 | 0.22.0 复盘 | candidate | — |
@@ -36,3 +36,6 @@
 | BL-028 | agent graph live-run join 边缺失 | `project_events()` back-to-back join 边只在 fork_end 生成，live run 期间 verifier 节点出现但无边连接 researcher，独立平铺在画布中 | deep-research run 实测 2026-07-27 | done | 0098 |
 | BL-029 | Loops 页面切换延迟 | `read_summary()` 中 `project_events()` 死代码导致每次切 loop 全量解析所有 run 的 events.jsonl；`detail()` 重复读 frontmatter；`rglob` 无隐藏目录过滤 | 用户报告 2026-07-27 | done | 0096 |
 | BL-030 | reconcile 宽限期阻止逻辑移除 | 宽限期阻止已确认死亡的进程被清理，无安全收益；频繁重启 server 导致 stale run 永远无法清理（ADR-0046 修订） | 用户报告 2026-07-27 | done | 0096 |
+| BL-031 | agent 失败重试缺乏详细错误原因 | run/agent 失败时 `error_summary` 仅记录顶层错误类别（如 `validation_failed`），不包含具体原因（如 schema 校验失败时应显示哪个字段不匹配、期望类型 vs 实际值）。应在 `error_summary`/`error_traceback` 中补充上下文信息，降低排查成本 | 用户报告 2026-07-27 | planned | 0.25.0 |
+| BL-032 | WebUI failed run 错误信息占用过多空间 | error_banner 在 run failed 时展开占据大量空白，影响其他面板可见性。应收紧布局：可折叠、限制高度、截断长文本 | 用户报告 2026-07-27 | planned | 0.25.0 |
+| BL-033 | Runs 左栏显示 run_id 而非项目目录 | 左栏 run 列表只显示 UUID（如 `4e1603c7...`），用户无法辨别哪个 run 对应哪个项目。应显示 working_directory 的目录名（如 `bio-reproducer`、`claroai-paper01`） | 用户报告 2026-07-27 | planned | 0.25.0 |

@@ -20,6 +20,8 @@ from loopflow.domain import (
     add_goal_to_schema,
     build_goal_steering,
     extract_json,
+    coerce_json,
+    validate_json,
     marshal,
     run_goal_loop,
 )
@@ -394,16 +396,28 @@ class AgentRunner:
         )
 
         retry_hint = ""
+        last_errors: list[str] = []
 
         for attempt in range(max_retries + 1):
             if attempt > 0:
                 self._log(f"JSON parse failed, retrying ({attempt}/{max_retries})...")
-                retry_hint = (
-                    f"\n\n---\n"
-                    f"Your previous response was not valid JSON. "
-                    f"Please respond with ONLY a JSON object matching the "
-                    f"schema above."
-                )
+                if last_errors:
+                    error_list = "\n".join(f"- {e}" for e in last_errors[:10])
+                    retry_hint = (
+                        f"\n\n---\n"
+                        f"Your previous response did not pass schema validation.\n"
+                        f"Errors detected:\n{error_list}\n"
+                        f"Please fix the above fields and respond with a JSON "
+                        f"object matching the schema."
+                    )
+                else:
+                    retry_hint = (
+                        f"\n\n---\n"
+                        f"Your previous response was not valid JSON. "
+                        f"Please respond with ONLY a JSON object matching the "
+                        f"schema above."
+                    )
+                last_errors = []
 
             # Worktree
             cwd = None
@@ -445,12 +459,48 @@ class AgentRunner:
             if schema:
                 try:
                     result = json.loads(text)
+                    # Validate schema
+                    valid, val_error = validate_json(result, schema)
+                    if not valid:
+                        # Schema validation failed → try type coercion
+                        coerced, coercion_errors = coerce_json(result, schema)
+                        if coerced is not None:
+                            # Coercion applied → re-validate (value constraints)
+                            re_valid, re_error = validate_json(coerced, schema)
+                            if re_valid:
+                                result = coerced
+                            else:
+                                # Type fixed but value constraints still fail
+                                last_errors = [val_error] + coercion_errors + [re_error]
+                                if attempt >= max_retries:
+                                    err = AgentError(
+                                        f"Agent failed schema validation after "
+                                        f"{max_retries} retries. "
+                                        f"Last errors: {'; '.join(last_errors)}"
+                                    )
+                                    err.backend_sid = backend_sid
+                                    self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, status="failed", session_id=backend_sid)
+                                    raise err
+                                continue
+                        else:
+                            # Coercion also failed
+                            last_errors = [val_error] + coercion_errors
+                            if attempt >= max_retries:
+                                err = AgentError(
+                                    f"Agent failed schema validation after "
+                                    f"{max_retries} retries. "
+                                    f"Last errors: {'; '.join(last_errors)}"
+                                )
+                                err.backend_sid = backend_sid
+                                self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, status="failed", session_id=backend_sid)
+                                raise err
+                            continue
                     self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
                     self._handle_control_result(result, backend_sid, call_id)
                     self._persist_state()
                     return result, backend_sid
                 except json.JSONDecodeError:
-                    extracted = extract_json(text, schema)
+                    extracted, extract_error = extract_json(text, schema)
                     if extracted is not None:
                         self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
                         self._handle_control_result(extracted, backend_sid, call_id)
@@ -460,10 +510,13 @@ class AgentRunner:
                         err = AgentError(
                             f"Agent failed to return valid JSON after "
                             f"{max_retries} retries"
+                            + (f". Last error: {extract_error}" if extract_error else "")
                         )
                         err.backend_sid = backend_sid
                         self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, status="failed", session_id=backend_sid)
                         raise err
+                    if extract_error:
+                        last_errors = [extract_error]
                     continue
 
             # No schema → return text
