@@ -51,7 +51,8 @@ class RunContext:
                  counter: int = 0,
                  recovery_mode: str | None = None,
                  recovery_target_call_id: str | None = None,
-                 execution_options: dict[str, Any] | None = None) -> None:
+                 execution_options: dict[str, Any] | None = None,
+                 digest_workflow: bool = True) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
         self.run_dir = run_dir or Path(tempfile.gettempdir()) / "runs" / self.run_id
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +74,8 @@ class RunContext:
         self.live = live
         self.loop_dir = loop_dir
         self.state = state
+        # ADR-0055: single-agent runs exclude workflow.py from input digests
+        self.digest_workflow = digest_workflow
         self.file_observer = None  # FileChangeObserver | None, set by execution.py
 
     def next_session(self) -> str:

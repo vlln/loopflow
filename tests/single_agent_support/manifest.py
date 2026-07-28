@@ -28,7 +28,17 @@ def _targets() -> dict[str, list[str]]:
 
 TARGETS = _targets()
 
-TEST_NODES: dict[str, str] = {}
+TEST_NODES: dict[str, str] = {
+    "AC-032-N-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_n1_single_agent_run_done_and_workflow_digest_none",
+    "AC-032-N-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_n2_output_schema_json_stdout",
+    "AC-032-N-3": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_n3_recover_retry_reruns_call",
+    "AC-032-B-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_b1_param_rendering_and_missing_param",
+    "AC-032-B-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_b2_waiting_input",
+    "AC-032-E-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_e1_unknown_agent_def",
+    "AC-032-E-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_e2_args_rejected",
+    "AC-032-E-3": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_e3_prompt_mutex",
+    "AC-032-F-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_f1_backend_failure_recoverable",
+}
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {}
 

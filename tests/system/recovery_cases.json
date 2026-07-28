@@ -1003,7 +1003,7 @@
       "fixture": "agent 返回合法 JSON 但 schema 校验失败（如 `decisions` 应为对象数组但返回字符串数组），兜底也无法转换，连续 max_retries 次均如此",
       "action": "执行含该 agent() 的 workflow",
       "assertion": "抛 AgentError，消息中包含最后一次的 schema 校验错误 + 兜底失败原因（字段路径 + 期望类型 + 兜底尝试）；run.json 的 error_summary 包含该错误列表",
-      "test_node": "planned::ac-026-e-2",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_e2_schema_and_fallback_exhausted_agent_error_and_summary",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1035,7 +1035,7 @@
       "fixture": "agent 返回 `{\"score\": \"95\"}`，schema 要求 `score` 为 number 且无值约束",
       "action": "检查 agent() 返回值",
       "assertion": "框架兜底 + 二次校验成功，返回 `{\"score\": 95.0}`（number），不触发 retry",
-      "test_node": "planned::ac-026-n-5",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_n5_string_number_coerced_without_retry",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1051,7 +1051,7 @@
       "fixture": "agent 返回 `{\"score\": \"95\"}`，schema 要求 `score` 为 number 且 `maximum: 10`",
       "action": "检查 agent() 行为",
       "assertion": "兜底类型转换成功（\"95\"→95），但二次校验值约束失败（95 > 10），触发 retry；hint 包含类型转换成功 + 值约束失败两个错误",
-      "test_node": "planned::ac-026-b-3",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_b3_coerced_value_constraint_failure_hint_lists_both",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1067,7 +1067,7 @@
       "fixture": "agent 返回合法 JSON 但 schema 校验失败（字段 `verdict` 应为 enum `[REPRODUCED, PARTIAL, FAILED, BLOCKED]` 但返回 `\"pass\"`），兜底也失败",
       "action": "检查 retry hint",
       "assertion": "hint 包含具体字段路径（`verdict`）、期望类型、实际值、兜底尝试结果；hint 不包含 \"not valid JSON\" 措辞",
-      "test_node": "planned::ac-026-e-3",
+      "test_node": "tests/unit/test_failure_classification.py::TestSchemaFallbackScenarios::test_ac026_e3_enum_fallback_failure_hint_carries_details",
       "targets": [
         "unit:failure-classification"
       ],
@@ -1197,7 +1197,7 @@
       "fixture": "workflow 调用 `intervene(key=\"approve\", prompt=\"继续？\", options=[\"继续\",\"停止\"], allow_custom=False)`；CLI 前台 tty 运行",
       "action": "执行 `loopflow run`，在终端提问中选择\"继续\"",
       "assertion": "终端内联展示 prompt 与编号选项；回答经应用层校验落盘（response_source=human）；同一 run_id 恢复重放，intervene 返回\"继续\"；Run 最终 done",
-      "test_node": "planned::ac-031-n-1",
+      "test_node": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_n1_inline_answer_recovers_same_run",
       "targets": [
         "process:cli-run"
       ],
@@ -1213,7 +1213,7 @@
       "fixture": "Run A 为 waiting_input，request R 为 pending（后台或非前台产生）",
       "action": "执行 `loopflow respond <A.run_id>` 并交互回答",
       "assertion": "response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回回答",
-      "test_node": "planned::ac-031-n-2",
+      "test_node": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_n2_respond_command_recovers_run",
       "targets": [
         "process:cli-respond"
       ],
@@ -1229,7 +1229,7 @@
       "fixture": "workflow 调用 `intervene(..., default=\"继续\")`；以 `--unattended` 运行",
       "action": "执行 `loopflow run --unattended`",
       "assertion": "Run 不进入 waiting_input；请求以 default 回答（response_source=default）；workflow 拿到 default 继续至终态",
-      "test_node": "planned::ac-031-n-3",
+      "test_node": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_n3_unattended_applies_default",
       "targets": [
         "process:cli-run"
       ],
@@ -1245,7 +1245,7 @@
       "fixture": "request R pending，`created_at + timeout` 已过，声明了 default",
       "action": "对 Run 执行 recover",
       "assertion": "R 自动以 default 回答（response_source=timeout_default），重放返回 default；无需任何常驻进程触发",
-      "test_node": "planned::ac-031-b-1",
+      "test_node": "tests/unit/test_waiting_input.py::test_ac031_b1_lazy_timeout_answers_default_on_replay",
       "targets": [
         "unit:intervention-timeout"
       ],
@@ -1261,7 +1261,7 @@
       "fixture": "CLI 前台内联提问且声明了 timeout/default",
       "action": "不输入，等待倒计时结束",
       "assertion": "超时后自动取 default 继续；回答落盘 response_source=timeout_default",
-      "test_node": "planned::ac-031-b-2",
+      "test_node": "tests/unit/test_waiting_input.py::test_ac031_b2_prompt_countdown_uses_default",
       "targets": [
         "unit:intervention-timeout"
       ],
@@ -1277,7 +1277,7 @@
       "fixture": "`intervene(options=[\"a\",\"b\"], allow_custom=False, default=\"c\")`",
       "action": "运行 workflow",
       "assertion": "调用即抛 ValueError（default 未通过 options 校验）；Run failed；不创建 request",
-      "test_node": "planned::ac-031-e-1",
+      "test_node": "tests/unit/test_waiting_input.py::test_ac031_e1_invalid_default_raises_value_error",
       "targets": [
         "unit:intervention-default-validation"
       ],
@@ -1293,7 +1293,7 @@
       "fixture": "`intervene(timeout=60)` 未声明 default",
       "action": "运行 workflow",
       "assertion": "调用即抛 ValueError（timeout 依赖 default）；不创建 request",
-      "test_node": "planned::ac-031-e-2",
+      "test_node": "tests/unit/test_waiting_input.py::test_ac031_e2_timeout_without_default_raises_value_error",
       "targets": [
         "unit:intervention-default-validation"
       ],
@@ -1309,7 +1309,7 @@
       "fixture": "workflow 调用无 default 的 `intervene()`；以 `--unattended` 运行",
       "action": "执行 `loopflow run --unattended`",
       "assertion": "Run 以 `intervention_unattended` 失败；不进入 waiting_input；不创建 request（unattended 冻结后 recover 亦无人应答，pending 无意义）",
-      "test_node": "planned::ac-031-e-3",
+      "test_node": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_e3_unattended_without_default_fails",
       "targets": [
         "process:cli-run"
       ],
@@ -1325,7 +1325,7 @@
       "fixture": "CLI 前台运行但 stdin 非 tty，未声明 `--unattended`",
       "action": "执行 `loopflow run`（stdin 重定向）",
       "assertion": "打印 pending 请求数、run_id、`loop respond <run-id>` 与 WebUI 应答入口后以 waiting_input 退出；不隐式失败、不隐式取 default",
-      "test_node": "planned::ac-031-e-4",
+      "test_node": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_e4_non_tty_prints_guidance",
       "targets": [
         "process:cli-run"
       ],
@@ -1341,7 +1341,7 @@
       "fixture": "request R 已 pending，workflow 修改 default 或 timeout 后 recover",
       "action": "执行 recover",
       "assertion": "Run failed，错误 replay_diverged；不把旧请求与新参数混用",
-      "test_node": "planned::ac-031-f-1",
+      "test_node": "tests/unit/test_waiting_input.py::test_ac031_f1_default_or_timeout_change_replay_diverges",
       "targets": [
         "unit:intervention-replay"
       ],
@@ -1357,7 +1357,7 @@
       "fixture": "CLI 内联提问 `allow_custom=false`，用户输入 options 之外的值",
       "action": "交互应答",
       "assertion": "提示校验失败并重新提问；非法回答不落盘、不触发恢复",
-      "test_node": "planned::ac-031-f-2",
+      "test_node": "tests/unit/test_waiting_input.py::test_ac031_f2_invalid_input_reprompts_without_persisting",
       "targets": [
         "process:cli-respond"
       ],
