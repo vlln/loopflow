@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` |
-| **设计评估** | 0.26.0 TEST_INFRA 增量闭环（0101：AC manifest 5 profile 全绿，mr-gate 524+41+13 通过）；DESIGN 冻结：ADR-0055 单 agent 运行入口（BL-047）、ADR-0056 waiting_input 生命周期（BL-044/045）；Spec v17、AC-031/032 active |
+| **当前阶段** | `SYSTEM_TEST` |
+| **设计评估** | 0.26.0 DEVELOP 闭环：0102 合入（BL-047 单 agent 入口 + BL-044/045 waiting_input 生命周期），AC-031/032 全场景真实节点通过，mr-gate 544+41+13 全绿 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
