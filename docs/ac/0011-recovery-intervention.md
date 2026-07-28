@@ -2,7 +2,7 @@
 title: Reliable Recovery, Cancellation, and Intervention AC
 description: 验收可校验前序恢复、失败/取消 Agent retry/continue、attempt 取消和阻塞人工回答
 type: ac
-status: active
+status: proposed
 created: 2026-07-22T06:35:57Z
 ---
 
@@ -253,3 +253,42 @@ created: 2026-07-22T06:35:57Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-029-F-1 | run 状态非 stale（进程存活） | `POST /api/v1/runs/{id}/reconcile` | 返回 409 run_not_stale（既有行为不变） | 自动化 |
+
+---
+
+> 2026-07-28 追加（BL-044/045，ADR-0056）：waiting_input 生命周期扩展——CLI 应答通道与无人值守策略。
+
+# AC-031: waiting_input CLI 应答与无人值守
+
+验证 CLI 前台内联应答、`loop respond` 命令、intervene default/timeout 与 `--unattended` 模式。对应 Spec v17 BR-059/060/061、ADR-0056。
+
+## 正常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-031-N-1 | workflow 调用 `intervene(key="approve", prompt="继续？", options=["继续","停止"], allow_custom=False)`；CLI 前台 tty 运行 | 执行 `loopflow run`，在终端提问中选择"继续" | 终端内联展示 prompt 与编号选项；回答经应用层校验落盘（response_source=human）；同一 run_id 恢复重放，intervene 返回"继续"；Run 最终 done | 自动化 |
+| AC-031-N-2 | Run A 为 waiting_input，request R 为 pending（后台或非前台产生） | 执行 `loopflow respond <A.run_id>` 并交互回答 | response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回回答 | 自动化 |
+| AC-031-N-3 | workflow 调用 `intervene(..., default="继续")`；以 `--unattended` 运行 | 执行 `loopflow run --unattended` | Run 不进入 waiting_input；请求以 default 回答（response_source=default）；workflow 拿到 default 继续至终态 | 自动化 |
+
+## 边界场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-031-B-1 | request R pending，`created_at + timeout` 已过，声明了 default | 对 Run 执行 recover | R 自动以 default 回答（response_source=timeout_default），重放返回 default；无需任何常驻进程触发 | 自动化 |
+| AC-031-B-2 | CLI 前台内联提问且声明了 timeout/default | 不输入，等待倒计时结束 | 超时后自动取 default 继续；回答落盘 response_source=timeout_default | 自动化 |
+
+## 异常场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-031-E-1 | `intervene(options=["a","b"], allow_custom=False, default="c")` | 运行 workflow | 调用即抛 ValueError（default 未通过 options 校验）；Run failed；不创建 request | 自动化 |
+| AC-031-E-2 | `intervene(timeout=60)` 未声明 default | 运行 workflow | 调用即抛 ValueError（timeout 依赖 default）；不创建 request | 自动化 |
+| AC-031-E-3 | workflow 调用无 default 的 `intervene()`；以 `--unattended` 运行 | 执行 `loopflow run --unattended` | Run 以 `intervention_unattended` 失败；不进入 waiting_input；不创建 request（unattended 冻结后 recover 亦无人应答，pending 无意义） | 自动化 |
+| AC-031-E-4 | CLI 前台运行但 stdin 非 tty，未声明 `--unattended` | 执行 `loopflow run`（stdin 重定向） | 打印 pending 请求数、run_id、`loop respond <run-id>` 与 WebUI 应答入口后以 waiting_input 退出；不隐式失败、不隐式取 default | 自动化 |
+
+## 失败场景
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-031-F-1 | request R 已 pending，workflow 修改 default 或 timeout 后 recover | 执行 recover | Run failed，错误 replay_diverged；不把旧请求与新参数混用 | 自动化 |
+| AC-031-F-2 | CLI 内联提问 `allow_custom=false`，用户输入 options 之外的值 | 交互应答 | 提示校验失败并重新提问；非法回答不落盘、不触发恢复 | 自动化 |
