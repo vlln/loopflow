@@ -167,6 +167,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         kwargs["session_handler"] = session_handler
     kwargs["transport"] = transport
     instance = cls(**kwargs)
+    instance.backend_name = backend  # BL-036: carry resolved name for event display
     if cwd and hasattr(instance, '_transport'):
         instance._transport.cwd = cwd
     return instance
