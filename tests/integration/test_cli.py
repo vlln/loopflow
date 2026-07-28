@@ -2,7 +2,9 @@
 
 import json
 import tempfile
+import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
@@ -335,3 +337,337 @@ def run(agent, parallel, pipeline, phase, log, args, workflow):
                     titles = [e.get("phase") or e.get("title") for e in phase_events]
                     assert "Start" in titles
                     assert "End" in titles
+
+
+# ── AC-032: 单 agent 运行入口（ADR-0055 / BL-047） ─────────────────────────
+
+
+def _create_single_agent_loop(loops_dir: Path, body: str = "", frontmatter_extra: str = ""):
+    """Create a loop whose workflow.py fails loudly if imported (ADR-0055:
+    single-agent runs must never import/execute workflow.py)."""
+    loop_dir = loops_dir / "hello"
+    agents_dir = loop_dir / "agents"
+    agents_dir.mkdir(parents=True)
+    (loop_dir / "loop.md").write_text("""---
+name: hello
+description: Single agent test loop
+---
+
+# hello
+""")
+    (loop_dir / "workflow.py").write_text(
+        "raise SystemExit('workflow.py must not be imported in --agent mode')\n"
+    )
+    frontmatter = "---\nname: reader\ndescription: Reader agent\n"
+    if frontmatter_extra:
+        frontmatter += frontmatter_extra
+    frontmatter += "---\n"
+    (agents_dir / "reader.md").write_text(frontmatter + body)
+    return loop_dir
+
+
+def _only_run_json(runs: Path) -> Path:
+    matches = list(runs.glob("lf_*/*/run.json"))
+    assert len(matches) == 1
+    return matches[0]
+
+
+def _no_run_created(runs: Path) -> None:
+    assert list(runs.glob("lf_*/*/run.json")) == []
+    assert not (runs / "runs_index.jsonl").exists()
+
+
+def _wait_terminal(run_json: Path, timeout: float = 15.0) -> dict:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        metadata = json.loads(run_json.read_text())
+        if metadata.get("status") != "running":
+            return metadata
+        time.sleep(0.05)
+    return json.loads(run_json.read_text())
+
+
+class TestSingleAgentRun:
+    def test_ac032_n1_single_agent_run_done_and_workflow_digest_none(self, env_dirs):
+        """AC-032-N-1: full Run semantics; workflow digest is None so editing
+        workflow.py cannot diverge recovery."""
+        loops, runs = env_dirs
+        loop_dir = _create_single_agent_loop(loops)
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main,
+            ["run", "hello", "--agent", "reader", "--prompt", "echo single-agent-ok", "--mock", "bash"],
+        )
+        assert result.exit_code == 0
+        assert "single-agent-ok" in result.output
+
+        run_json = _only_run_json(runs)
+        run_dir = run_json.parent
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "done"
+        assert metadata["single_agent"] == {
+            "agent_def": "reader",
+            "prompt": "echo single-agent-ok",
+            "params": {},
+        }
+        assert (run_dir / "events.jsonl").is_file()
+        cache_path = run_dir / "0001.jsonl"
+        assert cache_path.is_file()
+
+        # workflow digest component must be None: the recorded digest equals
+        # the loop_dir=None variant and differs from the loop_dir variant
+        from loopflow.infrastructure.recovery import call_input_digest
+        done_events = [
+            json.loads(line)
+            for line in cache_path.read_text().splitlines()
+            if line and json.loads(line).get("type") == "agent_done"
+        ]
+        recorded = done_events[-1]["input_digest"]
+        digest_kwargs = dict(
+            prompt="echo single-agent-ok",
+            schema=None,
+            backend=None,
+            model=None,
+            agent_definition="",
+            execution_options=metadata["execution_options"],
+        )
+        assert recorded == call_input_digest(loop_dir=None, **digest_kwargs)
+        assert recorded != call_input_digest(loop_dir=loop_dir, **digest_kwargs)
+        # Editing workflow.py cannot change the single-agent digest
+        (loop_dir / "workflow.py").write_text("# edited\n")
+        assert recorded == call_input_digest(loop_dir=None, **digest_kwargs)
+
+    def test_ac032_n2_output_schema_json_stdout(self, env_dirs):
+        """AC-032-N-2: agent_def output schema is applied; result is JSON on stdout."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(
+            loops,
+            frontmatter_extra=(
+                "output:\n"
+                "  type: object\n"
+                "  properties:\n"
+                "    verdict: {type: string}\n"
+                "  required: [verdict]\n"
+            ),
+        )
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main,
+            ["run", "hello", "--agent", "reader", "--prompt", "ignored", "--mock", "auto"],
+        )
+        assert result.exit_code == 0
+
+        metadata = json.loads(_only_run_json(runs).read_text())
+        assert metadata["status"] == "done"
+        stdout_json = result.output[result.output.index("{"): result.output.rindex("}") + 1]
+        parsed = json.loads(stdout_json)
+        assert parsed["verdict"] == "mock response"
+
+    def test_ac032_n3_recover_retry_reruns_call(self, env_dirs):
+        """AC-032-N-3: failed single-agent Run recovers with the same run_id;
+        Call 0001 re-executes and the Run finishes done."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+
+        from loopflow.presentation.cli import main
+        runner = CliRunner()
+
+        def boom(prompt):
+            raise RuntimeError("simulated backend failure")
+
+        with patch("loopflow.runtime._run_mock", side_effect=boom):
+            failed = runner.invoke(
+                main,
+                ["run", "hello", "--agent", "reader", "--prompt", "echo recovered", "--mock", "bash"],
+            )
+        assert failed.exit_code == 1
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "failed"
+        assert metadata["failed_call_id"] == "0001"
+        run_id = metadata["run_id"]
+
+        recovered = runner.invoke(main, ["recover", run_id, "--mode", "retry"])
+        assert recovered.exit_code == 0
+        assert "Recovering (retry)" in recovered.output
+
+        metadata = _wait_terminal(run_json)
+        assert metadata["status"] == "done"
+        assert metadata["run_id"] == run_id
+        assert metadata["execution_epoch"] == 2
+        cache_events = [
+            json.loads(line)
+            for line in (run_json.parent / "0001.jsonl").read_text().splitlines()
+            if line
+        ]
+        done_events = [e for e in cache_events if e.get("type") == "agent_done"]
+        assert done_events[-1]["status"] == "succeeded"
+
+    def test_ac032_b1_param_rendering_and_missing_param(self, env_dirs):
+        """AC-032-B-1: --param renders {{topic}} in the agent_def body; a
+        missing required param errors out before any Run is created."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(
+            loops,
+            body="echo topic={{topic}}\n",
+            frontmatter_extra=(
+                "input:\n"
+                "  type: object\n"
+                "  properties:\n"
+                "    topic: {type: string}\n"
+                "  required: [topic]\n"
+            ),
+        )
+
+        from loopflow.presentation.cli import main
+        runner = CliRunner()
+
+        # Missing --param topic → clear error, no Run
+        missing = runner.invoke(
+            main,
+            ["run", "hello", "--agent", "reader", "--prompt", "task", "--mock", "bash"],
+        )
+        assert missing.exit_code != 0
+        assert "topic" in missing.output
+        _no_run_created(runs)
+
+        ok = runner.invoke(
+            main,
+            ["run", "hello", "--agent", "reader", "--prompt", "task\necho b1-done",
+             "--param", "topic=rna-seq", "--mock", "bash"],
+        )
+        assert ok.exit_code == 0
+        assert "topic=rna-seq" in ok.output
+        assert "b1-done" in ok.output
+        metadata = json.loads(_only_run_json(runs).read_text())
+        assert metadata["status"] == "done"
+        assert metadata["single_agent"]["params"] == {"topic": "rna-seq"}
+
+    def test_ac032_b2_waiting_input(self, env_dirs, monkeypatch):
+        """AC-032-B-2: agent returns __loopflow.status=waiting_input with a
+        durable session → Run enters waiting_input and the intervention
+        request is persisted for the existing answer channels."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+
+        from unittest.mock import Mock
+        from loopflow.domain.capabilities import Capabilities
+        backend = Mock()
+        backend.capabilities = Capabilities(resume_session=True, durable_session_id=True)
+        control = {
+            "__loopflow": {
+                "status": "waiting_input",
+                "key": "approve",
+                "prompt": "Approve?",
+                "schema": None,
+            }
+        }
+        monkeypatch.setattr("loopflow.runtime._make_backend", lambda *a, **kw: backend)
+        monkeypatch.setattr(
+            "loopflow.runtime._run_subagent",
+            lambda *a, **kw: [
+                {"type": "agent_message", "content": json.dumps(control)},
+                {"type": "agent_done", "exit_code": 0, "session_id": "sid-durable"},
+            ],
+        )
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main, ["run", "hello", "--agent", "reader", "--prompt", "ask"],
+        )
+        assert result.exit_code == 0
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "waiting_input"
+        requests = list((run_json.parent / "interventions").glob("*.json"))
+        assert len(requests) == 1
+        request = json.loads(requests[0].read_text())
+        assert request["key"] == "approve"
+        assert request["call_id"] == "0001"
+
+    def test_ac032_e1_unknown_agent_def(self, env_dirs):
+        """AC-032-E-1: --agent ghost errors clearly and creates no Run."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main, ["run", "hello", "--agent", "ghost", "--prompt", "任务"],
+        )
+        assert result.exit_code != 0
+        assert "ghost" in result.output
+        _no_run_created(runs)
+
+    def test_ac032_e2_args_rejected(self, env_dirs):
+        """AC-032-E-2: --args is rejected in --agent mode; no Run created."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main,
+            ["run", "hello", "--agent", "reader", "--prompt", "任务", "--args", "{}"],
+        )
+        assert result.exit_code != 0
+        assert "--args" in result.output
+        _no_run_created(runs)
+
+    def test_ac032_e3_prompt_mutex(self, env_dirs):
+        """AC-032-E-3: --prompt and --prompt-file are mutually exclusive and
+        one is required; both violations create no Run."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+
+        from loopflow.presentation.cli import main
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            Path("prompt.txt").write_text("from file")
+            both = runner.invoke(
+                main,
+                ["run", "hello", "--agent", "reader", "--prompt", "x",
+                 "--prompt-file", "prompt.txt"],
+            )
+            assert both.exit_code != 0
+            neither = runner.invoke(main, ["run", "hello", "--agent", "reader"])
+            assert neither.exit_code != 0
+        _no_run_created(runs)
+
+    def test_ac032_f1_backend_failure_recoverable(self, env_dirs, monkeypatch):
+        """AC-032-F-1: backend failure (non-zero exit) → Run failed with the
+        run-semantics error_category, exit 1, and a failed cache segment that
+        recover can target."""
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+
+        from unittest.mock import Mock
+        from loopflow.domain.capabilities import Capabilities
+        backend = Mock()
+        backend.capabilities = Capabilities()
+        monkeypatch.setattr("loopflow.runtime._make_backend", lambda *a, **kw: backend)
+        monkeypatch.setattr(
+            "loopflow.runtime._run_subagent",
+            lambda *a, **kw: [{"type": "agent_done", "exit_code": 1, "stderr": "task exploded"}],
+        )
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main, ["run", "hello", "--agent", "reader", "--prompt", "boom"],
+        )
+        assert result.exit_code == 1
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "failed"
+        assert metadata["error_category"] == "unknown"
+        assert metadata["failed_call_id"] == "0001"
+        cache_events = [
+            json.loads(line)
+            for line in (run_json.parent / "0001.jsonl").read_text().splitlines()
+            if line
+        ]
+        done_events = [e for e in cache_events if e.get("type") == "agent_done"]
+        assert done_events[-1]["status"] == "failed"
