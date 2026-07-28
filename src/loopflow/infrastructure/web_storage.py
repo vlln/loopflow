@@ -449,8 +449,9 @@ class RunRepository:
         """Return the run's real working directory for file preview (ADR-0042).
 
         Prefers the explicit working_directory persisted in run.json, then the
-        run index record. Returns None when no absolute, still-existing
-        directory can be proven (e.g. legacy Runs or deleted directories).
+        run index record, then the run_dir/work isolation directory (ADR-0054).
+        Returns None when no absolute, still-existing directory can be proven
+        (e.g. legacy Runs or deleted directories).
         """
         candidates: list[str] = []
         try:
@@ -466,6 +467,11 @@ class RunRepository:
             path = Path(value)
             if path.is_absolute() and path.is_dir():
                 return path
+        # BL-034: fallback to run_dir/work (ADR-0054 default isolation directory),
+        # which is co-located with the run data and survives remote/cleanup scenarios
+        work = run_dir / "work"
+        if work.is_dir():
+            return work
         return None
 
     def _working_directory(self, run_dir: Path) -> str:

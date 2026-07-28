@@ -143,7 +143,9 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
             kwargs["thought_handler"] = thought_handler
         if session_handler:
             kwargs["session_handler"] = session_handler
-        return AcpSdkBackend(**kwargs)
+        instance = AcpSdkBackend(**kwargs)
+        instance.backend_name = backend  # BL-036: carry resolved name
+        return instance
 
     if backend is None:
         from loopflow.infrastructure.backends.diagnostics import list_available_backends
@@ -167,6 +169,7 @@ def _make_backend(backend: str | None = None, transport: str | None = None,
         kwargs["session_handler"] = session_handler
     kwargs["transport"] = transport
     instance = cls(**kwargs)
+    instance.backend_name = backend  # BL-036: carry resolved name for event display
     if cwd and hasattr(instance, '_transport'):
         instance._transport.cwd = cwd
     return instance

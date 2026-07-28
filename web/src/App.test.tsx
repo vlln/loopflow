@@ -671,18 +671,6 @@ it('renders stale grace period with remaining time in list and detail', async ()
   expect(screen.getByRole('button', { name: 'Reconcile run' })).toBeEnabled();
 });
 
-it('shows paused loop badge with streak and unpauses via API', async () => {
-  const calls = installFetch({ pausedLoop: true });
-  render(<App />);
-  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
-  expect(await screen.findByText('failure_streak:5')).toBeVisible();
-  expect(screen.getAllByText('paused').length).toBe(2);
-  expect(screen.getAllByText(/streak ×5/).length).toBeGreaterThan(0);
-  fireEvent.click(screen.getByRole('button', { name: 'Unpause loop' }));
-  await waitFor(() => expect(calls).toContain('POST /api/v1/loops/review-loop/unpause'));
-  await waitFor(() => expect(screen.queryByText('failure_streak:5')).not.toBeInTheDocument());
-});
-
 // --- AC-015-N-9: call-list display (BL-021) ---
 
 it('AC-015-N-9: call-list shows call_id as primary, session_id in tooltip', async () => {

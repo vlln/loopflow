@@ -289,13 +289,14 @@ class BackendRepository:
                 pass
         caps = Capabilities()
         transport = "cli"
-        try:
-            backend = _make_backend(name)
-            caps = backend.capabilities
-            transport = "acp" if backend.__class__.__name__.lower().startswith("acp") else "cli"
-            backend.close()
-        except (SystemExit, Exception):
-            pass
+        if path:  # BL-040: skip _make_backend for missing binaries
+            try:
+                backend = _make_backend(name)
+                caps = backend.capabilities
+                transport = "acp" if backend.__class__.__name__.lower().startswith("acp") else "cli"
+                backend.close()
+            except (SystemExit, Exception):
+                pass
         return {
             "name": name,
             "status": "available" if path else "missing",

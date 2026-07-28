@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.25.1] — 2026-07-28
+
+### Fixed
+- **远程 run 文件预览失败**（BL-034）：`resolve_working_directory` 在工作目录不存在时兜底到 `run_dir/work` 隔离目录（ADR-0054），并改进错误消息区分 "工作目录不可访问" 和 "文件不存在"。
+- **Events 重复渲染**（BL-035）：`_call_backend` 的 infra-retry 循环仅在首次迭代写 `agent_start`（重试已有 `agent_retry`）；`project_events` 对同一 `(call_id, session_id)` 的重复 `agent_session` 事件去重，只保留最后一条。
+- **后端显示为 unknown**（BL-036）：auto-detect 后端时 `agent_start` 事件的 `backend` 字段为 None，前端显示 "backend unknown"。修复：`_make_backend` 在实例上设置 `backend_name` 属性，`AgentRunner` 在写 `agent_start` 时优先使用该属性作为 display fallback，不影响 `input_digest` 缓存兼容性。
+- **File changes 文件夹不可折叠**（BL-037）：`ChangeTreeDirView` 添加 `useState` 展开/折叠控制，点击切换，chevron 图标指示状态。默认展开。
+- **Loops 页面混入运行时状态**（BL-038）：Loops 定义页移除 `paused`、`failure_streak`、`paused_reason`、Unpause 按钮等 run 级状态。定义页只展示定义信息。
+- **切换 Runs 时卡顿**（BL-039）：切换 run 时立即清空旧 `detail`，避免 React 用旧数据重渲染（含 AgentGraph key 变化导致重挂载）。
+- **Backends API 对 missing 后端调用 _make_backend**（BL-040）：`summary()` 中 `if path:` 条件保护 `_make_backend`，7 个 missing 后端不再创建实例。
+- **切换页面卡顿 + missing catch**（BL-041）：tab 切换用 `hidden` 属性替代条件挂载/卸载，workspace state 跨 tab 保留，不重新发 API 请求；补 `api.loops()` 的 `.catch()`。
+
 ## [0.25.0] — 2026-07-28
 
 ### Added
