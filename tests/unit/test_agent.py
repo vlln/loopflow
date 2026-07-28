@@ -602,3 +602,63 @@ Visible.
             names = [a.name for a in result]
             assert "real" in names
             assert "_base" not in names
+
+
+class TestParseAgentFrontmatter:
+    """AC-001 BL-018: parse_agent strips frontmatter from body."""
+
+    def test_ac001_n4_body_excludes_frontmatter(self, tmp_path):
+        from loopflow.infrastructure.repository import parse_agent
+
+        agent_file = tmp_path / "reader.md"
+        agent_file.write_text(
+            "---\n"
+            "name: reader\n"
+            "description: Reads papers\n"
+            "input:\n"
+            "  type: object\n"
+            "---\n"
+            "You are a paper reader.\n"
+            "Return structured output.\n"
+        )
+        ad = parse_agent(agent_file)
+        assert ad.body.startswith("You are a paper reader.")
+        assert "---" not in ad.body
+        assert "name" not in ad.body
+        assert "description" not in ad.body
+        assert "input" not in ad.body
+
+    def test_ac001_b3_missing_frontmatter_raises(self, tmp_path):
+        from loopflow.infrastructure.repository import parse_agent
+
+        agent_file = tmp_path / "plain.md"
+        agent_file.write_text("Just markdown, no frontmatter.\n")
+        with pytest.raises(ValueError, match="No YAML frontmatter found"):
+            parse_agent(agent_file)
+
+    def test_ac001_b4_invalid_yaml_raises(self, tmp_path):
+        from loopflow.infrastructure.repository import parse_agent
+
+        agent_file = tmp_path / "broken.md"
+        agent_file.write_text("---\nname: [unclosed\n---\nBody.\n")
+        with pytest.raises(ValueError, match="Invalid YAML frontmatter"):
+            parse_agent(agent_file)
+
+    def test_ac001_e1_body_horizontal_rule_preserved(self, tmp_path):
+        from loopflow.infrastructure.repository import parse_agent
+
+        agent_file = tmp_path / "hr.md"
+        agent_file.write_text(
+            "---\n"
+            "name: hr\n"
+            "description: Has hr\n"
+            "---\n"
+            "First instruction line.\n"
+            "---\n"
+            "Second section after horizontal rule.\n"
+        )
+        ad = parse_agent(agent_file)
+        assert "name" not in ad.body
+        assert "description" not in ad.body
+        assert "---" in ad.body
+        assert "Second section after horizontal rule." in ad.body

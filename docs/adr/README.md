@@ -26,6 +26,8 @@
 | [0052](0052-remove-phase.md) | 移除 Phase 抽象，改为 Agent 实例图 | accepted | ADR-0039 / ADR-0040 / ADR-0043 |
 | [0053](0053-web-directory-picker.md) | Web 端跨平台目录选择器 | accepted | ADR-0042 / BL-009 |
 | [0054](0054-webui-default-workdir-isolation.md) | WebUI/API 默认工作目录隔离 | accepted | ADR-0042 / BL-026 |
+| [0055](0055-single-agent-run.md) | 单 agent 运行入口 | accepted | BL-047 / Spec v17 / AC-032 |
+| [0056](0056-waiting-input-lifecycle.md) | waiting_input 生命周期：CLI 应答通道与无人值守策略 | accepted | BL-044 / BL-045 / ADR-0036 §5 / Spec v17 / AC-031 |
 
 ## 状态说明
 

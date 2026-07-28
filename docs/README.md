@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` complete (v0.25.1) |
-| **设计评估** | v0.25.1 patch 发布：BL-034 远程 run 文件预览兜底、BL-035 events 去重、BL-036 backend 显示名、BL-037 文件夹折叠、BL-038 Loops 页移除运行时状态、BL-039 切换 run 清空旧 detail、BL-040 Backends API 优化、BL-041 workspace 持久化 + missing catch。520 Python + 41 前端 + 13 Playwright 全绿。tag v0.25.1，main + develop 已同步。 |
+| **当前阶段** | `RELEASE` complete (v0.26.0) |
+| **设计评估** | 0.26.0：BL-047 单 agent 运行入口（ADR-0055，`loopflow run --agent`）、BL-044 CLI 前台内联应答 + `loopflow respond`、BL-045 intervene default/timeout + `--unattended`（ADR-0056）。549 Python + 41 前端 + 13 Playwright 全绿；严格 manifest 四 profile 全过。既有债：BL-049（--write 无早退）、BL-050（web profile 无 TEST_NODES 机制）。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

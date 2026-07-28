@@ -13,6 +13,7 @@ from tests.web_support import ac_manifest as web_manifest
 from tests.recovery_support import manifest as recovery_manifest
 from tests.scheduling_support import manifest as scheduling_manifest
 from tests.agent_support import manifest as agent_manifest
+from tests.single_agent_support import manifest as single_agent_manifest
 
 PROFILES = {
     "web": (web_manifest, "docs/ac/0010-webui.md", "tests/system/cases.json"),
@@ -30,6 +31,11 @@ PROFILES = {
         agent_manifest,
         "docs/ac/0003-agent-layer.md",
         "tests/system/agent_cases.json",
+    ),
+    "singleagent": (
+        single_agent_manifest,
+        "docs/ac/0014-single-agent-run.md",
+        "tests/system/single_agent_cases.json",
     ),
 }
 

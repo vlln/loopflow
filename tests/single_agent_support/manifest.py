@@ -18,55 +18,26 @@ def _targets() -> dict[str, list[str]]:
             targets[ac_id] = list(values)
 
     assign(
-        "AC-001-N-1 AC-001-N-2 AC-001-N-3 AC-001-B-1 AC-001-B-2 AC-001-F-1 "
-        "AC-001-N-4 AC-001-B-3 AC-001-B-4 "
-        "AC-002-N-1 AC-002-N-2 AC-002-N-3 AC-002-N-4 "
-        "AC-003-N-1 AC-003-N-2 "
-        "AC-004-N-1 AC-004-N-2 AC-004-N-3",
-        "unit:agent",
+        "AC-032-N-1 AC-032-N-2 AC-032-B-1 AC-032-B-2 "
+        "AC-032-E-1 AC-032-E-2 AC-032-E-3 AC-032-F-1",
+        "process:cli-run",
     )
-    assign("AC-001-E-1", "unit:agent", "process:cli-run")
-    assign("AC-001-F-2", "process:cli-run")
-    assign("AC-030-N-1 AC-030-N-2 AC-030-B-1 AC-030-B-2 AC-030-E-1", "process:cli-run")
-    assign("AC-030-F-1", "process:cli-recover")
+    assign("AC-032-N-3", "process:cli-recover")
     return targets
 
 
 TARGETS = _targets()
 
 TEST_NODES: dict[str, str] = {
-    # AC-001: Agent 类基本功能
-    "AC-001-N-1": "tests/unit/test_runtime.py::TestAgent::test_agent_returns_text",
-    "AC-001-N-2": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_default",
-    "AC-001-N-3": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_skill_found_no_error",
-    "AC-001-B-1": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_no_skills_no_warning",
-    "AC-001-B-2": "tests/unit/test_runtime.py::TestOutputSchema::test_no_schema_injection_without_output",
-    "AC-001-F-1": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_missing_skills_blocks",
-    # AC-002: 能力 Marshalling
-    "AC-002-N-1": "tests/unit/test_runtime.py::TestGoalMode::test_goal_completes_in_one_iteration",
-    "AC-002-N-2": "tests/unit/test_runtime.py::TestGoalMode::test_goal_completes_after_multiple_iterations",
-    "AC-002-N-3": "tests/unit/test_runtime.py::TestOutputSchema::test_auto_schema_from_agent_def",
-    "AC-002-N-4": "tests/unit/test_runtime.py::TestOutputSchema::test_schema_injected_into_prompt",
-    # AC-003: runtime.py 简化
-    "AC-003-N-1": "tests/unit/test_runtime.py::TestAgent::test_agent_returns_text",
-    "AC-003-N-2": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_default",
-    # AC-004: 向后兼容
-    "AC-004-N-1": "tests/unit/test_smoke.py::test_import",
-    "AC-004-N-2": "tests/unit/test_runtime.py::TestGoalMode::test_goal_does_not_affect_existing_agent_call",
-    "AC-004-N-3": "tests/unit/test_runtime.py::TestAgentDef::test_agent_def_skill_found_no_error",
-    # AC-001 BL-018 追加场景：parse_agent 剥离 frontmatter
-    "AC-001-N-4": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_n4_body_excludes_frontmatter",
-    "AC-001-B-3": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_b3_missing_frontmatter_raises",
-    "AC-001-B-4": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_b4_invalid_yaml_raises",
-    "AC-001-E-1": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_e1_body_horizontal_rule_preserved",
-    "AC-001-F-2": "tests/integration/test_cli.py::TestPiBackendArgv::test_ac001_f2_frontmatter_stripped_prompt_not_an_unknown_option",
-    # AC-030: ACP 后端 loop 端到端
-    "AC-030-N-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_n_1_acp_backend_loop_end_to_end",
-    "AC-030-N-2": "tests/integration/test_acp_sdk_backend.py::test_ac_030_n_2_notification_full_mapping",
-    "AC-030-B-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_b_1_permission_auto_approve",
-    "AC-030-B-2": "tests/integration/test_acp_sdk_backend.py::test_ac_030_b_2_missing_acp_extra_error",
-    "AC-030-E-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_e_1_backend_startup_failure",
-    "AC-030-F-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_f_1_continue_with_session_load",
+    "AC-032-N-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_n1_single_agent_run_done_and_workflow_digest_none",
+    "AC-032-N-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_n2_output_schema_json_stdout",
+    "AC-032-N-3": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_n3_recover_retry_reruns_call",
+    "AC-032-B-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_b1_param_rendering_and_missing_param",
+    "AC-032-B-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_b2_waiting_input",
+    "AC-032-E-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_e1_unknown_agent_def",
+    "AC-032-E-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_e2_args_rejected",
+    "AC-032-E-3": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_e3_prompt_mutex",
+    "AC-032-F-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac032_f1_backend_failure_recoverable",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {}
@@ -93,7 +64,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
                 "expectations": expectations,
             }
         )
-    return {"version": 1, "profile": "agent", "source": str(ac_path), "cases": cases}
+    return {"version": 1, "profile": "singleagent", "source": str(ac_path), "cases": cases}
 
 
 def check_manifest(
@@ -102,8 +73,8 @@ def check_manifest(
     errors: list[str] = []
     source_rows = {row["ac_id"]: row for row in parse_ac(ac_path)}
     cases = manifest.get("cases")
-    if manifest.get("version") != 1 or manifest.get("profile") != "agent" or not isinstance(cases, list):
-        return ["agent manifest must have version=1, profile=agent, and cases array"]
+    if manifest.get("version") != 1 or manifest.get("profile") != "singleagent" or not isinstance(cases, list):
+        return ["singleagent manifest must have version=1, profile=singleagent, and cases array"]
     seen: set[str] = set()
     for index, case in enumerate(cases):
         if not isinstance(case, dict):
