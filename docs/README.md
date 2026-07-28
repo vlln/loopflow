@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` — 0.25.1 patch fixes (BL-034~037) on `fix/0251-bugfixes` |
-| **设计评估** | 0.25.1 patch：BL-034 远程 run 文件预览兜底 run_dir/work、BL-035 events 重复渲染去重（agent_start + agent_session）、BL-036 auto-detect backend 显示名修复、BL-037 file changes 文件夹折叠。520 Python + 42 前端 + 13 Playwright 全绿。待合并 develop。 |
+| **当前阶段** | `SYSTEM_TEST` complete — 0.25.1 patch (BL-034~041) ready for RELEASE |
+| **设计评估** | 0.25.1 patch：BL-034 远程 run 文件预览兜底、BL-035 events 去重、BL-036 backend 显示名、BL-037 文件夹折叠、BL-038 Loops 页移除运行时状态、BL-039 切换 run 清空旧 detail、BL-040 Backends API 优化、BL-041 workspace 持久化 + missing catch。520 Python + 41 前端 + 13 Playwright 全绿。待合并 develop。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
