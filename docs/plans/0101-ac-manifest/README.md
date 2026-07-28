@@ -2,7 +2,7 @@
 
 | 子任务 | Plan | Report | 状态 |
 |--------|------|--------|------|
-| AC-031/032 manifest 覆盖 + singleagent profile | [01-plan-ac-manifest.md](01-plan-ac-manifest.md) | [01-report-ac-manifest.md](01-report-ac-manifest.md) | pending |
+| AC-031/032 manifest 覆盖 + singleagent profile | [01-plan-ac-manifest.md](01-plan-ac-manifest.md) | [01-report-ac-manifest.md](01-report-ac-manifest.md) | done |
 
 ## 分支
 

@@ -2,7 +2,7 @@
 title: AC Manifest 增量 — AC-031/032 覆盖与 singleagent profile
 description: 为 0.26.0 新增 AC 场景补 manifest 覆盖：recovery manifest 补 AC-031，新增 singleagent profile 覆盖 AC-032
 type: plan
-status: pending
+status: done
 created: 2026-07-28T11:05:00Z
 ---
 
