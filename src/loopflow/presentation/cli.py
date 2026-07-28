@@ -120,6 +120,14 @@ def web(host: str, port: int, allow_remote: bool) -> None:
 @main.command()
 @click.argument("name")
 @click.option("--args", "wf_args", default=None, help="JSON args for workflow.py")
+@click.option("--agent", "agent_name", default=None,
+              help="Run a single agent_def from the loop's agents/ directory (ADR-0055)")
+@click.option("--prompt", default=None,
+              help="Task prompt for --agent mode (mutually exclusive with --prompt-file)")
+@click.option("--prompt-file", "prompt_file", default=None,
+              help="Read the --agent task prompt from a file")
+@click.option("--param", "params", multiple=True,
+              help="Template parameter for --agent mode, key=value (repeatable)")
 @click.option("--mock", type=click.Choice(["bash", "auto"]), default=None,
               help="Mock mode: bash (shell execution) or auto (schema-based generation)")
 @click.option("--backend", default=None, help="Agent backend (pi, kimi, claude, codex, ...)")
@@ -128,10 +136,17 @@ def web(host: str, port: int, allow_remote: bool) -> None:
               help="Working directory for the loop: a path to chdir into; "
                    "empty string to let the framework create one under run_dir; "
                    "omitted to use the current directory.")
-def run(name, wf_args, mock, backend, transport, work_dir):
+def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, prompt_file, params):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
+
+    if agent_name is not None:
+        _run_single_agent(
+            name, agent_name, prompt, prompt_file, params,
+            wf_args, mock, backend, transport, work_dir,
+        )
+        return
 
     if mock:
         set_mock(mock)
@@ -267,6 +282,96 @@ def run(name, wf_args, mock, backend, transport, work_dir):
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+
+
+def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mock, backend, transport, work_dir):
+    """Run a single agent_def as a full Run (ADR-0055).
+
+    Validates everything before any Run is created: agent_def exists, prompt
+    is given exactly once, --args is rejected, and required template params
+    are satisfied. Never imports or executes workflow.py.
+    """
+    from loopflow.domain.agent_def import _input_to_params, render_template, resolve_params
+    from loopflow.infrastructure.discovery import _load_loop_meta, _loops_dir
+    from loopflow.infrastructure.repository import parse_agent
+    from loopflow.runtime import set_mock
+
+    loop_dir = _loops_dir() / name
+    if not loop_dir.is_dir():
+        raise click.ClickException(f"loop '{name}' not found")
+    agent_path = loop_dir / "agents" / f"{agent_name}.md"
+    if not agent_path.is_file():
+        raise click.ClickException(
+            f"agent_def '{agent_name}' not found: {agent_path}"
+        )
+    if (prompt is None) == (prompt_file is None):
+        raise click.UsageError(
+            "--agent requires exactly one of --prompt or --prompt-file"
+        )
+    if wf_args is not None:
+        raise click.UsageError("--args has no consumer in --agent mode")
+
+    try:
+        ad = parse_agent(agent_path)
+    except (ValueError, FileNotFoundError) as error:
+        raise click.ClickException(f"invalid agent_def '{agent_name}': {error}") from error
+
+    param_dict: dict[str, str] = {}
+    for item in params:
+        if "=" not in item:
+            raise click.UsageError(f"invalid --param '{item}', expected key=value")
+        key, value = item.split("=", 1)
+        param_dict[key] = value
+    # Render up front so a missing template param fails before any Run exists
+    try:
+        render_template(ad.body, **resolve_params(_input_to_params(ad.input), **param_dict))
+    except ValueError as error:
+        raise click.UsageError(str(error)) from error
+
+    if prompt_file is not None:
+        prompt_path = Path(prompt_file)
+        if not prompt_path.is_file():
+            raise click.ClickException(f"prompt file not found: {prompt_file}")
+        prompt_text = prompt_path.read_text(encoding="utf-8")
+    else:
+        prompt_text = prompt
+
+    if mock:
+        set_mock(mock)
+
+    meta = _load_loop_meta(loop_dir)
+    _check_environment(meta, loop_dir)
+
+    run_id = uuid.uuid4().hex
+    run_dir = _run_dir_for_pwd() / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    append_run_index(_runs_dir(), Path.cwd(), run_dir.parent, run_id)
+
+    # --work-dir: same semantics as a workflow run
+    if work_dir is not None:
+        target = run_dir / "work" if work_dir == "" else Path(work_dir)
+        target.mkdir(parents=True, exist_ok=True)
+        os.chdir(target)
+
+    single_agent = {"agent_def": agent_name, "prompt": prompt_text, "params": param_dict}
+    options = {"mock": mock, "backend": backend, "transport": transport}
+
+    print(f"[loopflow] Running: {name} --agent {agent_name} ({run_id})", file=sys.stderr)
+    from loopflow.application.execution import execute_single_agent
+    status, value = execute_single_agent(loop_dir, single_agent, options, run_id, run_dir)
+
+    if status == "done":
+        if isinstance(value, str):
+            print(value)
+        elif value is not None:
+            print(json.dumps(value, indent=2, ensure_ascii=False))
+        print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+        sys.exit(0)
+    if status == "waiting_input":
+        print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
+        sys.exit(0)
+    print(f"[loopflow] {status}: {run_id}", file=sys.stderr)
+    sys.exit(1)
 
 
 def legacy_resume_internal(run_id, mock):

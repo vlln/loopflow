@@ -330,7 +330,7 @@ class AgentRunner:
         )
 
         input_digest = call_input_digest(
-            loop_dir=self.ctx.loop_dir,
+            loop_dir=self.ctx.loop_dir if self.ctx.digest_workflow else None,
             prompt=prompt,
             schema=schema,
             backend=self.backend_name,
