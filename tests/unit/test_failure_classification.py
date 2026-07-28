@@ -71,6 +71,36 @@ def _agent_with_script(temp_run_dir, mock_backend, script):
     return result, error, len(calls)
 
 
+def _agent_schema_with_script(temp_run_dir, mock_backend, schema, script,
+                              max_retries=3):
+    """Like _agent_with_script but passes schema= and captures full prompts.
+
+    Returns (result_or_none, error_or_none, prompts) where prompts[i] is the
+    prompt (including retry hint) sent on attempt i+1.
+    """
+    from loopflow.runtime import RunContext, agent, set_context
+
+    ctx = RunContext(run_dir=temp_run_dir)
+    set_context(ctx)
+
+    prompts = []
+
+    def _mock_run(prompt, session, backend=None, model=None, cwd=None,
+                  agent_def=None, cache_path=None, **kwargs):
+        prompts.append(prompt)
+        return script[min(len(prompts), len(script)) - 1]
+
+    result, error = None, None
+    with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+        with patch("loopflow.runtime._run_subagent", side_effect=_mock_run):
+            with patch("time.sleep", return_value=None):
+                try:
+                    result = agent("test", schema=schema, max_retries=max_retries)
+                except Exception as exc:  # noqa: BLE001 — asserted by callers
+                    error = exc
+    return result, error, prompts
+
+
 def _done_events(exit_code, stderr="", error_category=None, text=None):
     events = []
     if text is not None:
@@ -273,6 +303,162 @@ class TestFailureClassificationScenarios:
         assert len(retries) == 3
         assert [e["payload"]["delay"] for e in retries] == [3, 9, 27]
         assert [e["payload"]["attempt"] for e in retries] == [1, 2, 3]
+
+
+# ── AC-026 BL-031：retry hint 携带 schema 校验错误 + 框架类型兜底 ──────────
+
+class TestSchemaFallbackScenarios:
+    """AC-026-N-5/B-3/E-2/E-3（2026-07-27 追加，BL-031）。
+
+    实现路径：runner._execute_once 内 validate_json 失败 → coerce_json
+    类型兜底 → 二次 validate_json；last_errors 进入下一次 retry hint，
+    耗尽后 AgentError 携带全部错误，run.json error_summary = str(AgentError)。
+    """
+
+    def test_ac026_n5_string_number_coerced_without_retry(
+        self, temp_run_dir, mock_backend
+    ):
+        """AC-026-N-5: {"score": "95"} + number schema 无值约束 →
+        兜底 + 二次校验成功，返回 {"score": 95.0}，不触发 retry。"""
+        schema = {"type": "object", "properties": {"score": {"type": "number"}}}
+        script = [_done_events(0, text='{"score": "95"}')]
+
+        result, error, prompts = _agent_schema_with_script(
+            temp_run_dir, mock_backend, schema, script
+        )
+
+        assert error is None
+        assert result.value == {"score": 95.0}
+        assert isinstance(result.value["score"], float)
+        assert len(prompts) == 1  # 不触发 retry
+
+    def test_ac026_b3_coerced_value_constraint_failure_hint_lists_both(
+        self, temp_run_dir, mock_backend
+    ):
+        """AC-026-B-3: number + maximum:10 → 兜底转换成功（"95"→95）但
+        值约束失败（95 > 10）→ 触发 retry；hint 含类型转换成功 + 值约束失败
+        两个错误。"""
+        from loopflow.domain import AgentError
+        schema = {
+            "type": "object",
+            "properties": {"score": {"type": "number", "maximum": 10}},
+        }
+        script = [_done_events(0, text='{"score": "95"}')] * 2
+
+        result, error, prompts = _agent_schema_with_script(
+            temp_run_dir, mock_backend, schema, script, max_retries=1
+        )
+
+        assert result is None and isinstance(error, AgentError)
+        assert len(prompts) == 2  # 触发 retry
+        hint = prompts[1]
+        # 类型转换成功
+        assert "Field 'score': string '95' → number 95.0" in hint
+        # 值约束失败（二次校验，95.0 > maximum 10）
+        assert "Field 'score': expected number, got 95.0" in hint
+
+    def test_ac026_e2_schema_and_fallback_exhausted_agent_error_and_summary(
+        self, temp_run_dir, mock_backend, tmp_path, monkeypatch
+    ):
+        """AC-026-E-2: schema 校验失败且兜底也无法转换，连续 max_retries 次 →
+        AgentError 含最后一次校验错误 + 兜底失败原因（字段路径 + 期望类型 +
+        兜底尝试）；run.json error_summary 包含该错误列表。"""
+        from loopflow.domain import AgentError
+        schema = {
+            "type": "object",
+            "properties": {
+                "decisions": {"type": "array", "items": {"type": "object"}}
+            },
+        }
+        # decisions 应为对象数组，agent 返回字符串：array-wrap 兜底后 items
+        # 仍是字符串，二次校验失败
+        bad = _done_events(0, text='{"decisions": "not-an-array"}')
+
+        result, error, prompts = _agent_schema_with_script(
+            temp_run_dir, mock_backend, schema, [bad] * 3, max_retries=2
+        )
+
+        assert result is None and isinstance(error, AgentError)
+        assert len(prompts) == 3  # 1 次初始 + max_retries 次重试
+        message = str(error)
+        assert "Last errors" in message
+        assert "Field 'decisions'" in message            # 字段路径
+        assert "expected array" in message               # 期望类型
+        assert "str not-an-array → array" in message     # 兜底尝试
+
+        # run.json error_summary = str(AgentError)，包含同一错误列表
+        from loopflow.application.execution import execute_workflow
+
+        loops = tmp_path / "loops"
+        loop = loops / "hello"
+        loop.mkdir(parents=True)
+        (loop / "loop.md").write_text("---\nname: hello\n---\n")
+        (loop / "workflow.py").write_text(
+            "def run(agent, **kwargs):\n"
+            "    agent('report', schema={'type': 'object', 'properties': "
+            "{'decisions': {'type': 'array', 'items': {'type': 'object'}}}})\n"
+        )
+        monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+        run_dir = tmp_path / "run"
+        run_dir.mkdir()
+
+        outer_backend = MagicMock()
+        outer_backend.create_session.return_value = ("test-sid", 0)
+        outer_backend.resume_session.return_value = 0
+        outer_backend.supports_native_goal = False
+        outer_backend.capabilities.native_goal = False
+
+        with patch("loopflow.runtime._make_backend", return_value=outer_backend):
+            with patch(
+                "loopflow.runtime._run_subagent", return_value=list(bad)
+            ):
+                with patch("time.sleep", return_value=None):
+                    execute_workflow("hello", {}, {}, "run-1", run_dir)
+
+        metadata = json.loads((run_dir / "run.json").read_text())
+        assert metadata["status"] == "failed"
+        summary = metadata["error_summary"]
+        assert "Last errors" in summary
+        assert "Field 'decisions'" in summary
+        assert "expected array" in summary
+        assert "str not-an-array → array" in summary
+
+    def test_ac026_e3_enum_fallback_failure_hint_carries_details(
+        self, temp_run_dir, mock_backend
+    ):
+        """AC-026-E-3: verdict enum [REPRODUCED, PARTIAL, FAILED, BLOCKED]
+        返回 "pass"，兜底也失败 → retry hint 含字段路径、期望类型、实际值、
+        兜底尝试结果；hint 不含 "not valid JSON" 措辞。"""
+        from loopflow.domain import AgentError
+        schema = {
+            "type": "object",
+            "properties": {
+                "verdict": {
+                    "type": "string",
+                    "enum": ["REPRODUCED", "PARTIAL", "FAILED", "BLOCKED"],
+                }
+            },
+        }
+        script = [_done_events(0, text='{"verdict": "pass"}')] * 2
+
+        result, error, prompts = _agent_schema_with_script(
+            temp_run_dir, mock_backend, schema, script, max_retries=1
+        )
+
+        assert result is None and isinstance(error, AgentError)
+        assert len(prompts) == 2  # 兜底失败触发 retry
+        hint = prompts[1]
+        assert "Field 'verdict'" in hint        # 字段路径
+        assert "expected string" in hint        # 期望类型
+        assert "got 'pass'" in hint             # 实际值
+        # 兜底尝试结果
+        assert (
+            "Field 'verdict': string 'pass' not in enum "
+            "['REPRODUCED', 'PARTIAL', 'FAILED', 'BLOCKED']"
+        ) in hint
+        # schema 校验失败措辞，而非 JSON 解析失败措辞
+        assert "did not pass schema validation" in hint
+        assert "not valid JSON" not in hint
 
 
 # ── manager 异常映射（ADR-0044 §3） ───────────────────────────────────────

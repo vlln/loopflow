@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.26.0] — 2026-07-28
+
+### Added
+- **单 agent 运行入口**（BL-047 / ADR-0055 / AC-032）：`loopflow run <loop> --agent <name> (--prompt | --prompt-file) [--param k=v]` 直接运行 loop 中单个 agent_def。完整 Run 语义（run_dir/缓存/事件/WebUI 可观察/可 recover），不导入、不执行 workflow.py，input_digest 的 workflow 分量为 None（编辑 workflow.py 不影响单 agent Run 的恢复）。评测 harness 与单 agent 调试不再需要临时 workflow 绕行。
+- **CLI 前台内联应答 intervention**（BL-044 / ADR-0056 / AC-031）：前台 `loopflow run` 进入 `waiting_input` 且 stdin 为 tty 时，终端内联逐题提问（options 编号选择 / allow_custom 自由文本，声明 timeout 时倒计时），校验与 `answer_requests()` 一致，回答后就地恢复同一 Run 直至终态。stdin 非 tty 时打印 pending 数、run_id 与应答入口指引。
+- **`loopflow respond <run-id>`**（BL-044）：对 `waiting_input`/`cancelled` 的 Run 交互式应答并恢复，应答非前台产生的等待，补齐 Spec 早已声明的 CLI 能力。
+- **`intervene()` default/timeout**（BL-045 / ADR-0056 / AC-031）：`intervene(..., default=..., timeout=...)`。default 在调用时通过 options/allow_custom/schema 校验；timeout 必须搭配 default，采用惰性求值——重放到期（`created_at + timeout` 已过）的 pending 请求自动以 default 回答，无需常驻定时器。已回答请求记录 `response_source`（human/default/timeout_default）。
+- **`--unattended` 无人值守模式**（BL-045）：`loopflow run --unattended` 冻结进 Run 执行选项（recover 继承）。遇到 intervention 请求：有 default 直接取兜底继续（不进入 waiting_input），无 default 以 `intervention_unattended` 明确失败，headless/CI/benchmark 环境不再空等。
+
+### Changed
+- **应用层应答路径共享**：`application/respond.py::respond_and_recover` 从 Web handler 提取，Web 与 CLI（内联应答、respond 命令）复用同一校验与恢复逻辑。
+- **intervention 数据模型扩展**：请求记录新增 `timeout_seconds`，回答记录新增 `response_source`；旧记录读取兼容（缺省视为 human）。default/timeout 变更按 `replay_diverged` 处理。
+- **intervention 读模型暴露 `default`/`timeout_seconds`/`response_source`**，供 WebUI 后续展示倒计时（本期前端不改）。
+
+### Fixed
+- **AC manifest 漂移清理**：recovery profile 补 AC-031 ×11 映射；agent profile 补 AC-001 BL-018 追加场景（4 个场景补 parse_agent 单测，AC-001-F-2 补假 pi getopt 进程级回归，BL-048）；AC-026 BL-031 追加场景补 4 个 agent() 行为级测试。recovery/scheduling/agent/singleagent 四个 profile 严格模式 planned 清零。
+- **新增 singleagent AC manifest profile**（AC-032），mr-gate 注册 5 个 profile。
+
 ## [0.25.1] — 2026-07-28
 
 ### Fixed

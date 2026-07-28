@@ -1,9 +1,9 @@
 ---
 title: loopflow Spec
-description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入、本地 WebUI 控制台、失败分类与熔断调度语义（0.21.0）、ACP 可选传输路径（0.22.0，官方 SDK）。
+description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入、本地 WebUI 控制台、失败分类与熔断调度语义（0.21.0）、ACP 可选传输路径（0.22.0，官方 SDK）、单 agent 运行入口与 waiting_input 生命周期扩展（0.26.0）。
 type: spec
 status: active
-version: 16
+version: 17
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -55,6 +55,9 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-032 | 开发者 | run 失联后先进入宽限期再判定失败 | 笔记本睡眠等场景不被误判失败，宽限期内进程恢复则自然调和 | P1 |
 | US-033 | 开发者 | 队列任务具有显式状态（pending/deferred/superseded） | 条件不满足挂起、被新任务取代都不计为失败，调度行为可观测 | P1 |
 | US-034 | 开发者 | 用 `--transport acp` 选 ACP 后端运行 loop | 用原生 ACP 后端（pi-acp 等）跑 loopflow，ACP 路径可选可用，CLI 仍为默认 | P1 |
+| US-035 | 评测 harness / 开发者 | 通过 `loop run --agent` 单独运行 loop 中某个 agent_def | component 级评测和单 agent 调试无需执行完整 workflow | P0 |
+| US-036 | 开发者 | CLI 前台 run 进入 waiting_input 时在终端内联回答问题；也可用 `loop respond` 应答既有等待 | 不离开终端完成人工门，消除"run 卡死"误解 | P1 |
+| US-037 | 开发者 | 以 `--unattended` 运行 headless 任务，并为 `intervene()` 声明 default/timeout | CI/benchmark 无人值守时不空等：有兜底继续，无兜底明确失败 | P0 |
 
 ---
 
@@ -247,6 +250,8 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | response | any | optional | immutable 回答，仅 status=answered 时存在 |
 | created_at | ISO 8601 | required | 请求创建时间 |
 | responded_at | ISO 8601/null | required | 回答时间 |
+| timeout_seconds | number/null | required | 超时秒数；null 表示无超时。仅在 workflow `intervene()` 声明 timeout 时非空 |
+| response_source | string | optional | 回答来源：`human`（人工应答）/ `default`（无人值守兜底）/ `timeout_default`（惰性超时兜底）；仅 status=answered 时存在，旧记录缺省视为 `human` |
 
 ### Agent 定义文件
 
@@ -461,6 +466,10 @@ Agent 隔离层级体系（递进）：
 | BR-055 | ACP permission auto-approve | ACP 后端发 `request_permission` | fire-and-forget 模型下统一 auto-approve-all（对应 acpx approve-all，不做读写分级），消除 ADR-0018 的授权死锁 |
 | BR-056 | ACP notification 全量映射 | ACP 后端 `session/update` | `agent_message_chunk`→agent_message、`agent_thought_chunk`→thought、`tool_call_*`（信息性，不要求 client 响应）、`usage_update` 全映射到 loopflow 事件，补齐 ADR-0021 的 stub |
 | BR-057 | ACP 上的 continue | failed/cancelled Run 用 `--mode continue` 恢复且后端声明 `loadSession`/`resume` | 声明能力的 ACP 后端可 continue（session/load 续接）；不声明则 continue_not_supported，best-effort（与 BL-001 能力门控一致） |
+| BR-058 | 单 agent 运行 | `loopflow run <loop> --agent <name>` | 不导入、不执行 workflow.py，workflow digest 为 None；`--prompt`/`--prompt-file` 二选一必填；agent_def 不存在即以明确错误退出，不创建 Run；产出完整 Run（run_dir/run.json/缓存/事件），可 recover；`--args` 在该模式下被拒绝。详见 [ADR-0055](../adr/0055-single-agent-run.md) |
+| BR-059 | CLI 前台内联应答 | 前台 `loopflow run`/`loopflow respond` 遇到 pending intervention 且 stdin 为 tty | 逐题内联提问（options 编号选择 / allow_custom 自由文本），校验与 `answer_requests()` 一致；应答后经应用层路径恢复同一 Run，循环直至终态；Ctrl-C 保持 waiting_input 退出且回答不落盘。详见 [ADR-0056](../adr/0056-waiting-input-lifecycle.md) |
+| BR-060 | intervene default/timeout | workflow 调用 `intervene(..., default=..., timeout=...)` | default 在调用时通过 options/allow_custom/schema 校验，否则 ValueError；timeout 仅在声明 default 时有效；重放到期（created_at + timeout 已过）的 pending 请求自动以 default 回答（惰性求值）；default/timeout 变更按 replay_diverged 处理；已回答请求记录 response_source |
+| BR-061 | 无人值守模式 | `loopflow run --unattended` | 冻结进 Run 执行选项，recover 继承；遇到 intervention 请求：有 default 则以 default 回答并继续（不进入 waiting_input），无 default 则以 `intervention_unattended` 失败；前台 stdin 非 tty 且未声明时不隐式套用，打印应答指引后以 waiting_input 退出 |
 
 Agent 结构化 intervention 控制结果固定为：
 
@@ -611,3 +620,5 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | Deferred | 队列任务因条件不满足（如资源锁不可得）挂起留队，不计失败 |
 | Supersede | 新入队任务显式取代同 loop 的待执行任务，被取代任务不计失败 |
 | ACP Transport | 用官方 Python ACP SDK 承载的 ACP 协议传输，可选路径，--transport acp 启用 |
+| 单 agent 运行 | `loopflow run --agent` 直接运行 loop 中单个 agent_def 的运行模式：不执行 workflow.py，workflow digest 为 None，产出完整 Run |
+| 无人值守（unattended） | 经 `--unattended` 冻结进 Run 执行选项的模式：intervention 有 default 取兜底继续，无 default 以 `intervention_unattended` 失败，不进入 waiting_input |
