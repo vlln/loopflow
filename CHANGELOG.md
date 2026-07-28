@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.25.1] — 2026-07-28
+
+### Fixed
+- **远程 run 文件预览失败**（BL-034）：`resolve_working_directory` 在工作目录不存在时兜底到 `run_dir/work` 隔离目录（ADR-0054），并改进错误消息区分 "工作目录不可访问" 和 "文件不存在"。
+- **Events 重复渲染**（BL-035）：`_call_backend` 的 infra-retry 循环仅在首次迭代写 `agent_start`（重试已有 `agent_retry`）；`project_events` 对同一 `(call_id, session_id)` 的重复 `agent_session` 事件去重，只保留最后一条。
+- **后端显示为 unknown**（BL-036）：auto-detect 后端时 `agent_start` 事件的 `backend` 字段为 None，前端显示 "backend unknown"。修复：`_make_backend` 在实例上设置 `backend_name` 属性，`AgentRunner` 在写 `agent_start` 时优先使用该属性作为 display fallback，不影响 `input_digest` 缓存兼容性。
+- **File changes 文件夹不可折叠**（BL-037）：`ChangeTreeDirView` 添加 `useState` 展开/折叠控制，点击切换，chevron 图标指示状态。默认展开。
+
 ## [0.25.0] — 2026-07-28
 
 ### Added
