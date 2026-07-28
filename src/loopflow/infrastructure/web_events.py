@@ -147,7 +147,7 @@ def project_events(path: Path) -> EventProjection:
     pending_join: list[str] = []         # fork children waiting for join edges
     join_sources: list[str] = []         # back-to-back join sources, emitted per-child in agent_start
 
-    for event in raw:
+    for event in projection.events:
         if event.get("version") == 2:
             if not is_valid_v2(event):
                 projection.malformed.append(event)
