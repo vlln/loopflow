@@ -36,6 +36,10 @@
 | BL-028 | agent graph live-run join 边缺失 | `project_events()` back-to-back join 边只在 fork_end 生成，live run 期间 verifier 节点出现但无边连接 researcher，独立平铺在画布中 | deep-research run 实测 2026-07-27 | done | 0098 |
 | BL-029 | Loops 页面切换延迟 | `read_summary()` 中 `project_events()` 死代码导致每次切 loop 全量解析所有 run 的 events.jsonl；`detail()` 重复读 frontmatter；`rglob` 无隐藏目录过滤 | 用户报告 2026-07-27 | done | 0096 |
 | BL-030 | reconcile 宽限期阻止逻辑移除 | 宽限期阻止已确认死亡的进程被清理，无安全收益；频繁重启 server 导致 stale run 永远无法清理（ADR-0046 修订） | 用户报告 2026-07-27 | done | 0096 |
-| BL-031 | agent 失败重试缺乏详细错误原因 | run/agent 失败时 `error_summary` 仅记录顶层错误类别（如 `validation_failed`），不包含具体原因（如 schema 校验失败时应显示哪个字段不匹配、期望类型 vs 实际值）。应在 `error_summary`/`error_traceback` 中补充上下文信息，降低排查成本 | 用户报告 2026-07-27 | planned | 0.25.0 |
-| BL-032 | WebUI failed run 错误信息占用过多空间 | error_banner 在 run failed 时展开占据大量空白，影响其他面板可见性。应收紧布局：可折叠、限制高度、截断长文本 | 用户报告 2026-07-27 | planned | 0.25.0 |
-| BL-033 | Runs 左栏显示 run_id 而非项目目录 | 左栏 run 列表只显示 UUID（如 `4e1603c7...`），用户无法辨别哪个 run 对应哪个项目。应显示 working_directory 的目录名（如 `bio-reproducer`、`claroai-paper01`） | 用户报告 2026-07-27 | planned | 0.25.0 |
+| BL-031 | agent 失败重试缺乏详细错误原因 | run/agent 失败时 `error_summary` 仅记录顶层错误类别（如 `validation_failed`），不包含具体原因（如 schema 校验失败时应显示哪个字段不匹配、期望类型 vs 实际值）。应在 `error_summary`/`error_traceback` 中补充上下文信息，降低排查成本 | 用户报告 2026-07-27 | done | 0.25.0 |
+| BL-032 | WebUI failed run 错误信息占用过多空间 | error_banner 在 run failed 时展开占据大量空白，影响其他面板可见性。应收紧布局：可折叠、限制高度、截断长文本 | 用户报告 2026-07-27 | done | 0.25.0 |
+| BL-033 | Runs 左栏显示 run_id 而非项目目录 | 左栏 run 列表只显示 UUID（如 `4e1603c7...`），用户无法辨别哪个 run 对应哪个项目。应显示 working_directory 的目录名（如 `bio-reproducer`、`claroai-paper01`） | 用户报告 2026-07-27 | done | 0.25.0 |
+| BL-034 | 远程 run 文件预览失败 | 工作目录在服务器上不存在时（远程 run 路径不可达、临时目录已清理），`resolve_working_directory` 返回 None，文件预览失败。应兜底到 `run_dir/work` 隔离目录 | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-035 | Events 重复渲染 | `agent_start` 在 infra-retry 每次迭代都写入 events.jsonl（重试时多余）；`agent_session` 同一 session_id 被写入多次。需去重 | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-036 | Claude Code 后端显示为 unknown | auto-detect 后 `backend_name` 仍为 None 传给 AgentRunner，`agent_start` 事件 backend 字段为空，前端显示 "backend unknown" | 用户报告 2026-07-28 | done | 0.25.1 |
+| BL-037 | File changes 文件夹不可折叠 | `ChangeTreeDirView` 无展开/折叠功能，树始终全展开。需加 toggle state + chevron 图标 | 用户报告 2026-07-28 | done | 0.25.1 |
