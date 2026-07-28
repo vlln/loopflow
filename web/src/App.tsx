@@ -91,6 +91,7 @@ function RunsWorkspace() {
   }, [selectedId]);
   useEffect(() => {
     if (!selectedId) { setDetail(null); setInterventions([]); setFileChangeRecords([]); return; }
+    setDetail(null);  // BL-039: clear stale detail immediately to avoid rendering old run's data
     void api.run(selectedId).then((value) => {
       setDetail(value);
       setEventScope('events');
