@@ -114,10 +114,28 @@ class EventProjection:
     legacy: bool = False
 
 
+def _dedup_events(raw: list[dict]) -> list[dict]:
+    """Remove duplicate agent_session events (same call_id + session_id), keep last (BL-035)."""
+    last_idx: dict[tuple[str, str], int] = {}
+    for i, event in enumerate(raw):
+        if event.get("version") == 2 and event.get("type") == "agent_session":
+            payload = event.get("payload", {})
+            key = (event.get("call_id", ""), payload.get("session_id", ""))
+            last_idx[key] = i
+    return [
+        event for i, event in enumerate(raw)
+        if event.get("version") != 2 or event.get("type") != "agent_session"
+        or last_idx.get((
+            event.get("call_id", ""),
+            event.get("payload", {}).get("session_id", ""),
+        )) == i
+    ]
+
+
 def project_events(path: Path) -> EventProjection:
     projection = EventProjection()
     raw = read_complete_jsonl(path)
-    projection.events = raw
+    projection.events = _dedup_events(raw)
     calls: dict[str, dict[str, Any]] = {}
     agent_nodes: list[dict[str, Any]] = []
     agent_edges: list[dict[str, Any]] = []
