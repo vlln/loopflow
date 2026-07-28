@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` complete (v0.25.1) |
-| **设计评估** | v0.25.1 patch 发布：BL-034 远程 run 文件预览兜底、BL-035 events 去重、BL-036 backend 显示名、BL-037 文件夹折叠、BL-038 Loops 页移除运行时状态、BL-039 切换 run 清空旧 detail、BL-040 Backends API 优化、BL-041 workspace 持久化 + missing catch。520 Python + 41 前端 + 13 Playwright 全绿。tag v0.25.1，main + develop 已同步。 |
+| **当前阶段** | `DESIGN` |
+| **设计评估** | 增量迭代 0.26.0 启动：候选 BL-047（单 agent 运行入口）+ BL-044（CLI intervene 应答通道）+ BL-045（waiting_input 无人值守策略）已选定，来源 bio-reproducer 迁移讨论 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
