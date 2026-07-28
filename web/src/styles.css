@@ -457,7 +457,8 @@ code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospac
 .file-changes-tree { flex: 1; min-height: 0; padding: 8px 6px 12px; border-top: 1px solid var(--line); background: var(--surface-deep); }
 .change-tree, .change-tree ul { margin: 0; padding: 0; list-style: none; }
 .change-tree-row { display: flex; min-height: 28px; align-items: center; gap: 7px; padding: 3px 8px; border-radius: 6px; font-size: 10px; }
-.change-tree-row.is-dir { color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; }
+.change-tree-row.is-dir { color: var(--muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; cursor: pointer; user-select: none; }
+.change-tree-row.is-dir:hover { background: var(--accent-tint-hover); }
 .change-tree-row.is-dir svg { flex-shrink: 0; color: var(--quiet); }
 .change-tree-row.is-file { color: var(--text); }
 button.change-tree-row.is-file { width: 100%; border: 0; background: none; cursor: pointer; font-family: inherit; text-align: left; }

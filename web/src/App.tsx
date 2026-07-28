@@ -3,7 +3,7 @@ import { Background, Controls, Handle, Position, ReactFlow, type Edge, type Node
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import ReactMarkdown from 'react-markdown';
-import { Activity, ArrowLeft, Bot, Braces, Check, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, Moon, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Sun, Terminal, X, Zap } from 'lucide-react';
+import { Activity, ArrowLeft, Bot, Braces, Check, ChevronDown, ChevronRight, CircleStop, FileDiff, Folder, GitBranch, ListFilter, Moon, PanelRight, Play, Plus, RefreshCw, RotateCcw, Search, Server, Sun, Terminal, X, Zap } from 'lucide-react';
 
 import { ApiError, api, connectRunEvents } from './api';
 import { eventReducer } from './eventReducer';
@@ -315,7 +315,8 @@ function FileChangesPanel({ records, runId, selectedCallId, callOrder, onClose }
 }
 
 function ChangeTreeDirView({ dir, depth, onPreview }: { dir: ChangeTreeDir; depth: number; onPreview: (path: string) => void }) {
-  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }}><Folder size={12} /><span>{dir.label}</span></div><ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} onPreview={onPreview} />)}</ul></li>;
+  const [open, setOpen] = useState(true);
+  return <li><div className="change-tree-row is-dir" style={{ paddingLeft: `${10 + depth * 14}px` }} role="button" tabIndex={0} onClick={() => setOpen(v => !v)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(v => !v); } }}>{open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}<Folder size={12} /><span>{dir.label}</span></div>{open && <ul>{dir.dirs.map((child) => <ChangeTreeDirView key={child.label} dir={child} depth={depth + 1} onPreview={onPreview} />)}{dir.files.map((file) => <ChangeTreeFileView key={file.path} file={file} depth={depth + 1} onPreview={onPreview} />)}</ul>}</li>;
 }
 
 function ChangeTreeFileView({ file, depth, onPreview }: { file: ChangeTreeFile; depth: number; onPreview: (path: string) => void }) {
