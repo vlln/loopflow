@@ -44,7 +44,7 @@ def execute_workflow(
         "execution_options": {
             key: value
             for key, value in options.items()
-            if key in {"backend", "model", "mock"}
+            if key in {"backend", "model", "mock", "unattended"}
         },
         "pid": pid,
         "process_group_id": os.getpgrp(),
@@ -110,11 +110,13 @@ def execute_workflow(
         status, error = "cancelled", None
         error_traceback = None
     except Exception as exc:
-        from loopflow.infrastructure.intervention import InterventionPending
+        from loopflow.infrastructure.intervention import InterventionPending, InterventionUnattended
         from loopflow.infrastructure.recovery import ReplayDiverged
 
         if isinstance(exc, InterventionPending):
             status, error = "waiting_input", None
+        elif isinstance(exc, InterventionUnattended):
+            status, error = "failed", "intervention_unattended"
         elif isinstance(exc, ReplayDiverged):
             status, error = "failed", "replay_diverged"
         else:
@@ -224,7 +226,7 @@ def execute_single_agent(
         "execution_options": {
             key: value
             for key, value in options.items()
-            if key in {"backend", "model", "mock", "transport"}
+            if key in {"backend", "model", "mock", "transport", "unattended"}
         },
         "single_agent": single_agent,
         "pid": pid,
@@ -296,11 +298,13 @@ def execute_single_agent(
         status, error = "cancelled", None
         error_traceback = None
     except Exception as exc:
-        from loopflow.infrastructure.intervention import InterventionPending
+        from loopflow.infrastructure.intervention import InterventionPending, InterventionUnattended
         from loopflow.infrastructure.recovery import ReplayDiverged
 
         if isinstance(exc, InterventionPending):
             status, error = "waiting_input", None
+        elif isinstance(exc, InterventionUnattended):
+            status, error = "failed", "intervention_unattended"
         elif isinstance(exc, ReplayDiverged):
             status, error = "failed", "replay_diverged"
         else:

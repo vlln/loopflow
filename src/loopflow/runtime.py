@@ -237,6 +237,8 @@ def intervene(
     *,
     options: list[str] | tuple[str, ...] | None = None,
     allow_custom: bool = True,
+    default: Any = None,
+    timeout: float | None = None,
 ) -> Any:
     if not isinstance(key, str) or not key:
         raise ValueError("intervention key must be a non-empty string")
@@ -252,6 +254,22 @@ def intervene(
         raise ValueError("intervention options must be a string array")
     if not isinstance(allow_custom, bool):
         raise ValueError("intervention allow_custom must be boolean")
+    # ADR-0056 §3: a timeout only makes sense with a fallback default, and the
+    # default must pass the same validation answer_requests() would apply
+    if timeout is not None:
+        if default is None:
+            raise ValueError("intervention timeout requires a default")
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or timeout <= 0:
+            raise ValueError("intervention timeout must be a positive number of seconds")
+    if default is not None:
+        from loopflow.infrastructure.intervention import InterventionValidationError, validate_response
+        try:
+            validate_response(
+                {"options": list(request_options), "allow_custom": allow_custom, "schema": schema},
+                default,
+            )
+        except InterventionValidationError as error:
+            raise ValueError(f"intervention default is invalid: {error}") from error
     ctx = _ctx_module._ctx
     return request_or_answer(
         ctx.run_dir,
@@ -263,5 +281,8 @@ def intervene(
             allow_custom=allow_custom,
             schema=schema,
             resume_mode="replay",
+            default=default,
+            timeout_seconds=timeout,
         ),
+        unattended=bool(ctx.execution_options.get("unattended")),
     )

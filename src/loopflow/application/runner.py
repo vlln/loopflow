@@ -579,6 +579,8 @@ class AgentRunner:
             if schema is not None and not isinstance(schema, dict):
                 raise RuntimeError("validation_failed")
             try:
+                # Agent-side requests declare no default this iteration
+                # (ADR-0056 §5): unattended runs fail intervention_unattended
                 request_or_answer(
                     self.ctx.run_dir,
                     self.ctx.run_id,
@@ -593,6 +595,7 @@ class AgentRunner:
                         call_id=call_id,
                         session_id=backend_sid,
                     ),
+                    unattended=bool(self.ctx.execution_options.get("unattended")),
                 )
             except InterventionPending as pending:
                 first_pending = first_pending or pending
