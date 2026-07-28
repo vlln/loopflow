@@ -2,8 +2,8 @@
 
 | 子任务 | Plan | Report | 状态 |
 |--------|------|--------|------|
-| BL-047 单 agent 运行入口（ADR-0055 / AC-032） | [01-plan-single-agent.md](01-plan-single-agent.md) | [01-report-single-agent.md](01-report-single-agent.md) | pending |
-| BL-044+045 waiting_input 生命周期（ADR-0056 / AC-031） | [02-plan-waiting-input.md](02-plan-waiting-input.md) | [02-report-waiting-input.md](02-report-waiting-input.md) | pending |
+| BL-047 单 agent 运行入口（ADR-0055 / AC-032） | [01-plan-single-agent.md](01-plan-single-agent.md) | [01-report-single-agent.md](01-report-single-agent.md) | done |
+| BL-044+045 waiting_input 生命周期（ADR-0056 / AC-031） | [02-plan-waiting-input.md](02-plan-waiting-input.md) | [02-report-waiting-input.md](02-report-waiting-input.md) | done |
 
 ## 分支
 

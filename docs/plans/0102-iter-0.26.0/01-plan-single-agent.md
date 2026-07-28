@@ -2,7 +2,7 @@
 title: BL-047 单 agent 运行入口实现
 description: loopflow run --agent 直接运行单个 agent_def，完整 Run 语义，不执行 workflow.py，digest 不含 workflow
 type: plan
-status: pending
+status: done
 created: 2026-07-28T11:35:00Z
 ---
 

@@ -2,7 +2,7 @@
 title: BL-044+045 waiting_input 生命周期实现
 description: intervene default/timeout、--unattended、CLI 前台内联应答、loopflow respond 命令
 type: plan
-status: pending
+status: done
 created: 2026-07-28T11:35:00Z
 ---
 
