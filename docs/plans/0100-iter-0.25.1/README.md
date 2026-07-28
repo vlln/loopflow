@@ -6,6 +6,10 @@
 | BL-035 Events 重复渲染 | 同上 | 同上 | done |
 | BL-036 后端显示为 unknown | 同上 | 同上 | done |
 | BL-037 File changes 文件夹不可折叠 | 同上 | 同上 | done |
+| BL-038 Loops 页面混入运行时状态 | 同上 | 同上 | done |
+| BL-039 切换 Runs 时卡顿 | 同上 | 同上 | done |
+| BL-040 Backends API 对 missing 后端调用 _make_backend | 同上 | 同上 | done |
+| BL-041 切换页面卡顿 + missing catch | 同上 | 同上 | done |
 
 ## 分支
 

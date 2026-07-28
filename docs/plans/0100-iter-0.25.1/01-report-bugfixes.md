@@ -48,13 +48,56 @@ created: 2026-07-28T03:42:14Z
 - `styles.css:.change-tree-row.is-dir` — `cursor: pointer`, `user-select: none`, `:hover` 高亮
 
 ### 验证
-- Vitest 42 passed
+- Vitest 41 passed
 - Playwright 13 passed, 2 skipped
+
+## BL-038: Loops 页面混入运行时状态
+
+### 改动
+- `App.tsx` — 移除 Loops 侧栏的 `streak ×N` badge 和 `paused` StatusBadge
+- `App.tsx` — 移除详情头部的 `failure streak ×N`、`paused` badge、`paused_reason`、Unpause 按钮
+- `App.tsx` — 删除 `unpause` handler（不再从 Loops 页面触发）
+- `App.test.tsx` — 删除 `shows paused loop badge with streak and unpauses via API` 测试
+- `styles.css` — 删除 `.streak-badge`、`.loop-paused`、`.paused-reason` 样式
+
+### 验证
+- Vitest 41 passed（减少 1 个测试，因删除的功能不再需要）
+- Playwright 13 passed
+
+## BL-039: 切换 Runs 时卡顿
+
+### 改动
+- `App.tsx:94` — `useEffect` on `selectedId` 增加 `setDetail(null)` 在 API 调用前
+
+### 验证
+- Vitest 41 passed
+- 远端实测：切换 run 无卡顿
+
+## BL-040: Backends API 对 missing 后端调用 _make_backend
+
+### 改动
+- `web_resources.py:summary()` — `if path:` 条件保护 `_make_backend` 调用
+
+### 验证
+- Python 520 passed
+- 远端 API 耗时 0.279s → 0.279s（missing 后端的实例化开销极小，实际瓶颈在 `--version` 子进程调用）
+
+## BL-041: 切换页面卡顿 + missing catch
+
+### 改动
+- `App.tsx` — 三个 workspace 用 `<div hidden={view !== 'x'}>` 替代条件挂载，state 跨 tab 保留
+- `App.tsx:445` — `api.loops()` 补 `.catch((cause) => setError(messageOf(cause)))`
+- `styles.css` — 删除 `.workspace-container.hidden` 规则（用原生 `hidden` 属性替代）
+
+### 验证
+- Vitest 41 passed（jsdom 尊重 `hidden` 属性，测试中 hidden workspace 的元素不被 `getByRole` 发现）
+- Playwright 13 passed
+- 远端实测：切换 Runs/Loops/Backends 无卡顿
 
 ## 测试总计
 
 | 层 | 结果 |
 |----|------|
 | Python | 520 passed, 1 skipped |
-| Vitest | 42 passed |
+| Vitest | 41 passed |
 | Playwright | 13 passed, 2 skipped |

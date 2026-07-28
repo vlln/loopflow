@@ -57,5 +57,39 @@ v0.25.0 发布后用户报告 4 个 bug，需做 patch 升级。
 ## 验证
 
 - Python: 520 passed, 1 skipped
-- Vitest: 42 passed
+- Vitest: 41 passed
 - Playwright: 13 passed, 2 skipped
+
+## BL-038: Loops 页面混入运行时状态
+
+### 根因
+Loops 定义页（侧栏列表 + 详情头部）渲染了 `paused`、`consecutive_failures`、`paused_reason`、Unpause 按钮等 run 级状态。API `/api/v1/loops` 也混入运行时字段。
+
+### 方案
+前端移除 Loops 页面的所有运行时状态渲染（streak badge、paused badge、paused_reason、Unpause 按钮、unpause handler）。CSS 清理 `.streak-badge`、`.loop-paused`、`.paused-reason`。
+
+## BL-039: 切换 Runs 时卡顿
+
+### 根因
+`useEffect` on `selectedId` 未立即清空旧 `detail`，React 用旧数据重渲染（含 AgentGraph key 变化导致重挂载旧 props）。
+
+### 方案
+`selectedId` 变化时立即 `setDetail(null)`，API 响应到达后再设新值。
+
+## BL-040: Backends API 对 missing 后端调用 _make_backend
+
+### 根因
+`BackendRepository.summary()` 对全部 9 个后端调用 `_make_backend(name)` 创建实例，只为读 capabilities。7 个 missing 后端的实例化是纯浪费。
+
+### 方案
+`if path:` 条件保护 `_make_backend` 调用，missing 后端用默认 capabilities。
+
+## BL-041: 切换页面卡顿 + missing catch
+
+### 根因
+1. tab 切换用条件挂载/卸载（`{view === 'x' && <X />}`），组件 state 丢失，每次切换重新发 API 请求。
+2. `LoopsWorkspace` 的 `api.loops()` 调用缺少 `.catch()`，500 错误时产生 unhandled promise rejection。
+
+### 方案
+1. 改用 `hidden` HTML 属性隐藏非活跃 workspace，三个 workspace 始终挂载，state 跨 tab 保留。
+2. 补 `.catch((cause) => setError(messageOf(cause)))` 到 `api.loops()` 调用。
