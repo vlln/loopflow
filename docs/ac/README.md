@@ -21,7 +21,7 @@
 | [0003](0003-agent-layer.md) | Agent 层抽象 AC | active | Agent 类、能力 marshalling、runtime 薄封装、向后兼容、ACP 后端 loop 端到端、parse_agent 剥离 frontmatter（BL-017/018/019） |
 | [0004](0004-scheduling.md) | 调度 AC | active | dispatch, queue, loop.md, resource lock |
 | [0010](0010-webui.md) | 本地 WebUI 控制台 AC | active | Runs, Phase occurrence, SSE, Loops, Backends, WebUI, call/occurrence 显示简化（BL-021） |
-| [0011](0011-recovery-intervention.md) | 可靠恢复、可靠取消与人工介入 AC | proposed | recover retry/continue, cancellation, intervention, CLI 内联应答 + 无人值守（BL-044/045） |
+| [0011](0011-recovery-intervention.md) | 可靠恢复、可靠取消与人工介入 AC | active | recover retry/continue, cancellation, intervention, CLI 内联应答 + 无人值守（BL-044/045） |
 | [0012](0012-file-changes.md) | 工作目录文件变化观察 AC | active | file_changes.jsonl, phase 边界快照 diff, WebUI 文件变化展示 |
 | [0013](0013-run-working-directory.md) | Run 显式工作目录 AC | active | working_directory, create_run, executor chdir, WebUI 创建入口, CLI --work-dir（BL-020） |
-| [0014](0014-single-agent-run.md) | 单 agent 运行入口 AC | proposed | loop run --agent, --prompt/--prompt-file/--param, output schema 自动应用（BL-047） |
+| [0014](0014-single-agent-run.md) | 单 agent 运行入口 AC | active | loop run --agent, --prompt/--prompt-file/--param, output schema 自动应用（BL-047） |

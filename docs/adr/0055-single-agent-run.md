@@ -2,7 +2,7 @@
 title: 单 agent 运行入口
 description: loopflow run --agent 直接运行 loop 中的单个 agent_def，服务于评测与调试场景，不恢复 --only-phase
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-28T10:45:00Z
 ---
 

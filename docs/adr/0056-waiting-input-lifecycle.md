@@ -2,7 +2,7 @@
 title: waiting_input 生命周期：CLI 应答通道与无人值守策略
 description: CLI 前台内联应答 intervention、新增 loopflow respond 命令、intervene 支持 default/timeout、--unattended 无人值守模式，扩展 ADR 0036 §5
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-28T10:45:00Z
 ---
 

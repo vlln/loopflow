@@ -2,7 +2,7 @@
 title: 单 agent 运行入口 AC
 description: 验收 loop run --agent 单 agent_def 运行的完整 Run 语义、schema 应用、错误处理与恢复
 type: ac
-status: proposed
+status: active
 created: 2026-07-28T10:45:00Z
 ---
 

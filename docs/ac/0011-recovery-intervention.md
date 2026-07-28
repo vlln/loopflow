@@ -2,7 +2,7 @@
 title: Reliable Recovery, Cancellation, and Intervention AC
 description: 验收可校验前序恢复、失败/取消 Agent retry/continue、attempt 取消和阻塞人工回答
 type: ac
-status: proposed
+status: active
 created: 2026-07-22T06:35:57Z
 ---
 

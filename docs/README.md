@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` |
-| **设计评估** | 增量迭代 0.26.0 启动：候选 BL-047（单 agent 运行入口）+ BL-044（CLI intervene 应答通道）+ BL-045（waiting_input 无人值守策略）已选定，来源 bio-reproducer 迁移讨论 |
+| **当前阶段** | `TEST_INFRA` |
+| **设计评估** | 0.26.0 DESIGN 冻结：ADR-0055 单 agent 运行入口（BL-047）、ADR-0056 waiting_input 生命周期（BL-044/045）accepted；Spec v17、AC-031/032 active |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
