@@ -671,3 +671,141 @@ class TestSingleAgentRun:
         ]
         done_events = [e for e in cache_events if e.get("type") == "agent_done"]
         assert done_events[-1]["status"] == "failed"
+
+
+# ── AC-031: waiting_input CLI 应答与无人值守（ADR-0056 / BL-044/045） ──────
+
+
+def _create_intervene_loop(loops_dir: Path, *, default: str | None = None):
+    """Create a loop whose workflow blocks on an options intervention."""
+    loop_dir = loops_dir / "hello"
+    loop_dir.mkdir(parents=True)
+    (loop_dir / "loop.md").write_text("""---
+name: hello
+description: Intervention test loop
+state:
+  answer: null
+---
+# hello
+""")
+    default_arg = f", default='{default}', timeout=3600" if default else ""
+    guard = (
+        "    if state.answer != '%s':\n"
+        "        raise RuntimeError('wrong answer')\n" % default if default else ""
+    )
+    (loop_dir / "workflow.py").write_text(
+        "def run(intervene, state, **kwargs):\n"
+        "    state.answer = intervene('approve', '继续？', options=['继续', '停止'],"
+        f" allow_custom=False{default_arg})\n"
+        f"{guard}"
+    )
+    return loop_dir
+
+
+class TestWaitingInput:
+    def test_ac031_n1_inline_answer_recovers_same_run(self, env_dirs, monkeypatch):
+        """AC-031-N-1: tty foreground run answers inline (numbered option);
+        the answer persists (response_source=human) and the same run_id
+        replays to done."""
+        loops, runs = env_dirs
+        _create_intervene_loop(loops)
+        monkeypatch.setattr(
+            "loopflow.presentation.intervene_prompt.stdin_interactive", lambda: True
+        )
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(main, ["run", "hello"], input="1\n")
+        assert result.exit_code == 0, result.output
+
+        run_json = _only_run_json(runs)
+        run_dir = run_json.parent
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "done"
+        assert metadata["execution_epoch"] == 2
+        state = json.loads((run_dir / "state.json").read_text())
+        assert state["answer"] == "继续"
+        request = json.loads(next((run_dir / "interventions").glob("*.json")).read_text())
+        assert request["status"] == "answered"
+        assert request["response"] == "继续"
+        assert request["response_source"] == "human"
+
+    def test_ac031_n2_respond_command_recovers_run(self, env_dirs, monkeypatch):
+        """AC-031-N-2: `loopflow respond <run-id>` answers a pending request
+        of a background waiting_input run and recovers the same run_id."""
+        loops, runs = env_dirs
+        _create_intervene_loop(loops)
+
+        from loopflow.presentation.cli import main
+        runner = CliRunner()
+        first = runner.invoke(main, ["run", "hello"])  # non-tty → waiting_input
+        assert first.exit_code == 0, first.output
+        run_json = _only_run_json(runs)
+        run_dir = run_json.parent
+        run_id = json.loads(run_json.read_text())["run_id"]
+
+        monkeypatch.setattr(
+            "loopflow.presentation.intervene_prompt.stdin_interactive", lambda: True
+        )
+        second = runner.invoke(main, ["respond", run_id], input="2\n")
+        assert second.exit_code == 0, second.output
+        assert "Recovering" in second.output
+
+        metadata = _wait_terminal(run_json)
+        assert metadata["status"] == "done"
+        assert metadata["run_id"] == run_id
+        request = json.loads(next((run_dir / "interventions").glob("*.json")).read_text())
+        assert request["response"] == "停止"
+        assert request["response_source"] == "human"
+
+    def test_ac031_n3_unattended_applies_default(self, env_dirs):
+        """AC-031-N-3: --unattended with a declared default never enters
+        waiting_input; the request is answered response_source=default."""
+        loops, runs = env_dirs
+        _create_intervene_loop(loops, default="继续")
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(main, ["run", "hello", "--unattended"])
+        assert result.exit_code == 0, result.output
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "done"
+        request = json.loads(next((run_json.parent / "interventions").glob("*.json")).read_text())
+        assert request["status"] == "answered"
+        assert request["response"] == "继续"
+        assert request["response_source"] == "default"
+
+    def test_ac031_e3_unattended_without_default_fails(self, env_dirs):
+        """AC-031-E-3: --unattended without a default fails the run with
+        intervention_unattended; no request file is created."""
+        loops, runs = env_dirs
+        _create_intervene_loop(loops)
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(main, ["run", "hello", "--unattended"])
+        assert result.exit_code == 1, result.output
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "failed"
+        assert metadata["error_summary"] == "intervention_unattended"
+        assert not (run_json.parent / "interventions").exists()
+
+    def test_ac031_e4_non_tty_prints_guidance(self, env_dirs):
+        """AC-031-E-4: non-tty stdin without --unattended prints pending
+        count, run_id, `loopflow respond` and the WebUI entry, then exits
+        with the run kept waiting_input."""
+        loops, runs = env_dirs
+        _create_intervene_loop(loops)
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(main, ["run", "hello"])
+        assert result.exit_code == 0, result.output
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "waiting_input"
+        run_id = metadata["run_id"]
+        assert "1 pending request" in result.output
+        assert f"loopflow respond {run_id}" in result.output
+        assert "WebUI" in result.output

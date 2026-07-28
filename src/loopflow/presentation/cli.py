@@ -1,7 +1,8 @@
 """loopflow CLI — AI Agent loop orchestration tool.
 
 Commands:
-    loopflow run <name> [--args '<json>']
+    loopflow run <name> [--args '<json>'] [--unattended]
+    loopflow respond <run-id>
     loopflow resume <run-id>
     loopflow status <run-id>
     loopflow list
@@ -136,7 +137,10 @@ def web(host: str, port: int, allow_remote: bool) -> None:
               help="Working directory for the loop: a path to chdir into; "
                    "empty string to let the framework create one under run_dir; "
                    "omitted to use the current directory.")
-def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, prompt_file, params):
+@click.option("--unattended", is_flag=True, default=False,
+              help="Never wait for input: interventions use their declared "
+                   "default, or the run fails intervention_unattended (ADR-0056)")
+def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, prompt_file, params, unattended):
     """Run a loop."""
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
@@ -144,7 +148,7 @@ def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, p
     if agent_name is not None:
         _run_single_agent(
             name, agent_name, prompt, prompt_file, params,
-            wf_args, mock, backend, transport, work_dir,
+            wf_args, mock, backend, transport, work_dir, unattended,
         )
         return
 
@@ -193,6 +197,9 @@ def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, p
             "transport": transport,
         },
     }
+    if unattended:
+        # Frozen into execution_options so recovery inherits it (ADR-0056 §4)
+        run_meta["execution_options"]["unattended"] = True
     _write_run(run_dir / "run.json", run_meta)
 
     ctx = RunContext(
@@ -245,14 +252,22 @@ def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, p
         _write_run(run_dir / "run.json", run_meta)
         sys.exit(0)
     except Exception as e:
-        from loopflow.infrastructure.intervention import InterventionPending
+        from loopflow.infrastructure.intervention import InterventionPending, InterventionUnattended
 
         if isinstance(e, InterventionPending):
             _finish_run(run_meta, "waiting_input")
             run_meta["counter"] = ctx._counter
             _write_run(run_dir / "run.json", run_meta)
-            print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
-            sys.exit(0)
+            _exit_waiting_input(name, run_id, run_dir)
+        if isinstance(e, InterventionUnattended):
+            print(f"[loopflow] Error: unattended run needs input: {e}", file=sys.stderr)
+            _finish_run(run_meta, "failed")
+            run_meta["error_summary"] = "intervention_unattended"
+            run_meta["counter"] = ctx._counter
+            _write_run(run_dir / "run.json", run_meta)
+            from loopflow.infrastructure import loop_state
+            loop_state.record_failure(name, run_id, threshold=loop_state.failure_threshold(meta))
+            sys.exit(1)
         print(f"[loopflow] Error: {e}", file=sys.stderr)
         _finish_run(run_meta, "failed")
         run_meta["failed_call_id"] = ctx._current_call_id
@@ -284,7 +299,92 @@ def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, p
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
 
 
-def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mock, backend, transport, work_dir):
+def _exit_waiting_input(name: str, run_id: str, run_dir: Path) -> None:
+    """Handle a foreground run that just entered waiting_input (ADR-0056).
+
+    tty stdin  → answer inline via the shared application path and re-run the
+                 recover/answer loop until the run reaches a terminal state;
+    otherwise  → print pending count, run_id and the answer entry points and
+                 exit with the run kept waiting_input (never implicitly fails
+                 or applies a default).
+    Never returns: always exits the process.
+    """
+    from loopflow.infrastructure.intervention import list_requests
+    from loopflow.presentation import intervene_prompt
+
+    pending = [item for item in list_requests(run_dir) if item.get("status") == "pending"]
+    if not intervene_prompt.stdin_interactive():
+        print(f"[loopflow] Waiting for input: {run_id} ({len(pending)} pending request(s))", file=sys.stderr)
+        print(f"[loopflow] Answer in a terminal: loopflow respond {run_id}", file=sys.stderr)
+        print("[loopflow] Or answer in the WebUI interventions panel (loopflow web)", file=sys.stderr)
+        sys.exit(0)
+    metadata = _answer_and_recover_loop(run_id, run_dir)
+    status = metadata.get("status")
+    if status == "done":
+        print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+        sys.exit(0)
+    if status == "waiting_input":
+        print(f"[loopflow] Waiting for input: {run_id}", file=sys.stderr)
+        sys.exit(0)
+    print(f"[loopflow] {status}: {run_id} {metadata.get('error_summary') or ''}".rstrip(), file=sys.stderr)
+    sys.exit(1)
+
+
+def _answer_and_recover_loop(run_id: str, run_dir: Path) -> dict:
+    """Inline answer + recover loop until the run leaves waiting_input (AC-031-N-1)."""
+    from loopflow.application.execution import BackgroundRunExecutor
+    from loopflow.application.respond import respond_and_recover
+    from loopflow.application.web import ApplicationError
+    from loopflow.infrastructure.intervention import list_requests, read_request
+    from loopflow.infrastructure.web_storage import RunRepository
+    from loopflow.presentation import intervene_prompt
+
+    runs_root = _runs_dir()
+    runs = RunRepository(runs_root)
+    executor = BackgroundRunExecutor(runs_root)
+    while True:
+        pending = [
+            read_request(run_dir, str(item["request_id"]))
+            for item in list_requests(run_dir)
+            if item.get("status") == "pending"
+        ]
+        if not pending:
+            break
+        try:
+            responses = intervene_prompt.collect_responses(pending)
+        except (KeyboardInterrupt, intervene_prompt.PromptAborted):
+            print(f"\n[loopflow] Interrupted — run stays waiting_input: {run_id}", file=sys.stderr)
+            sys.exit(0)
+        try:
+            respond_and_recover(runs, executor, run_id, responses)
+        except ApplicationError as error:
+            raise click.ClickException(f"{error.code}: {error.message}") from error
+        metadata = _wait_for_terminal(run_dir)
+        if metadata.get("status") != "waiting_input":
+            return metadata
+    return _read_run_metadata(run_dir)
+
+
+def _read_run_metadata(run_dir: Path) -> dict:
+    try:
+        return json.loads((run_dir / "run.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _wait_for_terminal(run_dir: Path, timeout: float = 600.0) -> dict:
+    """Poll run.json until the recovering worker writes a non-running state."""
+    import time
+
+    deadline = time.monotonic() + timeout
+    metadata = _read_run_metadata(run_dir)
+    while metadata.get("status") in (None, "running") and time.monotonic() < deadline:
+        time.sleep(0.05)
+        metadata = _read_run_metadata(run_dir)
+    return metadata
+
+
+def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mock, backend, transport, work_dir, unattended=False):
     """Run a single agent_def as a full Run (ADR-0055).
 
     Validates everything before any Run is created: agent_def exists, prompt
@@ -355,6 +455,8 @@ def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mo
 
     single_agent = {"agent_def": agent_name, "prompt": prompt_text, "params": param_dict}
     options = {"mock": mock, "backend": backend, "transport": transport}
+    if unattended:
+        options["unattended"] = True
 
     print(f"[loopflow] Running: {name} --agent {agent_name} ({run_id})", file=sys.stderr)
     from loopflow.application.execution import execute_single_agent
@@ -467,6 +569,48 @@ def legacy_resume_internal(run_id, mock):
             print(json.dumps(result, indent=2, ensure_ascii=False))
 
     print(f"[loopflow] Done: {run_id}", file=sys.stderr)
+
+
+@main.command()
+@click.argument("run_id")
+def respond(run_id: str) -> None:
+    """Answer pending intervention requests of a waiting Run, then recover it (ADR-0056 §2)."""
+    from loopflow.application.execution import BackgroundRunExecutor
+    from loopflow.application.respond import respond_and_recover
+    from loopflow.application.web import ApplicationError
+    from loopflow.infrastructure.intervention import list_requests, read_request
+    from loopflow.infrastructure.web_storage import RunRepository
+    from loopflow.presentation import intervene_prompt
+
+    run_dir = _find_run_by_id(run_id)
+    if run_dir is None:
+        raise click.ClickException(f"run '{run_id}' not found")
+    metadata = _read_run_metadata(run_dir)
+    if metadata.get("status") not in {"waiting_input", "cancelled"}:
+        raise click.ClickException(f"invalid_run_transition: run '{run_id}' is not waiting for input")
+    pending = [
+        read_request(run_dir, str(item["request_id"]))
+        for item in list_requests(run_dir)
+        if item.get("status") == "pending"
+    ]
+    if not pending:
+        raise click.ClickException(f"run '{run_id}' has no pending intervention requests")
+    if not intervene_prompt.stdin_interactive():
+        raise click.ClickException(
+            "interactive stdin is required; answer via the Web API "
+            f"(POST /api/v1/runs/{run_id}/interventions/responses) or the WebUI"
+        )
+    try:
+        responses = intervene_prompt.collect_responses(pending)
+    except (KeyboardInterrupt, intervene_prompt.PromptAborted):
+        click.echo(f"\n[loopflow] Interrupted — run stays waiting_input: {run_id}", err=True)
+        sys.exit(0)
+    runs_root = _runs_dir()
+    try:
+        result = respond_and_recover(RunRepository(runs_root), BackgroundRunExecutor(runs_root), run_id, responses)
+    except ApplicationError as error:
+        raise click.ClickException(f"{error.code}: {error.message}") from error
+    click.echo(f"[loopflow] Recovering: {result['run_id']}", err=True)
 
 
 @main.command()

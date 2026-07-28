@@ -194,6 +194,10 @@ INTERVENTION_SCHEMA = {
         "response": {"type": "string"},
         "created_at": {"type": "string"},
         "responded_at": NULLABLE_STRING,
+        # ADR-0056 §3/§4: default/timeout declaration and answer provenance
+        "default": {},
+        "timeout_seconds": {"type": ["number", "null"]},
+        "response_source": {"enum": ["human", "default", "timeout_default"]},
     },
     "allOf": [
         {

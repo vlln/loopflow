@@ -182,6 +182,17 @@ TEST_NODES = {
     "AC-029-E-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e1_stale_since_is_not_refreshed",
     "AC-029-E-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e2_legacy_run_records_stale_since_on_first_detection",
     "AC-029-F-1": "tests/integration/test_web_api.py::test_ac029_f1_reconcile_live_run_returns_run_not_stale",
+    "AC-031-N-1": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_n1_inline_answer_recovers_same_run",
+    "AC-031-N-2": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_n2_respond_command_recovers_run",
+    "AC-031-N-3": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_n3_unattended_applies_default",
+    "AC-031-B-1": "tests/unit/test_waiting_input.py::test_ac031_b1_lazy_timeout_answers_default_on_replay",
+    "AC-031-B-2": "tests/unit/test_waiting_input.py::test_ac031_b2_prompt_countdown_uses_default",
+    "AC-031-E-1": "tests/unit/test_waiting_input.py::test_ac031_e1_invalid_default_raises_value_error",
+    "AC-031-E-2": "tests/unit/test_waiting_input.py::test_ac031_e2_timeout_without_default_raises_value_error",
+    "AC-031-E-3": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_e3_unattended_without_default_fails",
+    "AC-031-E-4": "tests/integration/test_cli.py::TestWaitingInput::test_ac031_e4_non_tty_prints_guidance",
+    "AC-031-F-1": "tests/unit/test_waiting_input.py::test_ac031_f1_default_or_timeout_change_replay_diverges",
+    "AC-031-F-2": "tests/unit/test_waiting_input.py::test_ac031_f2_invalid_input_reprompts_without_persisting",
 }
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
