@@ -268,7 +268,12 @@ def _wait_terminal(run_json, timeout=5.0):
     while time.monotonic() < deadline:
         status = json.loads(run_json.read_text()).get("status")
         if status != "running":
-            return status
+            # Terminal status is written before the child releases
+            # `.execution.lock` in its finally block; a run is only fully
+            # finished once the lock is gone, otherwise an immediate recover
+            # races into invalid_run_transition on slow/loaded machines.
+            if not (run_json.parent / ".execution.lock").exists():
+                return status
         time.sleep(0.01)
     return json.loads(run_json.read_text()).get("status")
 
