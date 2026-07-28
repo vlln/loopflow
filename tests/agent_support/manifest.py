@@ -59,6 +59,7 @@ TEST_NODES: dict[str, str] = {
     "AC-001-B-3": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_b3_missing_frontmatter_raises",
     "AC-001-B-4": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_b4_invalid_yaml_raises",
     "AC-001-E-1": "tests/unit/test_agent.py::TestParseAgentFrontmatter::test_ac001_e1_body_horizontal_rule_preserved",
+    "AC-001-F-2": "tests/integration/test_cli.py::TestPiBackendArgv::test_ac001_f2_frontmatter_stripped_prompt_not_an_unknown_option",
     # AC-030: ACP 后端 loop 端到端
     "AC-030-N-1": "tests/integration/test_acp_sdk_backend.py::test_ac_030_n_1_acp_backend_loop_end_to_end",
     "AC-030-N-2": "tests/integration/test_acp_sdk_backend.py::test_ac_030_n_2_notification_full_mapping",

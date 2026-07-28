@@ -169,7 +169,7 @@
       "fixture": "CLI backend 误把 `---` 当 option",
       "action": "agent `.md` 含 frontmatter（修复前 body 以 `---` 开头），pi backend 以 prompt 作 argv",
       "assertion": "pi 不报 getopt unknown option 错误，run status=done，exit_code=0（frontmatter 已剥离，body 不以 `---` 开头）",
-      "test_node": "planned::ac-001-f-2",
+      "test_node": "tests/integration/test_cli.py::TestPiBackendArgv::test_ac001_f2_frontmatter_stripped_prompt_not_an_unknown_option",
       "targets": [
         "process:cli-run"
       ],

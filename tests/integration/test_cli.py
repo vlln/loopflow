@@ -1,6 +1,8 @@
 """Integration tests for loopflow CLI using mock agent mode."""
 
 import json
+import os
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -809,3 +811,91 @@ class TestWaitingInput:
         assert "1 pending request" in result.output
         assert f"loopflow respond {run_id}" in result.output
         assert "WebUI" in result.output
+
+
+# ── AC-001-F-2: pi backend argv — frontmatter 剥离回归（BL-048） ────────────
+
+
+_FAKE_PI_SCRIPT = '''\
+"""Fake `pi` CLI with getopt semantics + pi `--mode json` stream output.
+
+argv contract (mirrors PiBackend._cmd_create):
+    pi -p --mode json [--system-prompt|--append-system-prompt S] [--model M]
+      [--skill DIR] <prompt>
+The prompt is a positional argv token. getopt treats any token starting
+with `-` as an option, so a prompt starting with `---` (unstripped
+frontmatter) is rejected as an unknown option.
+"""
+import json
+import sys
+
+TAKES_VALUE = {
+    "--mode", "--model", "--system-prompt", "--append-system-prompt",
+    "--skill", "--session-id",
+}
+BOOLEAN = {"-p"}
+
+args = sys.argv[1:]
+i = 0
+while i < len(args):
+    token = args[i]
+    if token in TAKES_VALUE:
+        i += 2
+        continue
+    if token in BOOLEAN:
+        i += 1
+        continue
+    if token.startswith("-"):
+        sys.stderr.write(f"pi: Unknown option: {token.splitlines()[0]}\\n")
+        sys.exit(1)
+    i += 1  # positional prompt — accepted
+
+print(json.dumps({"type": "session", "id": "fake-pi-sid"}))
+print(json.dumps({
+    "type": "message_update",
+    "assistantMessageEvent": {"type": "text_end", "content": "fake pi ok"},
+}))
+sys.exit(0)
+'''
+
+
+class TestPiBackendArgv:
+    """AC-001-F-2: agent .md 含 frontmatter（修复前 body=整文件，以 `---`
+    开头）时，pi backend 把 prompt 作位置 argv，getopt 会把它当 unknown
+    option。parse_agent 剥离 frontmatter 后 prompt 以正文开头，pi 正常
+    退出。假 pi 进程忠实复现 getopt 误判，构成进程级回归。"""
+
+    def test_ac001_f2_frontmatter_stripped_prompt_not_an_unknown_option(
+        self, env_dirs, tmp_path, monkeypatch,
+    ):
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops, body="You are a reader agent.\n")
+
+        fake_pi = tmp_path / "pi"
+        fake_pi.write_text(f"#!{sys.executable}\n{_FAKE_PI_SCRIPT}")
+        fake_pi.chmod(0o755)
+        monkeypatch.setenv("PATH", f"{tmp_path}{os.pathsep}{os.environ['PATH']}")
+
+        from loopflow.presentation.cli import main
+        result = CliRunner().invoke(
+            main,
+            ["run", "hello", "--agent", "reader", "--prompt", "summarize",
+             "--backend", "pi"],
+        )
+        assert result.exit_code == 0, result.output
+        assert "Unknown option" not in result.output
+
+        run_json = _only_run_json(runs)
+        metadata = json.loads(run_json.read_text())
+        assert metadata["status"] == "done"
+
+        cache_events = [
+            json.loads(line)
+            for line in (run_json.parent / "0001.jsonl").read_text().splitlines()
+            if line
+        ]
+        done_events = [e for e in cache_events if e.get("type") == "agent_done"]
+        assert done_events[-1]["exit_code"] == 0
+        assert "Unknown option" not in done_events[-1].get("stderr", "")
+        messages = [e for e in cache_events if e.get("type") == "agent_message"]
+        assert any("fake pi ok" in e.get("content", "") for e in messages)
