@@ -101,6 +101,12 @@ def _targets() -> dict[str, list[str]]:
         "AC-029-B-1 AC-029-B-2 AC-029-F-1",
         "POST /api/v1/runs/{run_id}/reconcile",
     )
+
+    assign("AC-031-N-1 AC-031-N-3 AC-031-E-3 AC-031-E-4", "process:cli-run")
+    assign("AC-031-N-2 AC-031-F-2", "process:cli-respond")
+    assign("AC-031-B-1 AC-031-B-2", "unit:intervention-timeout")
+    assign("AC-031-E-1 AC-031-E-2", "unit:intervention-default-validation")
+    assign("AC-031-F-1", "unit:intervention-replay")
     return targets
 
 

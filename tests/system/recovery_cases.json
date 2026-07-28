@@ -1191,6 +1191,182 @@
           "code": "run_not_stale"
         }
       ]
+    },
+    {
+      "ac_id": "AC-031-N-1",
+      "fixture": "workflow 调用 `intervene(key=\"approve\", prompt=\"继续？\", options=[\"继续\",\"停止\"], allow_custom=False)`；CLI 前台 tty 运行",
+      "action": "执行 `loopflow run`，在终端提问中选择\"继续\"",
+      "assertion": "终端内联展示 prompt 与编号选项；回答经应用层校验落盘（response_source=human）；同一 run_id 恢复重放，intervene 返回\"继续\"；Run 最终 done",
+      "test_node": "planned::ac-031-n-1",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-N-2",
+      "fixture": "Run A 为 waiting_input，request R 为 pending（后台或非前台产生）",
+      "action": "执行 `loopflow respond <A.run_id>` 并交互回答",
+      "assertion": "response 持久化；A 自动恢复同一 run_id；重放到相同 key 时返回回答",
+      "test_node": "planned::ac-031-n-2",
+      "targets": [
+        "process:cli-respond"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-N-3",
+      "fixture": "workflow 调用 `intervene(..., default=\"继续\")`；以 `--unattended` 运行",
+      "action": "执行 `loopflow run --unattended`",
+      "assertion": "Run 不进入 waiting_input；请求以 default 回答（response_source=default）；workflow 拿到 default 继续至终态",
+      "test_node": "planned::ac-031-n-3",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-B-1",
+      "fixture": "request R pending，`created_at + timeout` 已过，声明了 default",
+      "action": "对 Run 执行 recover",
+      "assertion": "R 自动以 default 回答（response_source=timeout_default），重放返回 default；无需任何常驻进程触发",
+      "test_node": "planned::ac-031-b-1",
+      "targets": [
+        "unit:intervention-timeout"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-B-2",
+      "fixture": "CLI 前台内联提问且声明了 timeout/default",
+      "action": "不输入，等待倒计时结束",
+      "assertion": "超时后自动取 default 继续；回答落盘 response_source=timeout_default",
+      "test_node": "planned::ac-031-b-2",
+      "targets": [
+        "unit:intervention-timeout"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-E-1",
+      "fixture": "`intervene(options=[\"a\",\"b\"], allow_custom=False, default=\"c\")`",
+      "action": "运行 workflow",
+      "assertion": "调用即抛 ValueError（default 未通过 options 校验）；Run failed；不创建 request",
+      "test_node": "planned::ac-031-e-1",
+      "targets": [
+        "unit:intervention-default-validation"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-E-2",
+      "fixture": "`intervene(timeout=60)` 未声明 default",
+      "action": "运行 workflow",
+      "assertion": "调用即抛 ValueError（timeout 依赖 default）；不创建 request",
+      "test_node": "planned::ac-031-e-2",
+      "targets": [
+        "unit:intervention-default-validation"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-E-3",
+      "fixture": "workflow 调用无 default 的 `intervene()`；以 `--unattended` 运行",
+      "action": "执行 `loopflow run --unattended`",
+      "assertion": "Run 以 `intervention_unattended` 失败；不进入 waiting_input；不创建 request（unattended 冻结后 recover 亦无人应答，pending 无意义）",
+      "test_node": "planned::ac-031-e-3",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-E-4",
+      "fixture": "CLI 前台运行但 stdin 非 tty，未声明 `--unattended`",
+      "action": "执行 `loopflow run`（stdin 重定向）",
+      "assertion": "打印 pending 请求数、run_id、`loop respond <run-id>` 与 WebUI 应答入口后以 waiting_input 退出；不隐式失败、不隐式取 default",
+      "test_node": "planned::ac-031-e-4",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-F-1",
+      "fixture": "request R 已 pending，workflow 修改 default 或 timeout 后 recover",
+      "action": "执行 recover",
+      "assertion": "Run failed，错误 replay_diverged；不把旧请求与新参数混用",
+      "test_node": "planned::ac-031-f-1",
+      "targets": [
+        "unit:intervention-replay"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-031-F-2",
+      "fixture": "CLI 内联提问 `allow_custom=false`，用户输入 options 之外的值",
+      "action": "交互应答",
+      "assertion": "提示校验失败并重新提问；非法回答不落盘、不触发恢复",
+      "test_node": "planned::ac-031-f-2",
+      "targets": [
+        "process:cli-respond"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
     }
   ]
 }
