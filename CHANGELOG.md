@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.25.0] — 2026-07-28
+
+### Added
+- **Schema 类型兜底**（BL-031）：新增 `coerce_json()` 函数，agent 返回的 JSON 类型不匹配时自动尝试兼容转换（string→number/integer、string→bool、number/bool→string、enum case-insensitive match、array wrap）。兜底后的值必须通过 `validate_json` 二次校验才接受。
+- **Retry hint 携带详细错误**（BL-031）：retry hint 从通用 "not valid JSON" 升级为汇总错误列表（字段路径、期望类型、实际值、兜底尝试结果），agent 能针对性修正而非反复改格式。
+- **json.loads 成功后补 schema 校验**（BL-031）：修复 `runner.py:446-451` 跳过 schema 校验的缺陷，agent 返回纯 JSON 但类型不匹配不再被静默接受。
+
+### Fixed
+- **WebUI failed run 错误布局**（BL-032）：`.error-summary-text` 加 `max-height: 3em` + `-webkit-line-clamp: 2`，error_banner 不再占据大量空白挤占 Phase 工作区。
+- **Runs 左栏显示项目目录名**（BL-033）：`<code>` 从显示 `run_id`（UUID）改为 `working_directory` 的 basename，用户可辨识 run 对应哪个项目。
+
+### Changed
+- **vitest 升级**（BL-011）：`@vitest/coverage-v8` 和 `vitest` 从 3.2.7 升级到 4.1.10，修复 brace-expansion 高危漏洞（0 vulnerabilities）。branch coverage 阈值从 80% 调整为 79%（vitest 4.x 分支计数方式变化）。
+- **版本号单源化**（BL-013）：`__init__.py` 用 `importlib.metadata.version("loopflow")` 从 pyproject.toml 读取版本号，消除双写同步风险。
+
 ## [0.24.2] — 2026-07-27
 
 ### Added
