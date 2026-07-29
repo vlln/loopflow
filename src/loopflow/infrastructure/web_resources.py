@@ -23,6 +23,10 @@ from loopflow.infrastructure.repository import parse_agent
 from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json
 
 PREVIEW_LIMIT = 1024 * 1024
+RAW_LIMIT = 50 * 1024 * 1024  # 50 MiB for binary previews (images, PDFs)
+_BINARY_PREVIEW_EXTS = {
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".bmp", ".ico", ".pdf",
+}
 _SECRET = re.compile(
     r"(?i)\b(token|password|secret|api_key)(\s*(?:=|:)\s*)([^\s;,]+)"
 )
@@ -195,6 +199,19 @@ class LoopRepository:
         if not path.is_file():
             raise FileNotFoundError(relative)
         size = path.stat().st_size
+        suffix = path.suffix.lower()
+        # Binary previews: images and PDFs served via raw endpoint
+        if suffix in _BINARY_PREVIEW_EXTS:
+            if size > RAW_LIMIT:
+                raise FileNotPreviewable(f"file exceeds the {RAW_LIMIT // (1024 * 1024)} MiB binary preview limit")
+            return {
+                "path": relative,
+                "media_type": _media_type(path) or "application/octet-stream",
+                "content": None,
+                "encoding": "raw",
+                "size": size,
+                "read_only": True,
+            }
         if size > PREVIEW_LIMIT:
             raise FileNotPreviewable("file exceeds the 1 MiB preview limit")
         raw = path.read_bytes()
@@ -206,12 +223,26 @@ class LoopRepository:
             raise FileNotPreviewable("file is not UTF-8 text") from error
         return {"path": relative, "media_type": _media_type(path), "content": content, "size": size, "read_only": True}
 
+    def serve_raw(self, loop_dir: Path, relative: str) -> tuple[bytes, str]:
+        """Read a binary file and return (content_bytes, media_type) for streaming."""
+        path = self.resolve_file(loop_dir, relative)
+        if not path.is_file():
+            raise FileNotFoundError(relative)
+        size = path.stat().st_size
+        if size > RAW_LIMIT:
+            raise FileNotPreviewable(f"file exceeds the {RAW_LIMIT // (1024 * 1024)} MiB binary preview limit")
+        return path.read_bytes(), _media_type(path) or "application/octet-stream"
+
     def file_summary(self, loop_dir: Path, path: Path) -> dict[str, Any]:
         relative = path.relative_to(loop_dir).as_posix()
         try:
             resolved = self.resolve_file(loop_dir, relative)
             size = resolved.stat().st_size
-            previewable = resolved.is_file() and size <= PREVIEW_LIMIT and b"\x00" not in resolved.read_bytes()[:8192]
+            suffix = resolved.suffix.lower()
+            if suffix in _BINARY_PREVIEW_EXTS:
+                previewable = resolved.is_file() and size <= RAW_LIMIT
+            else:
+                previewable = resolved.is_file() and size <= PREVIEW_LIMIT and b"\x00" not in resolved.read_bytes()[:8192]
         except (OSError, PathForbidden):
             size, previewable = path.lstat().st_size, False
         return {"path": relative, "media_type": _media_type(path), "size": size, "previewable": previewable}

@@ -466,6 +466,40 @@ it('AC-025-E-3: previewing a deleted file shows a friendly not-found message', a
   expect(await screen.findByRole('alert')).toHaveTextContent('File no longer exists');
 });
 
+it('AC-025-N-9: previewing an image file renders an <img> with the raw URL', async () => {
+  const pngRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'figs/chart.png', action: 'created', size: 2048 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pngRecords },
+    runFile: { body: { path: 'figs/chart.png', media_type: 'image/png', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=figs/chart.png' } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview figs/chart.png' }));
+  const dialog = await screen.findByRole('dialog', { name: 'chart.png' });
+  const img = within(dialog).getByRole('img', { name: 'chart.png' });
+  expect(img).toBeVisible();
+  expect(img).toHaveAttribute('src', '/api/v1/runs/run-live/file/raw?path=figs/chart.png');
+  fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+});
+
+it('AC-025-N-10: previewing a PDF renders an <iframe> with the raw URL', async () => {
+  const pdfRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'doc/paper.pdf', action: 'created', size: 7800000 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pdfRecords },
+    runFile: { body: { path: 'doc/paper.pdf', media_type: 'application/pdf', content: null, encoding: 'raw', size: 7800000, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=doc/paper.pdf' } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview doc/paper.pdf' }));
+  const dialog = await screen.findByRole('dialog', { name: 'paper.pdf' });
+  const iframe = within(dialog).getByTitle('paper.pdf');
+  expect(iframe).toBeVisible();
+  expect(iframe).toHaveAttribute('src', '/api/v1/runs/run-live/file/raw?path=doc/paper.pdf');
+  fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+});
+
 // --- AC-025: Web directory browser / AC-014: arguments editor ---
 
 it('AC-025-N-6: Browse fills the working directory via Web directory picker', async () => {

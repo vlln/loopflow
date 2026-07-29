@@ -79,6 +79,8 @@ export interface RunFileContent {
   content: string;
   size: number;
   read_only: boolean;
+  encoding?: string;
+  raw_url?: string;
 }
 
 export interface FileChangeRecord {

@@ -73,6 +73,47 @@ def test_loop_preview_rejects_traversal_symlink_binary_and_large(tmp_path):
     assert repository.preview(loop, "workflow.py")["read_only"] is True
 
 
+def test_loop_preview_binary_image_and_pdf(tmp_path):
+    loop = make_loop(tmp_path)
+    (loop / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+    (loop / "doc.pdf").write_bytes(b"%PDF-1.4\n" + b"\x00" * 100)
+    (loop / "fig.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    repository = LoopRepository(tmp_path)
+
+    for name, expected_type in [("chart.png", "image/png"), ("doc.pdf", "application/pdf"), ("fig.svg", "image/svg+xml")]:
+        result = repository.preview(loop, name)
+        assert result["encoding"] == "raw"
+        assert result["content"] is None
+        assert result["media_type"] == expected_type
+        assert result["read_only"] is True
+
+    raw_bytes, raw_type = repository.serve_raw(loop, "chart.png")
+    assert raw_type == "image/png"
+    assert raw_bytes.startswith(b"\x89PNG")
+
+
+def test_loop_preview_binary_rejects_oversized(tmp_path):
+    loop = make_loop(tmp_path)
+    (loop / "huge.png").write_bytes(b"\x89PNG" + b"\x00" * (50 * 1024 * 1024 + 1))
+    repository = LoopRepository(tmp_path)
+
+    with pytest.raises(FileNotPreviewable, match="binary preview limit"):
+        repository.preview(loop, "huge.png")
+
+
+def test_loop_file_summary_marks_binary_previewable(tmp_path):
+    loop = make_loop(tmp_path)
+    (loop / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+    (loop / "binary.bin").write_bytes(b"a\x00b")
+    repository = LoopRepository(tmp_path)
+
+    png_summary = repository.file_summary(loop, loop / "chart.png")
+    assert png_summary["previewable"] is True
+
+    bin_summary = repository.file_summary(loop, loop / "binary.bin")
+    assert bin_summary["previewable"] is False
+
+
 def test_queue_projection_and_blocked_resources(tmp_path):
     repository = QueueRepository(tmp_path, lambda name: name != "gpu")
     item = repository.enqueue("demo", {}, {"repo": "/tmp/repo", "gpu": "1"}, 5)

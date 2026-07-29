@@ -279,19 +279,40 @@ class WebApplication:
         loop_dir = self.loops.find(name)
         if loop_dir is None:
             raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
-        return self.loops.preview(loop_dir, relative)
+        result = self.loops.preview(loop_dir, relative)
+        if result.get("encoding") == "raw":
+            result["raw_url"] = f"/api/v1/loops/{name}/file/raw?path={relative}"
+        return result
+
+    def serve_loop_file_raw(self, name: str, relative: str) -> tuple[bytes, str]:
+        loop_dir = self.loops.find(name)
+        if loop_dir is None:
+            raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
+        return self.loops.serve_raw(loop_dir, relative)
 
     def preview_run_file(self, run_id: str, relative: str) -> dict[str, Any]:
         """Preview a single file inside a run's working directory (ADR-0042).
 
         Shares the Loop preview rules: relative POSIX path, resolved inside
-        the run's working directory, UTF-8 text up to 1 MiB, read-only.
+        the run's working directory. Text up to 1 MiB; images/PDFs up to 50 MiB
+        via raw endpoint. Read-only.
         """
         run_dir = self._run_dir(run_id)
         root = self.runs.resolve_working_directory(run_dir)
         if root is None:
             raise ApplicationError("file_not_found", f"Working directory for run '{run_id}' is not available on this server")
-        return self.loops.preview(root, relative)
+        result = self.loops.preview(root, relative)
+        if result.get("encoding") == "raw":
+            result["raw_url"] = f"/api/v1/runs/{run_id}/file/raw?path={relative}"
+        return result
+
+    def serve_run_file_raw(self, run_id: str, relative: str) -> tuple[bytes, str]:
+        """Stream a binary file from a run's working directory."""
+        run_dir = self._run_dir(run_id)
+        root = self.runs.resolve_working_directory(run_dir)
+        if root is None:
+            raise ApplicationError("file_not_found", f"Working directory for run '{run_id}' is not available on this server")
+        return self.loops.serve_raw(root, relative)
 
     def list_queue(self, *, limit: int = 50, cursor: str | None = None) -> dict[str, Any]:
         limit, offset = _page(limit, cursor)
