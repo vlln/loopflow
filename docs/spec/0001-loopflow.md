@@ -2,8 +2,8 @@
 title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、人工介入、本地 WebUI、ACP 可选传输、Agent waiting_input 控制协议与运行时追加 prompt（0.27.0）。
 type: spec
-status: active
-version: 18
+status: proposed
+version: 19
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -37,9 +37,9 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-014 | 开发者 | 同一资源上的 loop 互斥执行 | 防止两个 loop 同时操作同一 repo | P1 |
 | US-015 | 开发者 | 通过 `loop.md` 了解 loop 的目的、流程、权限边界 | 人类和 Agent 无需读 workflow.py 即可理解 loop | P2 |
 | US-016 | 开发者 | 在本地 WebUI 的常驻 Runs 列表中切换运行实例 | 不离开工作台即可比较状态并定位当前 Run | P0 |
-| US-017 | 开发者 | 查看 Run 的 Phase 路径、循环、分支和并行调用 | 理解工作流当前进度及历史执行路径 | P0 |
-| US-018 | 开发者 | 选择一次 Phase 执行并查看其 Agent 调用和事件 | 区分循环中同名 Phase 的不同轮次，定位该次执行的行为与结果 | P0 |
-| US-019 | 开发者 | 实时查看所选 Phase 的 Agent 运行过程 | 观察消息、工具调用、重试、错误和最终输出 | P0 |
+| US-017 | 开发者 | 查看 Run 的 Agent 实例图、顺序、分支和并行汇合 | 理解工作流当前进度及历史执行路径 | P0 |
+| US-018 | 开发者 | 选择一次 Agent Call 并查看其事件与文件变化 | 以稳定 call_id 定位该次执行的行为与结果 | P0 |
+| US-019 | 开发者 | 实时查看所选 Agent Call 的运行过程 | 观察消息、工具调用、重试、错误和最终输出 | P0 |
 | US-020 | 开发者 | 在 Loops 工作区浏览 Loop 声明和目录内容 | 无需离开控制台即可检查 loop.md、workflow.py 和 Agents | P1 |
 | US-021 | 开发者 | 在 Backends 工作区检查当前环境的后端可用性和诊断日志 | 在运行 Loop 前发现安装、版本或配置问题 | P1 |
 | US-022 | 开发者 | 从 WebUI 启动、停止和恢复 Run | 用图形界面完成核心运行管理操作 | P1 |
@@ -65,24 +65,24 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 
 ## 三、模块划分
 
-| 模块 | 提供的能力 | 目录路径 | 优先级 |
-|------|-----------|---------|---------|
-| CLI | loopflow run / recover / respond / status / list / stop 命令解析和路由 | `src/loopflow/presentation/cli.py` | P0 |
-| Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/phase/intervene/log/args/workflow 运行时 API，支持 goal 反馈循环和确定性重放 | `src/loopflow/runtime.py` | P0 |
-| Agent | Agent = Backend + Capabilities：能力声明（skills/schema/goal/model）的 marshalling，遵循"尽力而为"原则（backend 原生支持优先，否则框架降级） | `src/loopflow/agent.py` | P0 |
-| Backend Layer | 适配 8 种 AI Agent 后端，默认 CLI 传输，输出归一化为 ACP 兼容事件 | `src/loopflow/backends/` | P0 |
-| Lock | 文件锁防止同一 session 并发执行 | `src/loopflow/lock.py` | P0 |
-| PhaseGraph | phase 转移图数据结构：邻接表、边计数、环检测、快照，纯数据，不依赖渲染 | `src/loopflow/graph.py` | P1 |
-| Display | 终端渲染：PhaseGraph → Rich renderable，增量 Live 更新，线性路径/回边/分支三种布局 | `src/loopflow/display/graph_renderer.py` | P1 |
-| Loop Discovery | 扫描 `~/.loopflow/loops/` 发现已安装的 loop 定义，读取 `loop.md` 获取元数据，提取 `workflow.py` 的 `meta.phases` 声明 | `src/loopflow/discovery.py` | P0 |
-| Dispatch | 扫描队列、按优先级排序、资源锁检查、执行 loopflow run | `src/loopflow/dispatch.py` | P1 |
-| Queue | 队列读写（enqueue、dequeue、list），文件持久化在 `~/.loopflow/queue/` | `src/loopflow/queue.py` | P1 |
-| Web Application | 提供 Loop、Run、Phase、Agent Call、Intervention、Backend 的查询模型及 run/stop/recover/respond 应用命令，供 CLI 与 Web 复用 | `src/loopflow/application/` | P0 |
-| Web API | 提供本机 HTTP 查询、命令接口和 Run 事件流，不直接实现领域逻辑 | `src/loopflow/presentation/web/` | P0 |
-| Web Frontend | 提供 Runs、Loops、Backends 三个主从工作区，消费 Web API 与事件流 | `web/` | P0 |
-| File Observation | phase 边界快照 diff，记录工作目录文件变化到 `file_changes.jsonl`，不参与业务事件流和重放 | `src/loopflow/file_observation.py` | P2 |
-| Loop State | per-loop 熔断状态（连续失败计数、暂停标记）的持久化与查询 | `src/loopflow/infrastructure/loop_state.py` | P1 |
-| ACP Transport | 用官方 Python ACP SDK 承载 ACP 协议管道（stdio JSON-RPC、async 桥接到 sync runner、permission auto-approve、notification 映射）；可选依赖，仅 --transport acp 加载 | `src/loopflow/infrastructure/transports/acp_sdk.py` | P1 |
+| 模块 | 提供的能力 | 拥有的数据实体 | 目录路径 | 优先级 |
+|------|-----------|----------------|---------|---------|
+| CLI | run / recover / respond / status / list / stop 命令解析和路由 | 无 | `src/loopflow/presentation/cli.py` | P0 |
+| Workflow Runtime | 加载 workflow.py，提供 agent/parallel/pipeline/intervene/log/args/workflow API，支持 goal 和重放 | Call Cache、Run Event | `src/loopflow/runtime.py`、`src/loopflow/application/runner.py` | P0 |
+| Agent | 能力声明（skills/schema/goal/model）marshalling 和 Agent 调用抽象 | 无 | `src/loopflow/agent.py` | P0 |
+| Backend Layer | 适配 AI Agent 后端并归一化输出事件 | Backend Session（外部） | `src/loopflow/backends/` | P0 |
+| Lock | session、Run 和资源互斥 | Resource Lock | `src/loopflow/lock.py` | P0 |
+| Loop Discovery | 扫描已安装 Loop，读取 loop.md 元数据 | Loop Definition | `src/loopflow/discovery.py` | P0 |
+| Dispatch | 扫描队列、排序、资源锁检查、执行 Run | 无 | `src/loopflow/dispatch.py` | P1 |
+| Queue | 队列读写与状态投影 | Queue Entry | `src/loopflow/queue.py` | P1 |
+| Web Application | Loop、Run、AgentGraph、Call、Intervention、Backend 查询模型和应用命令 | Run、Run Index、Intervention | `src/loopflow/application/`、`src/loopflow/infrastructure/web_storage.py` | P0 |
+| Web API | 本机 HTTP 查询、命令接口和 Run 事件流 | 无 | `src/loopflow/presentation/web/` | P0 |
+| Web Frontend | Runs、Loops、Backends 主从工作区 | 浏览器展示状态（非持久化） | `web/` | P0 |
+| File Observation | Call 完成边界快照 diff，以 call_id/label 记录变化 | File Change | `src/loopflow/infrastructure/file_observation.py` | P2 |
+| Loop State | per-loop 熔断状态持久化与查询 | Loop State | `src/loopflow/infrastructure/loop_state.py` | P1 |
+| ACP Transport | 官方 ACP SDK 管道、permission 和 notification 映射 | 无 | `src/loopflow/infrastructure/transports/acp_sdk.py` | P1 |
+
+依赖方向固定为 Presentation（CLI/Web API/Web Frontend）→ Application（Runner/Web Application/Dispatch）→ Runtime/Agent → Backend/Infrastructure。Discovery、Queue、Lock、File Observation、Loop State 和持久化 Repository 是 Application 使用的基础设施端口实现，不反向依赖 Presentation；Web Frontend 只依赖 Web API 契约。该方向无环，持久化实体只由上表单一模块拥有。
 
 ---
 
@@ -113,7 +113,7 @@ pwd (工作目录)                          ~/.loopflow/ (loopflow 数据目录)
 ```
 ~/.loopflow/loops/<name>/
 ├── loop.md                  # 声明式定义（新增）：frontmatter + body
-├── workflow.py              # meta = {...}; def run(agent, parallel, pipeline, phase, log, args, workflow, state)
+├── workflow.py              # meta = {...}; def run(agent, parallel, pipeline, intervene, log, args, workflow, state)
 ├── agents/                  # agent 定义文件
 │   └── <name>.md            # Markdown + YAML frontmatter
 ├── pixi.toml                # 可选：环境声明（推荐）
@@ -173,21 +173,18 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 
 ### workflow.py meta
 
-`meta` 是 workflow.py 的模块级字典，声明 loop 的元信息和预期阶段：
+`meta` 是 workflow.py 的 legacy 模块级元数据字典；loop.md 不存在时可作为静态发现回退：
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | name | string | required | loop 唯一标识 |
 | description | string | required | 简短描述 |
-| phases | object[] | optional | 声明的预期阶段列表 |
-| phases[].title | string | required | 阶段标题，与 `phase()` 调用对应 |
-| phases[].detail | string | optional | 阶段描述，用于 UI 展示 |
 | state | object | optional | 声明的持久化状态变量，key 为变量名，value 为默认值。仅支持 JSON 可序列化类型 |
 | state.<key> | any | optional | 默认值，类型即约定类型。首次运行时以默认值初始化，每次 agent() 成功后自动持久化 |
 | requires | object | optional | workflow 级别的依赖声明 |
 | requires.environment | string | optional | 环境声明文件路径（相对路径，如 `environment.yml` 或 `pixi.toml`）。`loopflow run` 启动时校验文件存在，不自动激活或安装。推荐使用 pixi（原生支持 skill 隔离和 npm 依赖），但 loopflow 不约束文件格式 |
 
-`meta` 必须是纯字面量（无变量、函数调用、表达式），用于静态发现和进度显示。`phases` 声明预期阶段，运行时 `phase()` 调用锚定到声明上。`state` 声明持久化变量，运行时通过 `state.key` 属性访问，自动保存到 `state.json`。`requires.environment` 声明环境文件，`loopflow run` 启动时校验存在性，激活由 agent 或用户完成。
+`meta` 必须是纯字面量（无变量、函数调用、表达式），用于 legacy 静态发现。`state` 声明持久化变量，运行时通过 `state.key` 属性访问，自动保存到 `state.json`。`requires.environment` 声明环境文件，`loopflow run` 启动时校验存在性，激活由 agent 或用户完成。`meta.phases` 不再是有效字段，不参与运行或 UI 投影。
 
 ### 运行实例（文件系统）
 
@@ -195,7 +192,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 ~/.loopflow/runs/lf_<group-path>/<uuid>/
 ├── run.json                 # 元数据
 ├── state.json               # 工作流状态（meta.state 的运行时快照）
-├── events.jsonl             # 全部事件流（phase + agent，按时间序）
+├── events.jsonl             # 全部结构化运行事件（按时间序）
 ├── work/                    # Web/API 缺省或 CLI --work-dir "" 时由框架创建和拥有
 ├── interventions/           # 原子持久化的人工输入请求与响应
 │   └── <request-id>.json
@@ -228,7 +225,6 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | updated_at | ISO 8601 | optional | 最近一次元数据更新；用于列表刷新 |
 | pid | integer | optional | 当前执行子进程 PID；仅用于进程管理，必须结合进程启动标识校验 |
 | process_started_at | ISO 8601 | optional | PID 对应进程的启动时间，用于防止 PID 复用误判 |
-| current_phase | string | optional | 最近一次 phase 事件的 title |
 | error_summary | string | optional | failed 状态的短错误摘要，不替代完整事件 |
 | execution_epoch | integer | NOT NULL | 每次首次执行或恢复递增；worker 写状态时的 fencing token |
 | execution_options | object | NOT NULL | 首次执行冻结的有效 backend、model、mock、unattended、append_prompt 等选项；recover 不接受覆盖 |
@@ -257,7 +253,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | session_id | string/null | required | 可继续的 backend session |
 | resume_mode | string | required | replay（workflow 请求）/ continue（Agent 请求） |
 | status | string | required | pending / answered / closed；stop waiting_input 不关闭 pending request，closed 仅用于显式废弃或 legacy 读取 |
-| response | any | optional | immutable 回答，仅 status=answered 时存在 |
+| response | any | optional | immutable 回答，仅 status=answered 时存在；source=agent 时必须是非空 string，source=workflow 时按 schema 可为任意 JSON |
 | created_at | ISO 8601 | required | 请求创建时间 |
 | responded_at | ISO 8601/null | required | 回答时间 |
 | timeout_seconds | number/null | required | 超时秒数；null 表示无超时。仅在 workflow `intervene()` 声明 timeout 时非空 |
@@ -318,7 +314,7 @@ Skill 的安装来源（WHERE）不在 SKILL.md 中声明，由环境文件（`p
 
 | type | 含义 | 来源 |
 |------|------|------|
-| `agent_start` | agent 调用开始（含 call_id、input_digest、phase） | loopflow 特有 |
+| `agent_start` | agent 调用开始（含 call_id、input_digest、label、agent_def） | loopflow 特有 |
 | `agent_session` | backend session ID 首次可用（含 call_id、session_id） | loopflow 特有 |
 | `agent_thought_chunk` | agent 思考过程 | ACP `agent_thought_chunk` |
 | `agent_message_chunk` | agent 文本输出（实时追加，流式 chunk） | ACP `agent_message_chunk` |
@@ -327,7 +323,6 @@ Skill 的安装来源（WHERE）不在 SKILL.md 中声明，由环境文件（`p
 | `usage_update` | token 用量 | ACP `usage_update` |
 | `agent_done` | agent 调用完成（含 call_id、status、session_id、exit_code、duration_ms） | loopflow 特有 |
 | `agent_error` | agent 调用失败 | loopflow 特有 |
-| `phase` | phase 转移（含 title, ts） | loopflow 特有 |
 
 新写入缓存以 `call_id` 标识逻辑调用，以 `input_digest` 校验规范化调用输入。digest 覆盖 workflow.py 内容摘要、最终 user/system prompt、输出 schema、backend、model、Agent 定义和影响调用语义的执行选项。密钥和环境变量值不得写入 digest 原文或缓存。
 
@@ -341,7 +336,7 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 
 ### events.jsonl
 
-所有事件按时间顺序追加写入，phase 事件与 agent 事件混合。用于 UI 重建执行图和调试。新写入 `events.jsonl` 的事件使用统一信封；运行时将缓存/后端事件写入 `events.jsonl` 时完成信封转换。
+所有事件按时间顺序追加写入，用于 UI 重建 Agent 实例图和调试。新写入 `events.jsonl` 的事件使用统一信封；运行时将缓存/后端事件写入 `events.jsonl` 时完成信封转换。
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
@@ -350,33 +345,30 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 | type | string | required | 事件类型 |
 | ts | ISO 8601 | required | 事件产生时间 |
 | run_id | string | required | 所属 Run |
-| phase | string | optional | 所属 Phase title，用于聚合执行图 |
-| phase_id | string | optional | 一次 Phase occurrence 的稳定标识；phase 和 Agent 事件必填 |
 | call_id | string | optional | 所属 Agent Call 的稳定标识；Agent 事件必填 |
 | payload | object | required | 事件类型专属数据 |
 
-`phase` title 对应聚合执行图中的节点；`phase_id` 对应一次实际进入该 Phase 的 occurrence。例如 `Review → Fix → Review` 只有两个聚合节点，但有三个 phase_id。用户选择聚合节点时可查看全部 occurrence，选择某个 occurrence 后只展示该次执行关联的 Calls 和 Events。
+每个 `agent_start` 的 `call_id` 对应 AgentGraph 中唯一节点；payload 的 `label` 是显示名，`agent_def` 标识定义来源。顺序调用生成 sequential edge；`parallel()` 生成 fork/join edge。用户选择节点后仅展示该 call_id 关联的事件和文件变化，不按 label 合并重复调用。
 
 新事件示例：
 
 ```jsonl
-{"version":2,"event_id":1,"type":"phase","ts":"2026-07-18T20:00:00Z","run_id":"abc","phase":"采集","phase_id":"phase-1","payload":{"title":"采集","occurrence":1}}
-{"version":2,"event_id":2,"type":"agent_start","ts":"2026-07-18T20:00:01Z","run_id":"abc","phase":"采集","phase_id":"phase-1","call_id":"call-1","payload":{"session":"wf_abc_1"}}
-{"version":2,"event_id":3,"type":"agent_message_chunk","ts":"2026-07-18T20:00:02Z","run_id":"abc","phase":"采集","phase_id":"phase-1","call_id":"call-1","payload":{"content":"开始处理..."}}
-{"version":2,"event_id":4,"type":"agent_done","ts":"2026-07-18T20:00:03Z","run_id":"abc","phase":"采集","phase_id":"phase-1","call_id":"call-1","payload":{"exit_code":0,"duration_ms":2000}}
+{"version":2,"event_id":1,"type":"agent_start","ts":"2026-07-18T20:00:01Z","run_id":"abc","call_id":"call-1","payload":{"label":"采集","agent_def":"collector","session":"wf_abc_1"}}
+{"version":2,"event_id":2,"type":"agent_message_chunk","ts":"2026-07-18T20:00:02Z","run_id":"abc","call_id":"call-1","payload":{"content":"开始处理..."}}
+{"version":2,"event_id":3,"type":"agent_done","ts":"2026-07-18T20:00:03Z","run_id":"abc","call_id":"call-1","payload":{"exit_code":0,"duration_ms":2000}}
 ```
 
-没有 `version` 信封的历史 `events.jsonl` 视为 `legacy`。Legacy reader 保证原始事件时间线可读，并尽力恢复聚合 Phase 图；只有具备明确 session/phase 证据时才建立 Call 或 Phase occurrence 关联。并行交错或证据不足的事件标记为 `unattributed`，不得按文件位置虚构归属。
+没有 `version` 信封的历史 `events.jsonl` 视为 `legacy`。Legacy reader 保证原始事件时间线可读；只有具备明确 call_id 或其他稳定证据时才建立 Call 关联。并行交错或证据不足的事件标记为 `unattributed`，不得按文件位置或最近事件虚构归属。legacy phase 事件可在原始时间线显示，但不恢复为当前 AgentGraph 节点。
 
 ### file_changes.jsonl
 
-工作目录文件变化观察数据，按 Phase 边界快照 diff 采集。与 `events.jsonl` 严格分离——不参与业务事件流、不参与确定性重放。通过 SSE `file_changes` topic 实时推送（详见 [ADR-0039](../adr/0039-file-change-observation.md) 和 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)）。
+工作目录文件变化观察数据，按 Agent Call 完成边界快照 diff 采集。与 `events.jsonl` 严格分离——不参与业务事件流、不参与确定性重放。通过 SSE `file_changes` topic 实时推送；关联语义以 ADR-0052 为准，传输语义见 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)。
 
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | seq | integer | required | Run 内从 1 开始严格递增的序号，作为 SSE `file_changes` topic 的游标（详见 [ADR-0041](../adr/0041-sse-multi-topic-transport.md)） |
-| phase | string | required | 产生这些变化的 Phase title |
-| phase_id | string | required | 对应的 Phase occurrence 标识，与 events.jsonl 中的 phase_id 一致 |
+| call_id | string | required | 产生这些变化的 Agent Call，与 events.jsonl 的 call_id 一致 |
+| label | string | required | 该 Agent Call 的显示标签；不作为关联主键 |
 | ts | ISO 8601 | required | 快照拍摄时间 |
 | changes | object[] | required | 文件变化列表 |
 | changes[].path | string | required | 相对 pwd 的文件路径 |
@@ -384,7 +376,7 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 | changes[].size | integer | created/modified 时必填 | 变化后的文件大小（bytes） |
 | changes[].prev_size | integer | modified/deleted 时必填 | 变化前的文件大小（bytes） |
 
-采集时机：每次 `phase()` 调用时对 pwd 拍摄快照，与上一个快照 diff，记录该 Phase 期间的文件变化。首次 `phase()` 调用和 Run 启动时建立基线快照，不产生 diff。
+采集时机：Run 启动时建立基线快照；每次 Agent Call 完成后对 pwd 拍摄快照，与上一快照 diff，并将变化归属到该 call_id。无变化不追加记录。goal 内部迭代完成后的观察仍归属同一逻辑 Call。
 
 扫描范围：pwd 下所有文件，排除 `.agents/worktrees/`、`.git/`、`__pycache__/`、`.pyc`。`meta.file_observation.exclude` 可声明额外排除路径（glob 模式）。`meta.file_observation.enabled` 设为 `false` 可禁用观察（默认 `true`）。
 
@@ -417,7 +409,7 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 | BR-004 | workflow.py 必须定义 `run()` 函数 | 加载 workflow.py 时检查 | 缺少则报错退出 |
 | BR-005 | Agent 定义文件必须含 name 和 description | 解析 agent 文件时检查 | 缺少则报错退出 |
 | BR-006 | 运行实例目录不可并发执行 | 同一 run_id 首次执行、恢复、停止或回答 | 使用 Run 独占锁和递增 execution_epoch；旧 worker 不得写入新 epoch 的状态 |
-| BR-007 | workflow.py 的 `meta` 必须是纯字面量 | 加载时检查 | 用于拓扑发现和进度显示 |
+| BR-007 | workflow.py 的 legacy `meta` 必须是纯字面量 | loop.md 不存在而走静态发现回退时 | 只提取允许的元数据字段，不执行表达式；不读取 `meta.phases`，不用于 AgentGraph 拓扑 |
 | BR-008 | Agent 调用 infra 失败抛 AgentError | `agent()` 执行时后端进程非零退出、超时、不可用 | 持久化 failed Call 及已知 session_id 后抛 `AgentError`；Run 可选择 retry 或满足能力条件时 continue |
 | BR-009 | Schema 不匹配时自动重试 | `agent()` 有 schema 但返回的 JSON parse 失败 | 重试最多 `max_retries` 次（默认 3），每次注入"上次格式不对，请按 schema 输出"提醒。超过次数抛 `AgentError` |
 | BR-010 | Workflow 状态投影与重放分离 | `meta.state` 声明、Agent 成功或 recover | 运行时将当前快照写入 state.json；recover 从 meta.state 默认值重放并重新计算，不以旧 state.json 为起点 |
@@ -447,14 +439,14 @@ Agent 隔离层级体系（递进）：
 | BR-022 | 队列优先级 | 队列中有多个任务时 | 按 priority 升序 → created 升序排列。不抢占正在运行的 loop |
 | BR-023 | WebUI 仅提供本地控制台 | 启动 Web 服务 | 默认只绑定 `127.0.0.1`；非本机绑定必须显式配置，首版不提供多用户认证 |
 | BR-024 | Runs 使用常驻主从工作台 | 用户进入 WebUI 或切换 Run | 左侧保留可筛选的 Runs 列表，右侧原地切换所选 Run，不设置独立的 Runs 列表页跳转流程 |
-| BR-025 | Phase、state、Run status 分层展示 | 构建 Run 读模型 | Phase 表示执行路径；state 表示 `state.json` 当前投影；Run status 表示 running/waiting_input/cancelling/cancelled/done/failed，三者不得混用 |
-| BR-026 | Phase occurrence 详情只展示有证据的数据 | 用户选择聚合 Phase 或一次 occurrence | occurrence 由 `phase_id` 区分，Agent Calls 和 events 由 `phase_id`/`call_id` 关联；首版不承诺 Phase input/output/state diff，不从日志文本推断 |
+| BR-025 | AgentGraph、state、Run status 分层展示 | 构建 Run 读模型 | AgentGraph 表示 Call 执行拓扑；state 表示 `state.json` 当前投影；Run status 表示 running/waiting_input/cancelling/cancelled/done/failed，三者不得混用 |
+| BR-026 | Agent Call 详情只展示有证据的数据 | 用户选择 AgentGraph 节点 | 节点、Call、events 和 file changes 只通过稳定 call_id 关联；label 仅展示，不合并同名调用，不从日志位置或文案推断归属 |
 | BR-027 | Run 操作受状态和恢复边界约束 | WebUI 请求 run/stop/recover/respond/reconcile | running 允许 stop；waiting_input 允许 respond 或 stop；failed 允许 recover；cancelled 在存在可重放边界时允许 recover，在存在 pending intervention 时允许 respond；done/legacy stopped 不允许 recover；stale 只允许 reconcile；rerun 是创建新 Run 的便利动作，不作为旧 Run 状态转换；非法转换返回冲突错误且不修改文件 |
 | BR-028 | Loop 文件预览限制在 Loop 根目录 | WebUI 请求 Loop 文件 | 解析后的真实路径必须位于所选 Loop 根目录内；拒绝路径穿越、符号链接逃逸和任意绝对路径 |
 | BR-029 | Run 事件流可断线恢复 | WebUI 订阅 Run | 客户端按 event_id 请求断点后的事件；服务端可重放已持久化事件并继续推送新增事件，重复连接不得重复执行 Run |
 | BR-030 | Backend 诊断基于真实能力 | WebUI 查询后端 | 仅展示 BackendManager 或诊断命令可观测的安装、版本、能力、transport 和日志；不得伪造 VRAM、延迟或健康分数 |
-| BR-031 | Run 与 state 文件原子更新 | 创建 Run、状态变化、Phase 变化、state 持久化或进程退出 | `run.json` 和 `state.json` 各自在同目录写临时文件，flush 后独立原子替换，不承诺跨文件事务；仅替换 run.json 时在同一份新 JSON 中更新其 updated_at，state.json 不增加保留字段 |
-| BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；进程不存在或启动标识不匹配时，读模型返回 stale 且不修改文件。显式 reconcile 再次校验后原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at，随后允许 recover |
+| BR-031 | Run 与 state 文件原子更新 | 创建 Run、状态变化、state 持久化或进程退出 | `run.json` 和 `state.json` 各自在同目录写临时文件，flush 后独立原子替换，不承诺跨文件事务；仅替换 run.json 时在同一份新 JSON 中更新其 updated_at，state.json 不增加保留字段 |
+| BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；首次确认进程不存在或身份不匹配时原子记录 stale_since，读模型返回 stale；后续读取不重复改写。显式 reconcile 再次校验，满足 BR-052 宽限期后原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at/stale_since，随后允许 recover |
 | BR-033 | 恢复模式显式选择 | failed/cancelled Run 执行 recover | retry/replay 是默认恢复路径，创建新 session 或重放到 pending 边界；continue 使用原 session_id；缺少 durable session 能力、目标 Call 未落盘 session_id 或 active worker 为原子/隔离边界时返回 continue_not_supported，不静默降级 |
 | BR-034 | stop 取消当前 execution attempt | running/waiting_input Run 执行 stop | 先持久化取消意图，再终止已验证身份的进程组；SIGTERM 超时后 SIGKILL；最终 cancelled；cancelled 表示本次 execution epoch 被取消，不表示 Run identity 不可恢复 |
 | BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 requests | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow `intervene()` 是 routing/control gate，通过 replay 返回回答给 workflow；Agent requests 是继续执行所需输入，仅在 durable session 已落盘时创建并通过 continue 返回给 Agent；waiting_input 被 stop 后 pending request 保留，respond 可恢复同一 Run |
@@ -464,10 +456,10 @@ Agent 隔离层级体系（递进）：
 | BR-039 | CLI resume 是 deprecated recover retry 别名 | failed/cancelled Run 调用旧 CLI resume | 执行 recover --mode retry 并输出弃用提示；Web API 不保留 resume 端点；legacy stopped 仍拒绝 |
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
 | BR-041 | Recover 必须到达全部目标 | workflow 重放 | 到达任一预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束，或 execution 结束时仍有未到达的恢复目标，均报 replay_diverged，不得标记 done。并行 Agent intervention 可携带多个 continue target，按 call_id 分别验证和恢复，不得只恢复第一个 target |
-| BR-042 | Declared phases 预显示 | Run 创建时 Loop 含 `meta.phases` 声明 | 从 declared phases 生成占位节点（pending 状态），运行时按 title 匹配合并 runtime events；无声明时退化为运行时涌现；详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md) |
-| BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 run 的工作目录（BR-044）拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`（含 `seq` 序号）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
+| BR-042 | AgentGraph 从运行证据涌现 | Run 创建及 Agent 事件到达 | 空 Run 的 AgentGraph 为空；每个首次出现的 call_id 创建唯一节点，顺序、fork、join edge 仅由结构化运行事件生成；不读取 `meta.phases` 或预造占位节点；详见 ADR-0052 |
+| BR-043 | 工作目录文件变化观察 | Agent Call 完成且 `meta.file_observation.enabled` 非 false | 对 run 的工作目录（BR-044）拍摄快照并与上一快照 diff，以 call_id/label 追加到 `file_changes.jsonl`（含 `seq`）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；关联语义以 ADR-0052 为准 |
 | BR-044 | Run 显式工作目录 | CLI 或 Web/API 创建 Run | 非空显式路径必须是已存在目录的绝对路径；CLI 校验失败时非零退出，Web/API 返回 422 `validation_failed`。executor 子进程 chdir 到 actual working_directory 执行 workflow 与文件观察。CLI 缺省为创建 cwd；CLI `--work-dir ""` 以创建 cwd 分组后创建 `run_dir/work`；CLI 非空显式路径仍以创建 cwd 分组、actual 为该路径。Web/API 缺省以 server cwd 分组后创建 `run_dir/work`（ADR-0054）；Web/API 非空显式路径以该路径分组且 actual 同路径。actual 写入 run.json 和 runs_index，group 不据此重算；recover/rerun 沿用；详见 [ADR-0042](../adr/0042-run-working-directory.md) |
-| BR-045 | 文件观察基线快照 | Run 启动时且观察启用 | 先建立基线快照（内存态，不产生记录），phase diff 针对基线或上一快照；`created` 仅表示 phase 期间新建，预先存在的文件首改标记 `modified`；详见 [ADR-0043](../adr/0043-file-observation-baseline.md) |
+| BR-045 | 文件观察基线快照 | Run 启动时且观察启用 | 先建立基线快照（内存态，不产生记录），每个 Agent Call 完成后的 diff 针对基线或上一快照；`created` 仅表示相邻观察边界间新建，预先存在的文件首改标记 `modified`；关联与基线语义以 ADR-0052 为准 |
 | BR-046 | Run/Loop 文件预览 | WebUI 点击文件 / 文件预览 API | 仅限所属工作目录或 Loop 根目录内的相对 POSIX 路径，resolve 越界拒绝（403 `path_forbidden`）；文本以内联 JSON 返回，上限 1 MiB；png/jpg/jpeg/gif/svg/webp/bmp/ico/pdf 通过 raw 端点只读返回，上限 50 MiB；其他二进制或超限文件返回 422 `file_not_previewable`；resolve/size 校验通过后读取仍发生 OSError 时返回 500 `file_read_failed`，不得发送部分 bytes |
 | BR-047 | Loop args 声明预填 | loop.md 顶层 `args` 声明 `[{name, default, description, required}]` 时 | Loop summary/detail API 返回 `declared_args`（非法声明静默忽略）；New Run 对话框在首次打开及切换 Loop 时按所选 Loop 声明重建键值行（default 填入，required 仅提示）；无声明时为空白起始。仅在 loop.md 不存在的 legacy 回退路径读取 `workflow.py meta.args`。该 active 契约是 BL-054 的权威依据，本轮不新增第二套参数声明 |
 | BR-048 | WebUI 主题 | 用户点击 rail 主题切换按钮 | 日夜主题切换（CSS 变量调色板）；选择持久化于 localStorage；未选择时跟随系统 `prefers-color-scheme` |
@@ -534,7 +526,7 @@ WebUI 是本地开发者控制台，视觉规范以 [`references/DESIGN.md`](../
 
 | 工作区 | 主列表 | 详情区域 | 核心操作 |
 |--------|--------|----------|----------|
-| Runs | 常驻 Runs 列表，支持状态、Loop 和文本筛选 | Phase 路径、Phase 详情、Agent 过程和待回答 Intervention | run / stop / recover / respond / rerun |
+| Runs | 常驻 Runs 列表，支持状态、Loop 和文本筛选 | AgentGraph、Call 详情、事件、文件变化和待回答 Intervention | run / stop / recover / respond / rerun |
 | Loops | 已发现的 Loop 声明列表 | loop.md 渲染、workflow.py、Agents、允许范围内的文件、关联 Runs | run / enqueue |
 | Backends | Backend 列表及可用状态 | capabilities、CLI 路径、版本、transport、诊断日志 | 执行诊断 |
 
@@ -543,13 +535,13 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 ### Runs 工作台
 
 1. 左栏是常驻 Runs 列表，不使用独立列表页作为进入详情的前置步骤。
-2. 中间上方展示 Phase 执行路径；必须表达回边次数、分支、当前路径和并行调用，不得退化为固定线性步骤条。Run 创建后若 Loop 含 `meta.phases` 声明，立即显示占位 phase 节点（pending 状态），运行时按 title 匹配合并实际 events；无声明时从空白开始按 events 涌现。占位节点、实际节点和 undeclared 节点有明确视觉区分。
-3. 中间下方展示所选 Phase occurrence 的 Calls / Events；Run 当前 state 作为 Run 级 Inspector 信息展示，不伪装成 Phase state。Phase input/output/state diff 留待未来 observation 事件支持。
-4. 右栏展示所选 Phase 的运行过程，并可进一步选择 Agent Call 查看消息、工具调用、重试、错误、输出和原始事件。
-5. 切换 Run 或 Phase 时保留列表筛选和布局尺寸；实时事件不得引发布局跳动。
+2. 中间上方展示 AgentGraph；每个 call_id 是唯一节点，label 为显示名，顺序调用、并行 fork 和汇合 join 必须可区分。图从结构化 Agent 事件涌现，不预造 Phase 节点，也不把同 label 的不同 Call 合并。
+3. 中间下方展示所选 Agent Call 的 Events；Run 当前 state 作为 Run 级 Inspector 信息展示，不伪装成 Call state diff。
+4. 右栏展示所选 Call 的消息、工具调用、重试、错误、输出和原始事件；没有 call_id 证据的 legacy 事件只进入 unattributed 时间线。
+5. 切换 Run 或 Agent Call 时保留列表筛选和布局尺寸；实时事件不得引发布局跳动。
 6. failed/cancelled Run 明确提供可用的 Recover/Retry 与 Continue 操作；Continue 不可用时展示后端能力、session 持久化或原子 worker 边界原因，不静默执行 Retry。
 7. waiting_input Run 展示结构化 prompt 和匹配 schema 的输入控件；回答只提交一次，提交期间禁用重复操作。
-8. Phase 详情下方展示该 Phase 期间工作目录的文件变化列表（created/modified/deleted），按 SSE `file_changes` topic 推送的数据渲染。无文件变化的 Phase 显示空状态；无 `file_changes.jsonl` 的 Run 不显示该区域或显示禁用状态，不报错。文件变化区域有独立滚动，不影响 Phase 图和 Calls/Events 布局。
+8. 文件变化面板按所选 call_id 高亮该 Agent Call 完成时观察到的 created/modified/deleted；按 SSE `file_changes` topic 实时更新。无变化或无 `file_changes.jsonl` 的 Run 显示空状态，不报错。面板滚动不影响 AgentGraph 和 Events 布局。
 9. New Run 对话框提供可选的 Append prompt 多行输入，提交为 `append_prompt`；输入超过 64 KiB 时就地显示校验错误且不发送请求。Arguments 键值编辑器按 BR-047 在首次打开和切换 Loop 时重建预填行。
 10. 点击允许预览的图片时显示原始比例受视口约束的图像；PDF 使用只读内嵌查看器；加载中、超限、不支持和读取失败均有明确状态，不把二进制内容解码进文本区域。
 
@@ -579,7 +571,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | 能力 | 输入 | 成功输出 | 主要错误 |
 |------|------|----------|----------|
 | 查询 Loops / Loop 文件 | 可选筛选；loop 名和相对路径 | Loop 摘要列表；文本文件内容；图片/PDF raw bytes + 原始 media type | 404 loop/file 不存在；403 路径越界；422 文件不可预览或超过 50 MiB；500 file_read_failed |
-| 查询 Runs / Run 详情 / Run 文件 | 可选状态、Loop、搜索和 cursor；run_id 和相对路径 | 分页 Run 摘要；Run/Phase/Call 读模型；文本文件内容；图片/PDF raw bytes + 原始 media type | 404 run/file 不存在；403 路径越界；422 筛选无效、文件不可预览或超过 50 MiB；500 file_read_failed |
+| 查询 Runs / Run 详情 / Run 文件 | 可选状态、Loop、搜索和 cursor；run_id 和相对路径 | 分页 Run 摘要；Run/AgentGraph/Call 读模型；文本文件内容；图片/PDF raw bytes + 原始 media type | 404 run/file 不存在；403 路径越界；422 筛选无效、文件不可预览或超过 50 MiB；500 file_read_failed |
 | 订阅 Run 事件 | run_id、last_event_id、last_file_changes_id | SSE 多 topic 事件（run_event + file_changes）及 per-topic 重连游标 | 404 run 不存在；410 游标已不可恢复 |
 | 启动 / 重跑 Run | loop、args、backend/model/mock、working_directory、可选 `append_prompt`；重跑时含源 run_id | 新 Run 摘要和 Location；append_prompt 冻结进 execution_options | 404 loop/run 不存在；409 状态冲突；422 参数无效或 append_prompt 超过 64 KiB |
 | 停止 / 恢复 Run | run_id；恢复 mode=retry/continue | 更新后的 Run 摘要 | 404 run 不存在；409 状态冲突、重放分歧或 continue 不支持 |
@@ -633,27 +625,28 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 
 ## 九、术语表
 
-| 术语 | 定义 |
-|------|------|
-| Loop | 一个文件夹，包含 loop.md + workflow.py + agents/，定义了一个 Agent 循环工作流 |
-| loop.md | Loop 的声明式定义文件，frontmatter 给机器读，body 给 Agent 和人类读 |
-| Run | Loop 的一次执行实例，有唯一 uuid，状态持久化到 `runs/lf_<group-path>/<uuid>/`；实际执行目录由 `working_directory` 单独记录 |
-| Dispatch | 扫描队列、按优先级取任务、加资源锁、执行 loop 的调度过程 |
-| Queue | `~/.loopflow/queue/` 下的 JSON 文件，每个文件是一个待执行任务 |
-| Resource Lock | 文件锁，防止同一资源（如 repo）被多个 loop 同时操作 |
-| Agent | 一个 Markdown 文件定义的 AI Agent，有名称、能力声明、系统提示词 |
-| Agent Call | workflow.py 中一次逻辑 `agent()` 调用，具有稳定 call_id、input_digest 和对应 `<call-id>.jsonl` 缓存 |
-| Recover | failed/cancelled Run 的恢复机制：从头重放 workflow，校验并返回前序成功 Call，在目标失败/取消边界执行 retry、continue 或重放到 pending intervention |
-| Retry | 为目标失败/取消 Call 创建新 backend session 重新执行；框架默认恢复路径，不单独作为能力字段建模 |
-| Continue | 使用目标失败/取消 Call 的 durable session_id 恢复 backend 上下文；原子/隔离 worker 取消边界禁止 continue |
-| Intervention | workflow 或 Agent 发出的结构化人工输入请求；持久化后 Run 等待回答且不保留 worker |
-| Backend | Agent 后端的抽象层，适配不同的 CLI Agent（kimi/claude/codex 等） |
-| Transport | 与 Backend 通信的方式：CLI（子进程）或 ACP（Agent Communication Protocol） |
-| 失败分类 | Agent 调用失败按原因归为 auth/quota/transient/task/unknown，决定重试与续接策略 |
-| 熔断 | loop 连续失败达阈值后自动暂停调度（paused），仅手动解除 |
-| 宽限期 | stale Run 从首次判定到允许 reconcile 为 failed 的时间窗口，窗口内进程恢复则调和 |
-| Deferred | 队列任务因条件不满足（如资源锁不可得）挂起留队，不计失败 |
-| Supersede | 新入队任务显式取代同 loop 的待执行任务，被取代任务不计失败 |
-| ACP Transport | 用官方 Python ACP SDK 承载的 ACP 协议传输，可选路径，--transport acp 启用 |
-| 单 agent 运行 | `loopflow run --agent` 直接运行 loop 中单个 agent_def 的运行模式：不执行 workflow.py，workflow digest 为 None，产出完整 Run |
-| 无人值守（unattended） | 经 `--unattended` 冻结进 Run 执行选项的模式：intervention 有 default 取兜底继续，无 default 以 `intervention_unattended` 失败，不进入 waiting_input |
+| 术语 | 代码标识符 | 定义 |
+|------|------------|------|
+| Loop | `LoopRepository` / `loop` | 包含 loop.md、workflow.py、agents/ 的 Agent 循环工作流定义 |
+| loop.md | `loop.md` | Loop 的声明式定义文件，frontmatter 给机器读，body 给 Agent 和人类读 |
+| Run | `run_id` / `RunRepository` | Loop 的一次执行实例；状态持久化到 `runs/lf_<group-path>/<uuid>/`，实际目录由 working_directory 记录 |
+| Dispatch | `dispatch` | 扫描队列、排序、加资源锁并执行 Run 的调度过程 |
+| Queue | `QueueRepository` / `task_id` | queue 目录中的待执行任务集合 |
+| Resource Lock | `FileLock` | 防止同一资源或 session 被并发操作的文件锁 |
+| Agent | `Agent` / `agent_def` | Markdown 定义的 AI Agent，包含名称、能力声明和系统提示词 |
+| Agent Call | `call_id` | 一次逻辑 agent() 调用，具有稳定 input_digest 和 `<call-id>.jsonl` 缓存 |
+| AgentGraph | `agent_graph` | 由 Agent/fork/join 事件投影的 Call 实例有向图；call_id 唯一，label 仅显示 |
+| Recover | `recover` / `recovery_mode` | failed/cancelled Run 的确定性重放与目标边界恢复机制 |
+| Retry | `retry` | 为目标 Call 创建新 backend session 重新执行的默认恢复路径 |
+| Continue | `continue` / `session_id` | 使用 durable session_id 恢复原 backend 上下文 |
+| Intervention | `InterventionSummary` / `request_id` | workflow 或 Agent 发出的结构化人工输入请求 |
+| Backend | `Backend` / `backend_name` | 适配不同 AI Agent 执行器的抽象层 |
+| Transport | `transport` | Backend 通信方式：CLI 子进程或 ACP |
+| 失败分类 | `error_category` | auth/quota/transient/task/unknown 分类，决定重试与续接策略 |
+| 熔断 | `paused` / `consecutive_failures` | Loop 连续失败达阈值后暂停调度的状态 |
+| 宽限期 | `stale_since` | stale Run 从首次判定到允许 reconcile 的时间窗口 |
+| Deferred | `status=deferred` | 条件不满足而挂起留队、不计失败的队列状态 |
+| Supersede | `status=superseded` | 被新任务显式取代且不计失败的队列状态 |
+| ACP Transport | `AcpSdkBackend` / `transport=acp` | 官方 Python ACP SDK 承载的可选传输路径 |
+| 单 agent 运行 | `single_agent` / `--agent` | 不执行 workflow.py、直接运行一个 agent_def 的完整 Run 模式 |
+| 无人值守 | `unattended` | intervention 有 default 则继续、无 default 则明确失败的 headless 模式 |
