@@ -2,7 +2,7 @@
 title: Web AgentGraph 契约对齐
 description: 修复 ADR-0052 未传导到 Spec、Web AC、文件观察 AC 和 Web Interface 的设计缺陷
 type: plan
-status: pending
+status: done
 created: 2026-07-29T00:00:00Z
 ---
 
@@ -28,8 +28,8 @@ created: 2026-07-29T00:00:00Z
 
 # Checkpoint
 
-- [ ] Spec v19 proposed 且独立审查通过
-- [ ] AC-0010/0012 proposed，四场景完整且独立审查通过
-- [ ] Web Interface proposed，字段/错误码与 Spec 一致且独立审查通过
-- [ ] 受影响 ADR 修订记录与索引一致
-- [ ] Report 汇总 0109 的 54 个 planned 场景如何被替代或保留
+- [x] Spec v19 proposed 且独立审查通过
+- [x] AC-0010/0012 proposed，四场景完整且独立审查通过
+- [x] Web Interface proposed，字段/错误码与 Spec 一致且独立审查通过
+- [x] 受影响 ADR 修订记录与索引一致
+- [x] Report 汇总 0109 的 54 个 planned 场景如何被替代或保留

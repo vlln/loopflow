@@ -2,7 +2,7 @@
 
 | 子任务 | Plan | Report | 状态 |
 |--------|------|--------|------|
-| ADR-0052 下游契约修订与独立审查 | [01-plan-design.md](01-plan-design.md) | 待完成后创建 | pending |
+| ADR-0052 下游契约修订与独立审查 | [01-plan-design.md](01-plan-design.md) | [01-report-design.md](01-report-design.md) | done |
 
 ## 分支
 
@@ -14,3 +14,7 @@
 - AC-0010、AC-0012：WebUI 与文件观察场景对齐现行 Agent 实例语义
 - Web Interface：移除遗留 Phase/declared_phases/from_phase/only_phase 字段
 - 受影响 ADR 修订记录与索引传导
+
+## 结论
+
+Spec v19、AC-0010/0012、ADR 修订与 Web Interface 均已完成独立审查，当前等待 DESIGN 阶段末人类批量确认后统一冻结。

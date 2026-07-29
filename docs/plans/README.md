@@ -69,7 +69,7 @@
 | [0107](0107-0.27.0-implementation/) | 0.27.0 契约实现（BL-046/051/052/054） | done | 2026-07-29 |
 | [0108](0108-0.27.0-system-test/) | 0.27.0 系统测试 | pending | 2026-07-29 |
 | [0109](0109-web-manifest-strict/) | Web manifest strict 基建修复 | done | 2026-07-29 |
-| [0110](0110-web-contract-alignment/) | Web AgentGraph 契约对齐 | pending | 2026-07-29 |
+| [0110](0110-web-contract-alignment/) | Web AgentGraph 契约对齐 | done | 2026-07-29 |
 
 ## 状态说明
 
