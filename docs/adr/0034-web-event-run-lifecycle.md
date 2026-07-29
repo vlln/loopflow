@@ -2,13 +2,15 @@
 title: ADR 0034 — Web 事件与 Run 生命周期契约
 description: 定义 events.jsonl v2 信封、Phase occurrence 关联、缓存边界、断线恢复、原子元数据写入和陈旧进程 reconcile
 type: adr
-status: accepted
+status: proposed
 created: 2026-07-18T00:00:00Z
 ---
 
 # ADR 0034: Web 事件与 Run 生命周期契约
 
 > 2026-07-22 修订：事件信封、SSE、原子写和 stale reconcile 继续有效；缓存命中、recover、`cancelled/waiting_input` 状态和 stop 终态语义由 [ADR 0036](0036-recovery-intervention.md) 替代本 ADR 中相冲突的 resume/stopped 条款。
+>
+> 2026-07-29 修订（待确认）：事件信封、持久化游标、legacy 有证据关联、原子写与进程身份校验继续有效。本文的 Phase 事件、`phase`/`phase_id` 必填字段、Phase occurrence 聚合及 PhaseGraph 投影由 [ADR-0052](0052-remove-phase.md) 替代。现行 Agent 类事件以 `call_id` 关联唯一 Call/AgentGraph 节点，`label` 仅用于显示；legacy Phase 事件只保留在原始时间线，不恢复为 AgentGraph 节点。缺少 v2 必填字段的事件进入 `malformed`，证据不足但结构合法的 legacy 事件进入 `unattributed`，两者都不得虚构 Call 归属。
 
 ## Context
 

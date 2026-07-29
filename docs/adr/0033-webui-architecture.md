@@ -2,11 +2,13 @@
 title: ADR 0033 — 本地 WebUI 技术栈与分层
 description: 以 Python 标准库 HTTP server 提供 REST 与 SSE，以 React、TypeScript、Vite 构建本地单用户控制台
 type: adr
-status: accepted
+status: proposed
 created: 2026-07-18T00:00:00Z
 ---
 
 # ADR 0033: 本地 WebUI 技术栈与分层
+
+> 2026-07-29 修订（待确认）：React/TypeScript/Vite、标准库 HTTP server、REST/SSE 分工和应用层边界继续有效。本文中 PhaseGraph、Phase occurrence、Phase 过滤及相关验证 fixture 已由 [ADR-0052](0052-remove-phase.md) 替代；现行 Web 图是 AgentGraph，每个 `call_id` 是唯一节点，`label` 仅用于显示，前端使用 dagre `rankdir=LR` 布局并按结构化 sequential/fork/join edge 渲染，不恢复任何 Phase UI surface。
 
 ## Context
 
