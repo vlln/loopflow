@@ -907,7 +907,7 @@
       "fixture": "backend 在 prompt 组装前声明 resume_session=true、durable_session_id=true",
       "action": "捕获实际发送给 Agent 的首轮 prompt，并让 Agent 返回纯文本 `completed`",
       "assertion": "prompt 含最小 loopflow intervention 说明、waiting_input JSON 示例和“仅缺少必要人类输入时使用”的约束；调用结果严格等于 `completed`，不创建 pending request",
-      "test_node": "planned::ac-023-n-6",
+      "test_node": "tests/unit/test_agent_intervention.py::test_agent_intervention_prompt_is_capability_gated",
       "targets": [
         "unit:agent-intervention-prompt"
       ],
@@ -923,7 +923,7 @@
       "fixture": "Agent 定义有 required 业务 output schema，backend 支持续接",
       "action": "Agent 返回只含合法 `__loopflow` waiting_input 的对象",
       "assertion": "控制对象通过有效联合 schema，不要求伪造业务字段；创建 pending requests，控制对象不返回 workflow",
-      "test_node": "planned::ac-023-n-7",
+      "test_node": "tests/unit/test_agent_intervention.py::test_control_branch_bypasses_required_business_schema",
       "targets": [
         "unit:agent-control-schema"
       ],
@@ -939,7 +939,7 @@
       "fixture": "一个 Agent 控制对象含两个有序 requests，回答 batch 全部合法",
       "action": "回答并恢复",
       "assertion": "两个文件共享 request_group_id，request_index 为 0/1；原 session 收到一个 input_received 信封，responses 按 0/1 排列且只含 key/response",
-      "test_node": "planned::ac-023-n-8",
+      "test_node": "tests/unit/test_agent_intervention.py::test_answer_envelope_preserves_group_order_and_hides_internal_fields",
       "targets": [
         "unit:intervention-group-resume"
       ],
@@ -955,7 +955,7 @@
       "fixture": "parallel 中两个 Agent session 分别产生一个 request",
       "action": "一次 batch 回答 Run 当前全部 pending requests",
       "assertion": "所有回答全有或全无持久化；一次 workflow 重放中按 call_id/session_id 恢复两个 continue targets，每个 session 只收到自己的回答；全部目标到达后 Run 可完成",
-      "test_node": "planned::ac-023-n-9",
+      "test_node": "tests/unit/test_agent_intervention.py::test_parallel_agent_groups_batch_and_resume_their_own_sessions",
       "targets": [
         "unit:parallel-intervention-resume",
         "POST /api/v1/runs/{run_id}/interventions/responses"
@@ -972,7 +972,7 @@
       "fixture": "Agent 无业务 output schema但 backend 支持续接",
       "action": "Agent 返回普通文本，随后另一调用返回 waiting_input JSON",
       "assertion": "普通文本原样返回；只有完整合法控制对象触发 waiting_input",
-      "test_node": "planned::ac-023-b-4",
+      "test_node": "tests/unit/test_agent_intervention.py::test_agent_intervention_prompt_is_capability_gated",
       "targets": [
         "unit:agent-control-output"
       ],
@@ -988,7 +988,7 @@
       "fixture": "Agent 使用非 native goal 模式且支持续接",
       "action": "分别返回正常 complete `__goal` 结果和 waiting_input 控制对象",
       "assertion": "正常分支仍要求并剥离 `__goal`；控制分支独立通过并优先进入 waiting_input",
-      "test_node": "planned::ac-023-b-5",
+      "test_node": "tests/unit/test_agent_intervention.py::test_goal_mode_control_branch_is_prioritized_over_goal_schema",
       "targets": [
         "unit:goal-control-schema"
       ],
@@ -1004,7 +1004,7 @@
       "fixture": "读取旧 Agent request，缺 request_group_id/request_index",
       "action": "回答后恢复",
       "assertion": "以 call_id/session_id 派生组，按 created_at/request_id 稳定排序；恢复标记 unverified，不改写旧请求文件",
-      "test_node": "planned::ac-023-b-6",
+      "test_node": "tests/unit/test_agent_intervention.py::test_legacy_agent_requests_derive_stable_group_without_rewrite",
       "targets": [
         "unit:legacy-intervention-normalization"
       ],
@@ -1020,7 +1020,7 @@
       "fixture": "业务 output schema 声明保留字段 `__loopflow`",
       "action": "启动 Agent 调用",
       "assertion": "在调用 backend 前返回 validation_failed，说明字段保留；不创建 session/request",
-      "test_node": "planned::ac-023-e-6",
+      "test_node": "tests/unit/test_agent_intervention.py::test_reserved_business_field_fails_before_backend_call",
       "targets": [
         "unit:agent-intervention-preflight"
       ],
@@ -1036,7 +1036,7 @@
       "fixture": "waiting_input requests 中两个 item 使用相同 key",
       "action": "处理 Agent 输出",
       "assertion": "返回 validation_failed；不创建任何 pending request，既有缓存不被标记为业务成功",
-      "test_node": "planned::ac-023-e-7",
+      "test_node": "tests/unit/test_agent_intervention.py::test_invalid_control_is_rejected_before_any_request_is_written",
       "targets": [
         "unit:agent-control-schema"
       ],
@@ -1052,7 +1052,7 @@
       "fixture": "Run 有两个 pending requests",
       "action": "参数化提交两组 batch：仅覆盖一个 request；覆盖两个但第一个 request_id 重复",
       "assertion": "两组均返回 422 validation_failed；两个 request 均保持 pending；不启动恢复 worker",
-      "test_node": "planned::ac-023-e-8",
+      "test_node": "tests/unit/test_web_application.py::test_batch_must_exactly_cover_current_pending_requests",
       "targets": [
         "POST /api/v1/runs/{run_id}/interventions/responses"
       ],
@@ -1069,7 +1069,7 @@
       "fixture": "Agent request 含 default 或 timeout 字段",
       "action": "处理 Agent 输出（分别参数化 default、timeout、两者同时存在）",
       "assertion": "每组均返回 validation_failed；不创建 pending request",
-      "test_node": "planned::ac-023-e-9",
+      "test_node": "tests/unit/test_agent_intervention.py::test_invalid_control_is_rejected_before_any_request_is_written",
       "targets": [
         "unit:agent-control-schema"
       ],
@@ -1085,7 +1085,7 @@
       "fixture": "requests 不是非空数组，或 item/key/prompt/options/allow_custom 类型非法",
       "action": "对各非法类型参数化处理 Agent 输出",
       "assertion": "每组均返回 validation_failed；不创建 pending request；不调用 resume",
-      "test_node": "planned::ac-023-e-10",
+      "test_node": "tests/unit/test_agent_intervention.py::test_invalid_control_is_rejected_before_any_request_is_written",
       "targets": [
         "unit:agent-control-schema",
         "unit:session-intervention"
@@ -1102,7 +1102,7 @@
       "fixture": "dynamic ACP transport 的 initialize 声明 loadSession=false",
       "action": "执行 Agent 调用并检查 prompt；再注入手工 waiting_input 输出",
       "assertion": "prompt 不宣告 Agent intervention；手工控制输出以 agent_intervention_not_supported 失败且不创建 request",
-      "test_node": "planned::ac-023-f-4",
+      "test_node": "tests/unit/test_agent_intervention.py::test_unsupported_backend_does_not_advertise_or_persist_control",
       "targets": [
         "unit:agent-intervention-capability-gate"
       ],
@@ -1118,7 +1118,7 @@
       "fixture": "两个 continue targets 中 workflow 重放只到达一个就提前结束",
       "action": "回答后恢复",
       "assertion": "Run failed，error_summary=replay_diverged；不得标记 done；已回答文件保持 answered",
-      "test_node": "planned::ac-023-f-5",
+      "test_node": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_all_continue_targets",
       "targets": [
         "unit:intervention-replay-target"
       ],

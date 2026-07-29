@@ -40,6 +40,8 @@ def test_iteration_027_manifest_rejects_wrong_error_status_and_planned_nodes():
     manifest = generate_manifest(AC_PATH)
     case = next(item for item in manifest["cases"] if item["ac_id"] == "AC-033-F-2")
     case["expectations"][0]["value"] = 200
+    for item in manifest["cases"]:
+        item["test_node"] = f"planned::{item['ac_id'].lower()}"
 
     errors = check_manifest(manifest, AC_PATH)
 
@@ -47,3 +49,19 @@ def test_iteration_027_manifest_rejects_wrong_error_status_and_planned_nodes():
     assert sum("planned test node is not allowed" in error for error in errors) == len(
         manifest["cases"]
     )
+
+
+def test_iteration_027_manifest_rejects_nonexistent_implemented_node():
+    manifest = generate_manifest(AC_PATH)
+    case = next(item for item in manifest["cases"] if item["ac_id"] == "AC-034-N-1")
+    from tests.iteration_027_support import manifest as support
+
+    original = support.TEST_NODES["AC-034-N-1"]
+    support.TEST_NODES["AC-034-N-1"] = "tests/integration/test_cli.py::missing_test"
+    case["test_node"] = support.TEST_NODES["AC-034-N-1"]
+    try:
+        errors = check_manifest(manifest, AC_PATH)
+    finally:
+        support.TEST_NODES["AC-034-N-1"] = original
+
+    assert "AC-034-N-1: test_node does not exist" in errors

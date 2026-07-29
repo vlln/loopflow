@@ -2,7 +2,7 @@
 title: 0.27.0 契约实现
 description: 以 TDD 实现 BL-046/051/052/054 并回填 AC-023、AC-033~035 manifest 节点
 type: plan
-status: pending
+status: done
 created: 2026-07-29T14:00:00Z
 ---
 
@@ -50,3 +50,20 @@ DESIGN 与 TEST_INFRA 已冻结并机器化 0.27.0 契约。当前 recovery 有 
 4. 写 file preview OSError/边界/HTTP 原子响应红测，闭环错误映射。
 5. 回填 manifest TEST_NODES，运行 strict profile、MR 门禁和独立审核。
 6. 合并 develop，执行提测门禁并进入 SYSTEM_TEST。
+
+# Acceptance
+
+- AC-023-N-6, AC-023-N-7, AC-023-N-8, AC-023-N-9
+- AC-023-B-4, AC-023-B-5, AC-023-B-6
+- AC-023-E-6, AC-023-E-7, AC-023-E-8, AC-023-E-9, AC-023-E-10
+- AC-023-F-4, AC-023-F-5
+- AC-033-N-1, AC-033-N-2, AC-033-N-3
+- AC-033-B-1, AC-033-B-2, AC-033-B-3, AC-033-B-4
+- AC-033-E-1, AC-033-E-2, AC-033-F-1, AC-033-F-2
+- AC-034-N-1, AC-034-N-2, AC-034-N-3
+- AC-034-B-1, AC-034-B-2
+- AC-034-E-1, AC-034-E-2, AC-034-E-3, AC-034-E-4
+- AC-034-F-1, AC-034-F-2
+- AC-035-N-1, AC-035-N-2
+- AC-035-B-1, AC-035-B-2
+- AC-035-E-1, AC-035-E-2, AC-035-F-1

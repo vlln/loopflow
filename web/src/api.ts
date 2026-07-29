@@ -28,7 +28,7 @@ export const api = {
   runAction: (id: string, action: string, body?: Record<string, unknown>) => request<RunSummary>(`/runs/${encodeURIComponent(id)}/${action}`, { method: 'POST', ...(body ? { body: JSON.stringify(body) } : {}) }),
   loops: () => request<Page<LoopSummary>>('/loops'),
   loop: (name: string) => request<LoopDetail>(`/loops/${encodeURIComponent(name)}`),
-  loopFile: (name: string, path: string) => request<{ content: string; media_type: string; size: number }>(`/loops/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`),
+  loopFile: (name: string, path: string) => request<RunFileContent>(`/loops/${encodeURIComponent(name)}/file?path=${encodeURIComponent(path)}`),
   unpauseLoop: (name: string) => request<LoopDetail>(`/loops/${encodeURIComponent(name)}/unpause`, { method: 'POST' }),
   backends: () => request<{ items: Backend[] }>('/backends'),
   diagnose: (name: string) => request<Diagnostic>(`/backends/${encodeURIComponent(name)}/diagnostics`, { method: 'POST', body: JSON.stringify({ timeout_ms: 5000 }) }),

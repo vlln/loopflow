@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,56 @@ def _targets() -> dict[str, list[str]]:
 
 
 TARGETS = _targets()
+
+TEST_NODES = {
+    "AC-033-N-1": "tests/integration/test_web_api.py::test_ac033_run_raw_preview_uses_fixed_media_types_and_headers",
+    "AC-033-N-2": "web/src/App.test.tsx::AC-033-N-2: Loop PDF uses the raw viewer instead of a text pre",
+    "AC-033-N-3": "web/tests/webui.spec.ts::AC-033-N-3: image preview stays in viewport without shifting file tree",
+    "AC-033-B-1": "tests/unit/test_web_resources.py::test_ac033_loop_preview_accepts_exact_text_and_raw_limits",
+    "AC-033-B-2": "tests/integration/test_web_api.py::test_run_file_preview_rejects_binary_and_oversized",
+    "AC-033-B-3": "tests/integration/test_web_api.py::test_run_file_preview_returns_text_content",
+    "AC-033-B-4": "tests/integration/test_web_api.py::test_run_file_preview_rejects_binary_and_oversized",
+    "AC-033-E-1": "tests/integration/test_web_api.py::test_ac033_raw_rejects_non_whitelisted_oversized_and_escaped_paths",
+    "AC-033-E-2": "web/src/App.test.tsx::AC-033-E-2: raw media failure replaces the broken preview with an error",
+    "AC-033-F-1": "tests/unit/test_web_resources.py::test_ac033_loop_preview_binary_rejects_oversized",
+    "AC-033-F-2": "tests/integration/test_web_api.py::test_ac033_raw_reader_failure_returns_file_error_before_success_headers",
+    "AC-034-N-1": "tests/integration/test_cli.py::TestCLIRun::test_ac034_n1_cli_persists_and_appends_to_every_workflow_agent",
+    "AC-034-N-2": "tests/integration/test_web_api.py::test_ac034_n2_http_value_reaches_workflow_agent_prompt",
+    "AC-034-N-3": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac034_n3_single_agent_forwards_append_prompt",
+    "AC-034-B-1": "tests/unit/test_runtime.py::TestAgent::test_ac034_b1_empty_append_prompt_injects_no_empty_tags",
+    "AC-034-B-2": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac034_b2_e1_cli_validates_utf8_limit_before_run_creation",
+    "AC-034-E-1": "tests/integration/test_cli.py::TestSingleAgentRun::test_ac034_b2_e1_cli_validates_utf8_limit_before_run_creation",
+    "AC-034-E-2": "tests/unit/test_web_application.py::test_ac034_e2_recover_rejects_append_prompt_without_starting_worker",
+    "AC-034-E-3": "tests/integration/test_web_api.py::test_ac034_n2_b2_e3_run_create_append_prompt_http_contract",
+    "AC-034-E-4": "web/src/App.test.tsx::AC-034-E-4: oversized UTF-8 append prompt is rejected without POST",
+    "AC-034-F-1": "tests/unit/test_runtime.py::TestAgent::test_ac034_f1_append_prompt_tamper_diverges_before_cache_hit",
+    "AC-034-F-2": "tests/unit/test_runtime.py::TestAgent::test_ac034_n1_f2_append_prompt_is_last_user_segment_only",
+    "AC-035-N-1": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
+    "AC-035-N-2": "web/src/App.test.tsx::AC-035-N-2: Editor and JSON modes preserve the same arguments",
+    "AC-035-B-1": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
+    "AC-035-B-2": "web/src/App.test.tsx::AC-035-B-2: declared defaults preserve false zero object empty and string types",
+    "AC-035-E-1": "web/src/App.test.tsx::AC-035-E-1: malformed declarations are ignored and only valid names are prefilled",
+    "AC-035-E-2": "tests/unit/test_web_resources.py::test_ac035_loop_md_top_level_args_and_legacy_workflow_fallback",
+    "AC-035-F-1": "web/src/App.test.tsx::AC-035-F-1: loop loading failure disables New Run and clears arguments",
+}
+
+
+def _test_node_exists(node: str) -> bool:
+    path_text, *selectors = node.split("::")
+    path = Path(path_text)
+    if not path.is_file() or not selectors:
+        return False
+    source = path.read_text(encoding="utf-8")
+    if path.suffix == ".py":
+        for selector in selectors[:-1]:
+            if not re.search(rf"^class\s+{re.escape(selector)}\b", source, re.M):
+                return False
+        return bool(re.search(
+            rf"^(?:\s*)def\s+{re.escape(selectors[-1])}\s*\(",
+            source,
+            re.M,
+        ))
+    return selectors[-1] in source
 
 EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-033-N-1": [{"kind": "http_status", "value": 200}],
@@ -167,7 +218,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
         cases.append(
             {
                 **row,
-                "test_node": f"planned::{ac_id.lower()}",
+                "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
                 "expectations": deepcopy(
                     EXPECTATIONS.get(ac_id, _default_expectations(TARGETS[ac_id]))
@@ -217,6 +268,10 @@ def check_manifest(
             errors.append(f"{ac_id}: test_node is required")
         elif node.startswith("planned::") and not allow_planned:
             errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        elif ac_id in TEST_NODES and node != TEST_NODES[ac_id]:
+            errors.append(f"{ac_id}: test_node does not match implemented mapping")
+        elif not node.startswith("planned::") and not _test_node_exists(node):
+            errors.append(f"{ac_id}: test_node does not exist")
         expectations = case.get("expectations")
         if not isinstance(expectations, list) or not expectations:
             errors.append(f"{ac_id}: at least one expectation is required")

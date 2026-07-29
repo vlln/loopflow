@@ -235,9 +235,10 @@ def test_capabilities_lazy_after_initialize_load_session():
         caps_before = backend.capabilities
         assert isinstance(caps_before.resume_session, bool)
 
-        # After initialize: loadSession=true → resume_session=True
-        backend._ensure_initialized()
-        caps_after = backend.capabilities
+        # Public preflight performs initialize without creating a session and
+        # is idempotent for the later create/resume lifecycle.
+        caps_after = backend.prepare_capabilities()
+        assert backend.prepare_capabilities() == caps_after
         assert caps_after.resume_session is True
         assert caps_after.durable_session_id is True
     finally:
@@ -248,8 +249,7 @@ def test_capabilities_lazy_after_initialize_normal():
     """normal mode (no loadSession) → resume_session=False after initialize."""
     backend = _make_backend("normal")
     try:
-        backend._ensure_initialized()
-        caps = backend.capabilities
+        caps = backend.prepare_capabilities()
         assert caps.resume_session is False
         assert caps.durable_session_id is False
     finally:

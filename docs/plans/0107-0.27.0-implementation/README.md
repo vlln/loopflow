@@ -2,7 +2,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [0.27.0 契约实现](01-plan-implementation.md) | 待完成后创建 | pending |
+| 01 | [0.27.0 契约实现](01-plan-implementation.md) | [实现报告](01-report-implementation.md) | done |
 
 ## 分支
 

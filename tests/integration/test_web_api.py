@@ -6,6 +6,9 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from unittest.mock import patch
+from urllib.parse import quote
 
 import pytest
 
@@ -56,6 +59,7 @@ class Executor:
             "pid": 7,
             "process_group_id": 70,
             "process_started_at": "same",
+            "execution_options": dict(options),
         }
         if working_directory is not None:
             metadata["working_directory"] = working_directory
@@ -92,6 +96,8 @@ def api(tmp_path):
         server.shutdown()
         server.server_close()
         thread.join()
+        from loopflow.runtime import set_mock
+        set_mock(None)
 
 
 def test_run_rest_location_filters_and_errors(api):
@@ -106,6 +112,109 @@ def test_run_rest_location_filters_and_errors(api):
     assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
     missing = client.request("GET", "/api/v1/runs/missing")
     assert missing.status == 404 and missing.headers["content-type"] == "application/json; charset=utf-8"
+
+
+def test_ac034_n2_b2_e3_run_create_append_prompt_http_contract(api):
+    client, factory, _ = api
+
+    accepted = client.request(
+        "POST", "/api/v1/runs", {"loop": "hello", "append_prompt": "a" * 65536}
+    )
+    assert accepted.status == 201
+    metadata = json.loads(
+        (factory.runs / accepted.json()["run_id"] / "run.json").read_text()
+    )
+    assert metadata["execution_options"]["append_prompt"] == "a" * 65536
+    run_count = len(list(factory.runs.iterdir()))
+
+    rejected = client.request(
+        "POST", "/api/v1/runs", {"loop": "hello", "append_prompt": "界" * 21846}
+    )
+    assert rejected.status == 422
+    assert rejected.json()["error"] == {
+        "code": "validation_failed",
+        "message": "append_prompt exceeds 64 KiB",
+        "details": {"field": "append_prompt"},
+    }
+    assert len(list(factory.runs.iterdir())) == run_count
+
+
+def test_ac034_n2_http_value_reaches_workflow_agent_prompt(
+    tmp_path, monkeypatch
+):
+    factory = WebFixtureFactory(tmp_path)
+    loop = factory.create_loop("prompt-loop")
+    loop_md = loop / "loop.md"
+    loop_md.write_text(
+        loop_md.read_text().replace("---\n", "---\nname: prompt-loop\n", 1)
+    )
+    (loop / "workflow.py").write_text(
+        "def run(agent, **kwargs):\n"
+        "    agent('web task')\n"
+    )
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(factory.loops))
+    prompts = []
+
+    class SyncExecutor:
+        def start(
+            self, loop_name, args, options, run_id=None,
+            working_directory=None,
+        ):
+            from loopflow.application.execution import execute_workflow
+
+            actual_id = run_id or "web-prompt-run"
+            run_dir = factory.runs / actual_id
+            run_dir.mkdir(exist_ok=True)
+            execute_workflow(loop_name, args, options, actual_id, run_dir)
+            return actual_id
+
+    runs = RunRepository(factory.runs, Probe())
+    application = WebApplication(
+        runs,
+        LoopRepository(factory.loops, runs),
+        QueueRepository(tmp_path / "queue"),
+        DiagnosticBackend(),
+        SyncExecutor(),
+        {"kimi"},
+    )
+    static = tmp_path / "static"
+    static.mkdir()
+    (static / "index.html").write_text("<!doctype html>")
+    server = create_server(
+        "127.0.0.1", 0, application=application, static_root=static
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    def mock_run(prompt):
+        prompts.append(prompt)
+        return "ok", 0
+
+    try:
+        client = JsonHttpClient("127.0.0.1", server.server_port)
+        with patch("loopflow.runtime._run_mock", side_effect=mock_run):
+            response = client.request("POST", "/api/v1/runs", {
+                "loop": "prompt-loop",
+                "mock": "bash",
+                "append_prompt": "From Web",
+            })
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+        from loopflow.runtime import set_mock
+        set_mock(None)
+
+    assert response.status == 201
+    metadata = json.loads(
+        (factory.runs / response.json()["run_id"] / "run.json").read_text()
+    )
+    assert metadata["execution_options"]["append_prompt"] == "From Web"
+    assert len(prompts) == 1
+    assert prompts[0].startswith("web task")
+    assert prompts[0].endswith(
+        "<run-append-prompt>\nFrom Web\n</run-append-prompt>"
+    )
 
 
 def test_run_lifecycle_commands_preserve_contract(api):
@@ -246,12 +355,12 @@ def test_intervention_endpoints_list_validate_and_respond(api):
     )
 
     assert listed.status == 200 and listed.json()["items"][0]["prompt"] == "Approve?"
-    validate_contract("intervention", listed.json()["items"][0])
+    validate_contract("intervention_v18", listed.json()["items"][0])
     assert listed.json()["items"][0]["can_continue_session"] is False
     assert invalid.status == 422 and invalid.json()["error"]["code"] == "validation_failed"
     assert answered.status == 200 and answered.json()["run_id"] == "waiting"
     listed_after = client.request("GET", "/api/v1/runs/waiting/interventions")
-    validate_contract("intervention", listed_after.json()["items"][0])
+    validate_contract("intervention_v18", listed_after.json()["items"][0])
     assert listed_after.json()["items"][0]["response"] == "true"
     assert listed_after.json()["items"][0]["responded_at"]
     assert duplicate.status == 409
@@ -694,7 +803,7 @@ def test_loop_summary_and_detail_include_declared_args(api):
 
     client = JsonHttpClient("127.0.0.1", port)
     expected = [
-        {"name": "goal", "default": None, "description": "目标描述", "required": True},
+        {"name": "goal", "description": "目标描述", "required": True},
         {"name": "count", "default": 3, "description": "", "required": False},
         {"name": "mode", "default": "fast", "description": "运行模式", "required": False},
     ]
@@ -950,6 +1059,127 @@ def test_run_file_preview_missing_file_and_unknown_run(api, tmp_path):
     unknown = client.request("GET", "/api/v1/runs/no-such-run/file?path=missing.txt")
     assert unknown.status == 404
     assert unknown.json()["error"]["code"] == "run_not_found"
+
+
+@pytest.mark.parametrize(
+    ("name", "media_type"),
+    [
+        ("chart.png", "image/png"),
+        ("photo.jpg", "image/jpeg"),
+        ("photo.jpeg", "image/jpeg"),
+        ("animation.gif", "image/gif"),
+        ("figure.svg", "image/svg+xml"),
+        ("image.webp", "image/webp"),
+        ("bitmap.bmp", "image/bmp"),
+        ("favicon.ico", "image/x-icon"),
+    ],
+)
+def test_ac033_run_raw_preview_uses_fixed_media_types_and_headers(api, tmp_path, name, media_type):
+    client, factory, _ = api
+    workdir = tmp_path / "raw-formats"
+    workdir.mkdir(exist_ok=True)
+    expected = f"bytes:{name}".encode()
+    (workdir / name).write_bytes(expected)
+    if not (factory.runs / "raw-run").exists():
+        factory.create_run("raw-run", working_directory=str(workdir))
+
+    preview = client.request("GET", f"/api/v1/runs/raw-run/file?path={quote(name)}")
+    assert preview.status == 200
+    assert preview.json() == {
+        "path": name,
+        "media_type": media_type,
+        "content": None,
+        "encoding": "raw",
+        "raw_url": f"/api/v1/runs/raw-run/file/raw?path={quote(name)}",
+        "size": len(expected),
+        "read_only": True,
+    }
+
+    raw = client.request("GET", preview.json()["raw_url"])
+    assert raw.status == 200
+    assert raw.body == expected
+    assert raw.headers["content-type"] == media_type
+    assert raw.headers["content-length"] == str(len(expected))
+    assert raw.headers["cache-control"] == "no-store"
+
+
+def test_ac033_loop_pdf_and_special_path_raw_url(api):
+    client, factory, _ = api
+    name = "reports/final & reviewed #1.pdf"
+    path = factory.loops / "hello" / name
+    path.parent.mkdir()
+    path.write_bytes(b"%PDF fixture")
+    encoded = quote(name, safe="/")
+
+    preview = client.request("GET", f"/api/v1/loops/hello/file?path={encoded}")
+    assert preview.status == 200
+    assert preview.json()["raw_url"] == f"/api/v1/loops/hello/file/raw?path={encoded}"
+
+    raw = client.request("GET", preview.json()["raw_url"])
+    assert raw.status == 200
+    assert raw.body == b"%PDF fixture"
+    assert raw.headers["content-type"] == "application/pdf"
+
+
+def test_ac033_raw_rejects_non_whitelisted_oversized_and_escaped_paths(api, tmp_path):
+    client, factory, _ = api
+    workdir = tmp_path / "raw-errors"
+    workdir.mkdir()
+    (workdir / "payload.bin").write_bytes(b"binary")
+    oversized = workdir / "oversized.png"
+    with oversized.open("wb") as stream:
+        stream.seek(50 * 1024 * 1024)
+        stream.write(b"x")
+    outside = tmp_path / "secret.pdf"
+    outside.write_bytes(b"secret")
+    (workdir / "escape.pdf").symlink_to(outside)
+    (factory.loops / "hello" / "escape.pdf").symlink_to(outside)
+    factory.create_run("raw-errors", working_directory=str(workdir))
+
+    unsupported = client.request("GET", "/api/v1/runs/raw-errors/file/raw?path=payload.bin")
+    assert unsupported.status == 422
+    assert unsupported.json()["error"]["code"] == "file_not_previewable"
+    too_large = client.request("GET", "/api/v1/runs/raw-errors/file/raw?path=oversized.png")
+    assert too_large.status == 422
+    assert too_large.json()["error"]["code"] == "file_not_previewable"
+    traversal = client.request("GET", "/api/v1/runs/raw-errors/file/raw?path=../secret.pdf")
+    assert traversal.status == 403
+    assert traversal.json()["error"]["code"] == "path_forbidden"
+    symlink = client.request("GET", "/api/v1/runs/raw-errors/file/raw?path=escape.pdf")
+    assert symlink.status == 403
+    assert symlink.json()["error"]["code"] == "path_forbidden"
+    loop_traversal = client.request("GET", "/api/v1/loops/hello/file/raw?path=../secret.pdf")
+    assert loop_traversal.status == 403
+    assert loop_traversal.json()["error"]["code"] == "path_forbidden"
+    loop_symlink = client.request("GET", "/api/v1/loops/hello/file/raw?path=escape.pdf")
+    assert loop_symlink.status == 403
+    assert loop_symlink.json()["error"]["code"] == "path_forbidden"
+    missing = client.request("GET", "/api/v1/runs/raw-errors/file/raw?path=deleted.pdf")
+    assert missing.status == 404
+    assert missing.json()["error"]["code"] == "file_not_found"
+
+
+def test_ac033_raw_reader_failure_returns_file_error_before_success_headers(api, tmp_path, monkeypatch):
+    client, factory, _ = api
+    workdir = tmp_path / "raw-reader-failure"
+    workdir.mkdir()
+    target = workdir / "denied.pdf"
+    target.write_bytes(b"%PDF fixture")
+    factory.create_run("raw-reader-failure", working_directory=str(workdir))
+    original = Path.read_bytes
+
+    def denied(path):
+        if path == target:
+            raise PermissionError("denied")
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", denied)
+
+    failed = client.request("GET", "/api/v1/runs/raw-reader-failure/file/raw?path=denied.pdf")
+    assert failed.status == 500
+    assert failed.headers["content-type"] == "application/json; charset=utf-8"
+    assert failed.json()["error"]["code"] == "file_read_failed"
+    assert client.request("GET", "/api/v1/runs").status == 200
 
 
 def test_pick_directory_endpoint(api, monkeypatch):

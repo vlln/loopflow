@@ -7,6 +7,7 @@ No dependency on infrastructure or application layers.
 from __future__ import annotations
 
 import json as json_mod
+import re
 from typing import Any
 
 from loopflow.domain.agent_def import (
@@ -16,6 +17,168 @@ from loopflow.domain.agent_def import (
     resolve_params,
 )
 from loopflow.domain.capabilities import Capabilities
+
+
+APPEND_PROMPT_MAX_BYTES = 65536
+
+
+def normalize_append_prompt(value: str | None) -> str | None:
+    """Validate and normalize a Run-level user prompt suffix."""
+    if value in (None, ""):
+        return None
+    if not isinstance(value, str):
+        raise ValueError("append_prompt must be a string")
+    if len(value.encode("utf-8")) > APPEND_PROMPT_MAX_BYTES:
+        raise ValueError("append_prompt exceeds 64 KiB")
+    return value
+
+
+def append_run_prompt(prompt: str, value: str | None) -> str:
+    """Append the untrusted Run instruction as the final user-prompt section."""
+    normalized = normalize_append_prompt(value)
+    if normalized is None:
+        return prompt
+    return (
+        f"{prompt}\n\n<run-append-prompt>\n"
+        f"{normalized}\n"
+        "</run-append-prompt>"
+    )
+
+
+AGENT_CONTROL_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["__loopflow"],
+    "properties": {
+        "__loopflow": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["status", "requests"],
+            "properties": {
+                "status": {"const": "waiting_input"},
+                "requests": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["key", "prompt", "options", "allow_custom"],
+                        "properties": {
+                            "key": {"type": "string", "minLength": 1},
+                            "prompt": {"type": "string", "minLength": 1},
+                            "options": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                            "allow_custom": {"type": "boolean"},
+                        },
+                    },
+                },
+            },
+        }
+    },
+}
+
+
+def add_control_to_schema(schema: dict) -> dict:
+    """Return the mutually exclusive business/control output schema."""
+    business = {
+        **schema,
+        "properties": {
+            **(schema.get("properties") or {}),
+            "__loopflow": False,
+        },
+    }
+    return {"oneOf": [business, AGENT_CONTROL_SCHEMA]}
+
+
+def schema_mentions_reserved_control(value: Any) -> bool:
+    """Return whether a JSON schema can claim the framework control field."""
+    if not isinstance(value, dict):
+        return False
+
+    properties = value.get("properties")
+    if isinstance(properties, dict):
+        if "__loopflow" in properties:
+            return True
+        if any(
+            schema_mentions_reserved_control(schema)
+            for schema in properties.values()
+        ):
+            return True
+
+    required = value.get("required")
+    if isinstance(required, list) and "__loopflow" in required:
+        return True
+
+    schema_maps = ("$defs", "definitions", "dependentSchemas")
+    for keyword in schema_maps:
+        schemas = value.get(keyword)
+        if isinstance(schemas, dict) and any(
+            schema_mentions_reserved_control(schema)
+            for schema in schemas.values()
+        ):
+            return True
+
+    pattern_properties = value.get("patternProperties")
+    if isinstance(pattern_properties, dict):
+        for pattern, schema in pattern_properties.items():
+            try:
+                claims_reserved = re.search(pattern, "__loopflow") is not None
+            except (re.error, TypeError):
+                claims_reserved = False
+            if claims_reserved or schema_mentions_reserved_control(schema):
+                return True
+
+    dependent_required = value.get("dependentRequired")
+    if isinstance(dependent_required, dict) and any(
+        isinstance(names, list) and "__loopflow" in names
+        for names in dependent_required.values()
+    ):
+        return True
+
+    property_names = value.get("propertyNames")
+    if isinstance(property_names, dict) and (
+        property_names.get("const") == "__loopflow"
+        or (
+            isinstance(property_names.get("enum"), list)
+            and "__loopflow" in property_names["enum"]
+        )
+    ):
+        return True
+
+    schema_lists = ("allOf", "anyOf", "oneOf", "prefixItems")
+    for keyword in schema_lists:
+        schemas = value.get(keyword)
+        if isinstance(schemas, list) and any(
+            schema_mentions_reserved_control(schema) for schema in schemas
+        ):
+            return True
+
+    schema_values = (
+        "not", "if", "then", "else", "items", "contains",
+        "additionalProperties", "unevaluatedProperties",
+    )
+    return any(
+        schema_mentions_reserved_control(value.get(keyword))
+        for keyword in schema_values
+    )
+
+
+def build_intervention_prompt() -> str:
+    return (
+        "<loopflow-intervention>\n"
+        "Use this only when necessary human input is missing and the task "
+        "cannot continue without it. Normal answers must keep the requested "
+        "business output format. To wait for input, return only:\n"
+        '{"__loopflow":{"status":"waiting_input","requests":['
+        '{"key":"scope","prompt":"Which scope?","options":[],"allow_custom":true}'
+        "]}}\n"
+        "Each key and prompt must be non-empty; options must be strings and "
+        "keys must be unique. Do not include default or timeout. The answers "
+        "will return to this session in an input_received envelope.\n"
+        "</loopflow-intervention>"
+    )
 
 
 def marshal(
