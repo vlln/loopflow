@@ -1,9 +1,9 @@
 ---
 title: loopflow Spec
-description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、attempt 取消与人工介入、本地 WebUI 控制台、失败分类与熔断调度语义（0.21.0）、ACP 可选传输路径（0.22.0，官方 SDK）、单 agent 运行入口与 waiting_input 生命周期扩展（0.26.0）。
+description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、人工介入、本地 WebUI、ACP 可选传输、Agent waiting_input 控制协议与运行时追加 prompt（0.27.0）。
 type: spec
 status: active
-version: 17
+version: 18
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -47,7 +47,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-024 | 开发者 | 明确选择失败 Agent 的 retry 或 continue 恢复方式 | 根据任务副作用和上下文价值控制恢复行为 | P0 |
 | US-025 | 开发者 | 在 workflow 或 Agent 定义变化时阻止错误缓存命中 | 避免把旧调用结果或 session 注入语义不同的新调用 | P0 |
 | US-026 | 开发者 | 创建 Run 时显式指定工作目录 | WebUI 常驻 server 下让不同 run 在各自项目目录执行和观察，互不污染 | P0 |
-| US-027 | 开发者 | 在 WebUI 查看 run 工作目录内文件的内容 | 不离开控制台即可确认 agent 新建或修改的文件内容 | P1 |
+| US-027 | 开发者 | 在 WebUI 查看 run 工作目录内的文本、图片和 PDF | 不离开控制台即可检查 agent 新建或修改的常见产物 | P1 |
 | US-028 | 开发者 | 创建 Run 时按 loop 声明预填 Arguments 键和默认值 | 不用记忆每个 loop 的参数字面量，降低输入错误 | P1 |
 | US-029 | 开发者 | 在白天和夜晚主题间切换 WebUI 外观 | 在不同光照环境下舒适使用 | P2 |
 | US-030 | 开发者 | agent 调用失败按类别（auth/quota、transient、task）区别处理 | auth/quota 立即失败不浪费重试，transient 自动退避重试并可续接 session，task 失败快速暴露给 workflow | P0 |
@@ -58,6 +58,8 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-035 | 评测 harness / 开发者 | 通过 `loop run --agent` 单独运行 loop 中某个 agent_def | component 级评测和单 agent 调试无需执行完整 workflow | P0 |
 | US-036 | 开发者 | CLI 前台 run 进入 waiting_input 时在终端内联回答问题；也可用 `loop respond` 应答既有等待 | 不离开终端完成人工门，消除"run 卡死"误解 | P1 |
 | US-037 | 开发者 | 以 `--unattended` 运行 headless 任务，并为 `intervene()` 声明 default/timeout | CI/benchmark 无人值守时不空等：有兜底继续，无兜底明确失败 | P0 |
+| US-038 | 开发者 | 让 Agent 在缺少必要信息时通过可发现的结构化协议请求人工输入 | Agent 不靠猜测或自然语言约定即可暂停，并在原 session 收到回答后继续 | P0 |
+| US-039 | 开发者 | 在启动 Run 时追加一段临时指令到每次 Agent 调用 | 调试或临时约束无需修改 loop、workflow 或 Agent 定义 | P1 |
 
 ---
 
@@ -94,7 +96,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 pwd (工作目录)                          ~/.loopflow/ (loopflow 数据目录)
 ├── .agents/                           ├── runs/
 │   └── worktrees/                     │   ├── runs_index.jsonl
-│       └── lf_<uuid>_<seq>/           │   └── lf_<pwd-path>/
+│       └── lf_<uuid>_<seq>/           │   └── lf_<group-path>/
 │           (worktree 隔离，BR-011)     │       └── <uuid>/
 │                                      │           (运行实例，见下文)
 │                                      └── loops/
@@ -102,9 +104,9 @@ pwd (工作目录)                          ~/.loopflow/ (loopflow 数据目录)
 │                                          └── <name>/     (分发用声明)
 ```
 
-`pwd` 是工作目录，`loopflow run` 在此目录下运行 workflow。worktree 隔离在 `pwd/.agents/worktrees/` 下创建，属于项目级资源。`~/.loopflow/runs/` 存储 loopflow 内部运行时状态（类比实例化内存数据），`~/.loopflow/loops/` 存储 workflow 定义。runs 按 `lf_<pwd-path>` 分组，其中 `<pwd-path>` 是工作目录的绝对路径，`/` 替换为 `-`。
+`pwd` 是 CLI 创建 Run 时的当前工作目录，`loopflow run` 缺省在此目录执行 workflow。worktree 隔离在 `pwd/.agents/worktrees/` 下创建，属于项目级资源。`~/.loopflow/runs/` 存储 loopflow 内部运行时状态（类比实例化内存数据），`~/.loopflow/loops/` 存储 workflow 定义。runs 按创建时即可确定的 storage group path 分组，映射固定为：CLI 无论省略、传 `--work-dir ""` 还是传非空显式路径，group 均为创建时 cwd；Web/API 缺省时 group 为 server cwd；Web/API 非空显式路径时 group 为该路径。actual working_directory 分别为 CLI 缺省的创建 cwd、两个隔离入口的 `run_dir/work`，或调用者提供的非空显式路径。group 只决定 `lf_<group-path>` 存储位置，不根据最终 actual working_directory 重算。
 
-`runs/runs_index.jsonl` 保存无损定位映射，每个 Run 一行，字段固定为 `working_directory`（真实绝对工作目录）、`runs_directory`（`lf_<pwd-path>` 分组目录的绝对路径）和 `run_id`。创建 Run 时追加记录；读取旧 Run 或遇到缺失、损坏的索引记录时，允许回退到目录扫描及 `lf_<pwd-path>` 分组名。
+`runs/runs_index.jsonl` 保存无损定位映射，每个 Run 一行，字段固定为 `working_directory`（真实绝对工作目录）、`runs_directory`（`lf_<group-path>` 分组目录的绝对路径）和 `run_id`。创建 Run 时追加记录；读取旧 Run 或遇到缺失、损坏的索引记录时，允许回退到目录扫描及 `lf_<group-path>` 分组名。
 
 ### Loop 定义（文件系统）
 
@@ -133,8 +135,9 @@ Loop 的声明式定义文件，YAML frontmatter + Markdown body。Frontmatter �
 | triggers[].pattern | string | 否 | 文件匹配模式（type=watch 时） |
 | resources | object[] | 否 | 需要的资源类型 |
 | resources[].type | string | 是 | 资源类型名（如 repo） |
+| args | object[] | 否 | Run 参数声明，元素为 `{name, default, description, required}`；name 为非空 string，default 可省略，description 缺省空字符串，required 缺省 false |
 
-**`state` 不属于 loop.md。** workflow 的内部状态（重试计数、阶段标记等）是编排层的实现细节，保持在 `workflow.py` 的 `meta.state` 中。loop.md 只声明调度层关心的内容：身份、触发方式、资源需求。
+**`state` 不属于 loop.md。** workflow 的内部状态（重试计数、阶段标记等）是编排层的实现细节，保持在 `workflow.py` 的 `meta.state` 中。loop.md 声明身份、触发方式、资源需求和创建 Run 所需的参数元数据。loop.md 存在时读取其顶层 `args`；仅在 loop.md 不存在并回退到 `workflow.py meta` 时读取 `meta.args`。
 
 Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权限边界、升级条件。
 
@@ -189,16 +192,17 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 ### 运行实例（文件系统）
 
 ```
-~/.loopflow/runs/lf_<pwd-path>/<uuid>/
+~/.loopflow/runs/lf_<group-path>/<uuid>/
 ├── run.json                 # 元数据
 ├── state.json               # 工作流状态（meta.state 的运行时快照）
 ├── events.jsonl             # 全部事件流（phase + agent，按时间序）
+├── work/                    # Web/API 缺省或 CLI --work-dir "" 时由框架创建和拥有
 ├── interventions/           # 原子持久化的人工输入请求与响应
 │   └── <request-id>.json
 └── <call-id>.jsonl          # 每个 Agent Call 的输出缓存；顶层顺序 ID 与旧 seq 相同
 ```
 
-`<pwd-path>` 是工作目录的绝对路径，`/` 替换为 `-`。例如 `pwd=/Users/vlln/projects/myapp` → `lf_Users-vlln-projects-myapp`。`<uuid>` 是 `uuid.uuid4().hex`，每次 `loopflow run` 生成唯一标识。
+`<group-path>` 是上述 storage group path 的绝对路径去掉开头 `/` 后将其余 `/` 替换为 `-`。例如 group path `/Users/vlln/projects/myapp` → `lf_Users-vlln-projects-myapp`。`<uuid>` 是 `uuid.uuid4().hex`，每次 `loopflow run` 生成唯一标识。Web/API 缺省场景先由 server cwd、CLI `--work-dir ""` 场景先由创建时 cwd 算出 group 和 run_dir，再创建最终 working_directory=`run_dir/work`，因此不存在循环定义。
 
 ### runs_index.jsonl
 
@@ -206,7 +210,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 {"working_directory":"/Users/vlln/projects/myapp","runs_directory":"/Users/vlln/.loopflow/runs/lf_Users-vlln-projects-myapp","run_id":"<uuid>"}
 ```
 
-三个字段均为必填字符串。索引采用只追加 JSONL；同一 `run_id` 出现多次时以最后一条有效记录为准。`runs_directory` 必须位于当前配置的 runs 根目录内，才能用于 Run 定位。
+三个字段均为必填字符串。`working_directory` 始终记录 Run 真正执行使用的目录，`runs_directory` 记录按 storage group path 算出的 `lf_*` 目录；Web/API 缺省场景二者刻意不由同一路径推导。索引采用只追加 JSONL；同一 `run_id` 出现多次时以最后一条有效记录为准。`runs_directory` 必须位于当前配置的 runs 根目录内，才能用于 Run 定位。
 
 ### run.json
 
@@ -217,6 +221,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | status | string | NOT NULL | running / waiting_input / cancelling / cancelled / done / failed；stopped 仅 legacy 可读 |
 | created | ISO 8601 | NOT NULL | 创建时间 |
 | args | object | — | 传入 workflow.py 的参数 |
+| working_directory | string | optional | Run 真正执行与文件观察使用的绝对目录；新 Run 必填，legacy Run 可缺失；不用于反推 run_dir 存储分组 |
 | counter | integer | NOT NULL | 当前 agent 调用序号 |
 | started_at | ISO 8601 | optional | 进程实际开始时间；旧 Run 可缺失 |
 | finished_at | ISO 8601 | optional | done / failed / cancelled 的结束时间 |
@@ -226,7 +231,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | current_phase | string | optional | 最近一次 phase 事件的 title |
 | error_summary | string | optional | failed 状态的短错误摘要，不替代完整事件 |
 | execution_epoch | integer | NOT NULL | 每次首次执行或恢复递增；worker 写状态时的 fencing token |
-| execution_options | object | NOT NULL | 首次执行冻结的有效 backend、model、mock、phase 范围等选项；recover 不接受覆盖 |
+| execution_options | object | NOT NULL | 首次执行冻结的有效 backend、model、mock、unattended、append_prompt 等选项；recover 不接受覆盖 |
 | cancel_point | string | optional | 最近一次取消点：worker_running / no_worker_running；仅用于派生恢复动作，不表示用户放弃 Run |
 | active_call_id | string | optional | 最近一次执行中的 Agent Call；worker_running 取消或 failed 时用于定位 retry/continue 目标 |
 | active_worker_atomic | boolean | optional | active worker 是否处于原子提交/隔离边界；true 时 recover_continue 不可用 |
@@ -240,9 +245,14 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | 字段 | 类型 | 约束 | 说明 |
 |------|------|------|------|
 | request_id | string | required | Run 内唯一请求 ID |
+| source | string | required | workflow / agent |
 | key | string | required | workflow 重放路径中稳定且唯一的键 |
 | prompt | string | required | 向人类展示的问题 |
 | schema | object/null | required | 回答 JSON Schema；null 表示任意 JSON 值 |
+| options | string[] | required | 预设回答；可为空 |
+| allow_custom | boolean | required | 是否允许 options 之外的非空字符串 |
+| request_group_id | string/null | required | 同一次 Agent 控制输出的请求组 ID；workflow 请求为 null |
+| request_index | integer | required | 请求在所属组内的零基序号；workflow 单请求为 0 |
 | call_id | string/null | required | 关联 Agent Call；workflow 直接请求时为 null |
 | session_id | string/null | required | 可继续的 backend session |
 | resume_mode | string | required | replay（workflow 请求）/ continue（Agent 请求） |
@@ -252,6 +262,8 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | responded_at | ISO 8601/null | required | 回答时间 |
 | timeout_seconds | number/null | required | 超时秒数；null 表示无超时。仅在 workflow `intervene()` 声明 timeout 时非空 |
 | response_source | string | optional | 回答来源：`human`（人工应答）/ `default`（无人值守兜底）/ `timeout_default`（惰性超时兜底）；仅 status=answered 时存在，旧记录缺省视为 `human` |
+
+旧 Intervention 文件允许缺少 vNext 字段：`source` 按 `resume_mode=continue` 推导为 agent，否则为 workflow；`options` 缺省 `[]`；`allow_custom` 在 options 非空时缺省 true，在 legacy boolean schema 时推导为 false，其余缺省 true。旧 Agent request 缺少 `request_group_id/request_index` 时，以 `(call_id, session_id)` 派生 group，并按 `(created_at, request_id)` 确定稳定顺序，同时将该次恢复标记为 unverified；workflow 请求的 group 为 null、index 为 0。读取兼容不改写原文件；新写入文件必须包含这些字段。
 
 ### Agent 定义文件
 
@@ -271,6 +283,8 @@ Markdown 文件，YAML frontmatter：
 Agent 定义文件通过 `agent_def` 参数引用：`agent("动态指令", agent_def="reader")`。此时 `body` 作为系统提示词（静态背景/约束），prompt 参数作为动态任务指令追加。`requires.params` 中声明的参数通过 `{{param}}` 在 body 中占位，调用时渲染。可选参数未传入时使用默认值；必填参数未传入时抛 `ValueError`。
 
 当 `output` 存在时，`agent()` 自动将其作为 `schema` 使用，返回 `dict` 而非 `str`。workflow 显式传入 `schema=` 时覆盖 `output`（显式优先）。Schema 通过 prompt 注入传递给 agent（追加到 prompt 末尾），agent 被要求返回纯 JSON 对象。未来后端支持 native structured output 时，升级为 function calling 约束。
+
+当 Agent waiting_input 控制协议可用时，框架控制对象与业务 `output` 是互斥分支：正常完成必须匹配业务 schema；请求输入必须匹配框架 waiting_input schema，且不要求填充业务必填字段。`__loopflow` 是框架保留字段，业务 schema 不得声明。框架控制对象只驱动 Run 生命周期，不作为业务结果返回 workflow。
 
 ### Skill 文件
 
@@ -445,17 +459,17 @@ Agent 隔离层级体系（递进）：
 | BR-034 | stop 取消当前 execution attempt | running/waiting_input Run 执行 stop | 先持久化取消意图，再终止已验证身份的进程组；SIGTERM 超时后 SIGKILL；最终 cancelled；cancelled 表示本次 execution epoch 被取消，不表示 Run identity 不可恢复 |
 | BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 requests | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow `intervene()` 是 routing/control gate，通过 replay 返回回答给 workflow；Agent requests 是继续执行所需输入，仅在 durable session 已落盘时创建并通过 continue 返回给 Agent；waiting_input 被 stop 后 pending request 保留，respond 可恢复同一 Run |
 | BR-036 | Intervention 不从自然语言推断 | Agent 输出问题文本 | 仅结构化 `__loopflow.status=waiting_input` 且含 requests 的 control output 触发 waiting_input；普通文本按 Agent 结果处理 |
-| BR-037 | 回答只提交一次 | pending intervention 接收 response | options/custom 校验通过后原子写 answered；后续提交返回 intervention_already_answered，不覆盖 response 或重复恢复 |
+| BR-037 | Intervention 批量回答只提交一次 | pending intervention 接收 responses | Run 当前全部 pending requests 必须在一个 batch 中回答；先校验 request 集合完整、request_id 唯一、均未回答且每个 response 满足 options/custom，再全有或全无地写为 answered，并只启动一次恢复。缺少任一 pending request、任一校验失败或后续重复提交均不写入任何回答，分别返回 validation_failed / intervention_already_answered，不覆盖 response 或部分恢复。单 request 也使用同一 batch 语义 |
 | BR-038 | 首次执行冻结恢复选项 | 创建 Run | 将自动选择后的有效 backend/model 和其他执行选项写入 run.json；recover 沿用且不接受覆盖 |
 | BR-039 | CLI resume 是 deprecated recover retry 别名 | failed/cancelled Run 调用旧 CLI resume | 执行 recover --mode retry 并输出弃用提示；Web API 不保留 resume 端点；legacy stopped 仍拒绝 |
 | BR-040 | Workflow 满足确定性重放契约 | 首次执行和 recover | Call 路径只能稳定依赖 args、缓存 Agent 结果、Intervention 回答和确定性 Python；时间、随机数、变化的环境或实时外部读取不得直接决定路径 |
-| BR-041 | Recover 必须到达目标 | workflow 重放 | 到达预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束均报 replay_diverged，不得标记 done |
+| BR-041 | Recover 必须到达全部目标 | workflow 重放 | 到达任一预期失败 Call/Intervention 前出现不同 Call、digest 不同或提前结束，或 execution 结束时仍有未到达的恢复目标，均报 replay_diverged，不得标记 done。并行 Agent intervention 可携带多个 continue target，按 call_id 分别验证和恢复，不得只恢复第一个 target |
 | BR-042 | Declared phases 预显示 | Run 创建时 Loop 含 `meta.phases` 声明 | 从 declared phases 生成占位节点（pending 状态），运行时按 title 匹配合并 runtime events；无声明时退化为运行时涌现；详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md) |
 | BR-043 | 工作目录文件变化观察 | `phase()` 调用时且 `meta.file_observation.enabled` 非 false | 对 run 的工作目录（BR-044）拍摄快照并与上一快照 diff，追加到 `file_changes.jsonl`（含 `seq` 序号）；不写入 events.jsonl、不参与重放；通过 SSE `file_changes` topic 推送（ADR-0041）；详见 [ADR-0039](../adr/0039-file-change-observation.md) |
-| BR-044 | Run 显式工作目录 | `POST /runs` 携带 `working_directory` 时 | 必须是已存在目录的绝对路径（否则 422 `validation_failed`）；executor 子进程 chdir 到该目录执行 workflow 与文件观察；缺省为进程 cwd（向后兼容）；持久化到 run.json，recover/rerun 沿用；详见 [ADR-0042](../adr/0042-run-working-directory.md) |
+| BR-044 | Run 显式工作目录 | CLI 或 Web/API 创建 Run | 非空显式路径必须是已存在目录的绝对路径；CLI 校验失败时非零退出，Web/API 返回 422 `validation_failed`。executor 子进程 chdir 到 actual working_directory 执行 workflow 与文件观察。CLI 缺省为创建 cwd；CLI `--work-dir ""` 以创建 cwd 分组后创建 `run_dir/work`；CLI 非空显式路径仍以创建 cwd 分组、actual 为该路径。Web/API 缺省以 server cwd 分组后创建 `run_dir/work`（ADR-0054）；Web/API 非空显式路径以该路径分组且 actual 同路径。actual 写入 run.json 和 runs_index，group 不据此重算；recover/rerun 沿用；详见 [ADR-0042](../adr/0042-run-working-directory.md) |
 | BR-045 | 文件观察基线快照 | Run 启动时且观察启用 | 先建立基线快照（内存态，不产生记录），phase diff 针对基线或上一快照；`created` 仅表示 phase 期间新建，预先存在的文件首改标记 `modified`；详见 [ADR-0043](../adr/0043-file-observation-baseline.md) |
-| BR-046 | Run 工作目录文件预览 | WebUI 点击文件 / `GET /runs/{run_id}/file` | 仅限 run 工作目录内的相对 POSIX 路径，resolve 越界拒绝（403 `path_forbidden`）；文本预览上限 1 MiB；只读；WebUI 在文件变化目录树中点击文件弹出只读预览 |
-| BR-047 | Loop args 声明预填 | loop.md `meta.args` 声明 `[{name, default, description, required}]` 时 | Loop summary/detail API 返回 `declared_args`（非法声明静默忽略）；New Run 对话框按声明预填键值行（default 填入，required 仅提示）；无声明时为空白起始 |
+| BR-046 | Run/Loop 文件预览 | WebUI 点击文件 / 文件预览 API | 仅限所属工作目录或 Loop 根目录内的相对 POSIX 路径，resolve 越界拒绝（403 `path_forbidden`）；文本以内联 JSON 返回，上限 1 MiB；png/jpg/jpeg/gif/svg/webp/bmp/ico/pdf 通过 raw 端点只读返回，上限 50 MiB；其他二进制或超限文件返回 422 `file_not_previewable`；resolve/size 校验通过后读取仍发生 OSError 时返回 500 `file_read_failed`，不得发送部分 bytes |
+| BR-047 | Loop args 声明预填 | loop.md 顶层 `args` 声明 `[{name, default, description, required}]` 时 | Loop summary/detail API 返回 `declared_args`（非法声明静默忽略）；New Run 对话框在首次打开及切换 Loop 时按所选 Loop 声明重建键值行（default 填入，required 仅提示）；无声明时为空白起始。仅在 loop.md 不存在的 legacy 回退路径读取 `workflow.py meta.args`。该 active 契约是 BL-054 的权威依据，本轮不新增第二套参数声明 |
 | BR-048 | WebUI 主题 | 用户点击 rail 主题切换按钮 | 日夜主题切换（CSS 变量调色板）；选择持久化于 localStorage；未选择时跟随系统 `prefers-color-scheme` |
 | BR-049 | Agent 失败按类别处理 | `agent()` 后端调用失败 | 失败分类为 auth/quota/transient/task/unknown，来源优先级：后端结构化上报 > stderr 模式匹配。transient 按既有退避（3/9/27s）自动重试且 recover 可 continue；auth/quota 与 task 不自动重试，直接持久化失败。分类写入 agent_done 事件与 run.json `error_category` |
 | BR-050 | Loop 失败熔断 | run 进入 failed 终态 | 该 loop 的 `consecutive_failures` +1（done 时归零）；达到阈值（默认 5，loop.md frontmatter 可用 `failure_threshold` 覆盖）时置 `paused=true` 并写 `paused_reason`。paused 的 loop 其队列任务在 dispatch 中标记 deferred 留队，不计失败 |
@@ -470,6 +484,10 @@ Agent 隔离层级体系（递进）：
 | BR-059 | CLI 前台内联应答 | 前台 `loopflow run`/`loopflow respond` 遇到 pending intervention 且 stdin 为 tty | 逐题内联提问（options 编号选择 / allow_custom 自由文本），校验与 `answer_requests()` 一致；应答后经应用层路径恢复同一 Run，循环直至终态；Ctrl-C 保持 waiting_input 退出且回答不落盘。详见 [ADR-0056](../adr/0056-waiting-input-lifecycle.md) |
 | BR-060 | intervene default/timeout | workflow 调用 `intervene(..., default=..., timeout=...)` | default 在调用时通过 options/allow_custom/schema 校验，否则 ValueError；timeout 仅在声明 default 时有效；重放到期（created_at + timeout 已过）的 pending 请求自动以 default 回答（惰性求值）；default/timeout 变更按 replay_diverged 处理；已回答请求记录 response_source |
 | BR-061 | 无人值守模式 | `loopflow run --unattended` | 冻结进 Run 执行选项，recover 继承；遇到 intervention 请求：有 default 则以 default 回答并继续（不进入 waiting_input），无 default 则以 `intervention_unattended` 失败；前台 stdin 非 tty 且未声明时不隐式套用，打印应答指引后以 waiting_input 退出 |
+| BR-062 | Agent intervention 协议可发现 | Agent 调用使用可续接 backend | 框架在最终 Agent prompt 中注入最小 `__loopflow.status=waiting_input` 协议、适用条件和示例；不从自然语言问题推断请求。动态 transport 必须在组装 prompt 前完成 capability preflight，不能先宣告能力再于回答时拒绝续接 |
+| BR-063 | 业务输出与框架控制互斥 | Agent 同时具有业务 output schema 和 intervention 能力 | 有效输出 schema 表达“业务结果或 waiting_input 控制对象”；控制分支不要求业务字段，业务分支不得包含保留字段 `__loopflow`；goal 模式的正常分支继续要求 `__goal`，waiting_input 仍是独立控制分支并优先处理 |
+| BR-064 | Agent intervention 仅继续原 session | Agent 返回合法 waiting_input 控制对象 | 仅在 backend 声明 resume_session + durable_session_id 且本次调用已落盘 session_id 时创建 source=agent、resume_mode=continue 的请求；同一控制对象的 requests 共享 request_group_id 并按数组位置写 request_index。回答后按 request_group_id 分组，每组只发送到其记录的 call_id/session_id；并行 Call 的多个组作为多个 continue targets 在同一次 workflow 重放中分别恢复。能力不足时不创建 pending request，以 `agent_intervention_not_supported` 失败并提示改用 workflow `intervene()` 或可续接 backend；不得静默创建新 session 重跑。Agent 不得声明 default/timeout |
+| BR-065 | Run 级追加 prompt | CLI `loopflow run --append-prompt TEXT` 或 Web 创建 Run 提供 `append_prompt` | 非空 UTF-8 文本作为不受信任的用户指令，以独立 `<run-append-prompt>` 段追加到本 Run 每次 Agent 调用的动态 prompt；不提升为 system prompt，不修改 Agent 定义。值按 UTF-8 编码上限 64 KiB，空字符串等价于未提供；超限在创建 Run 前以 validation_failed 拒绝且不创建 Run。值冻结进 execution_options，recover 不接受覆盖，并参与每次 Call input_digest；单 agent 入口同样适用 |
 
 Agent 结构化 intervention 控制结果固定为：
 
@@ -489,7 +507,22 @@ Agent 结构化 intervention 控制结果固定为：
 }
 ```
 
-`status` 固定为 `waiting_input`。`requests` 为非空数组；每个 request 的 `key` 和 `prompt` 为非空字符串，`options` 为 string array，`allow_custom` 为 boolean。response 统一为 string；`allow_custom=false` 时 response 必须属于 options，`allow_custom=true` 时可以是任意非空 string。该控制对象不作为业务结果返回给 workflow；满足 durable session 条件时转为 Intervention，否则 Call 失败。
+`status` 固定为 `waiting_input`。`requests` 为非空数组且同一对象内 key 唯一；每个 request 的 `key` 和 `prompt` 为非空字符串，`options` 为 string array，`allow_custom` 为 boolean。response 统一为 string；`allow_custom=false` 时 response 必须属于 options，`allow_custom=true` 时可以是任意非空 string。Agent request 不接受 default/timeout。该控制对象不作为业务结果返回给 workflow；满足 durable session 条件时转为 Intervention，否则以 `agent_intervention_not_supported` 失败。
+
+回答后框架向原 Agent session 发送统一信封，单问题与多问题格式相同：
+
+```json
+{
+  "__loopflow": {
+    "status": "input_received",
+    "responses": [
+      {"key": "scope", "response": "扩大"}
+    ]
+  }
+}
+```
+
+responses 在每个 request_group_id 内按 request_index 恢复原始顺序，只包含稳定 key 和已校验的 string response，不暴露 request 文件中的 digest、路径或内部状态。每个组只发送给其持久化的 call_id/session_id；并行 Agent 同时产生多个组时分别构造信封并恢复对应 session，不把不同 Agent 的回答混入同一信封。
 
 ---
 
@@ -517,6 +550,8 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 6. failed/cancelled Run 明确提供可用的 Recover/Retry 与 Continue 操作；Continue 不可用时展示后端能力、session 持久化或原子 worker 边界原因，不静默执行 Retry。
 7. waiting_input Run 展示结构化 prompt 和匹配 schema 的输入控件；回答只提交一次，提交期间禁用重复操作。
 8. Phase 详情下方展示该 Phase 期间工作目录的文件变化列表（created/modified/deleted），按 SSE `file_changes` topic 推送的数据渲染。无文件变化的 Phase 显示空状态；无 `file_changes.jsonl` 的 Run 不显示该区域或显示禁用状态，不报错。文件变化区域有独立滚动，不影响 Phase 图和 Calls/Events 布局。
+9. New Run 对话框提供可选的 Append prompt 多行输入，提交为 `append_prompt`；输入超过 64 KiB 时就地显示校验错误且不发送请求。Arguments 键值编辑器按 BR-047 在首次打开和切换 Loop 时重建预填行。
+10. 点击允许预览的图片时显示原始比例受视口约束的图像；PDF 使用只读内嵌查看器；加载中、超限、不支持和读取失败均有明确状态，不把二进制内容解码进文本区域。
 
 ### Loops 工作台
 
@@ -543,12 +578,12 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 
 | 能力 | 输入 | 成功输出 | 主要错误 |
 |------|------|----------|----------|
-| 查询 Loops / Loop 文件 | 可选筛选；loop 名和相对路径 | Loop 摘要列表；受限文件内容 | 404 loop/file 不存在；403 路径越界；422 文件不可预览 |
-| 查询 Runs / Run 详情 | 可选状态、Loop、搜索和 cursor；run_id | 分页 Run 摘要；Run/Phase/Call 读模型 | 404 run 不存在；422 筛选无效 |
+| 查询 Loops / Loop 文件 | 可选筛选；loop 名和相对路径 | Loop 摘要列表；文本文件内容；图片/PDF raw bytes + 原始 media type | 404 loop/file 不存在；403 路径越界；422 文件不可预览或超过 50 MiB；500 file_read_failed |
+| 查询 Runs / Run 详情 / Run 文件 | 可选状态、Loop、搜索和 cursor；run_id 和相对路径 | 分页 Run 摘要；Run/Phase/Call 读模型；文本文件内容；图片/PDF raw bytes + 原始 media type | 404 run/file 不存在；403 路径越界；422 筛选无效、文件不可预览或超过 50 MiB；500 file_read_failed |
 | 订阅 Run 事件 | run_id、last_event_id、last_file_changes_id | SSE 多 topic 事件（run_event + file_changes）及 per-topic 重连游标 | 404 run 不存在；410 游标已不可恢复 |
-| 启动 / 重跑 Run | loop、args、运行选项；重跑时含源 run_id | 新 Run 摘要和 Location | 404 loop/run 不存在；409 状态冲突；422 参数无效 |
+| 启动 / 重跑 Run | loop、args、backend/model/mock、working_directory、可选 `append_prompt`；重跑时含源 run_id | 新 Run 摘要和 Location；append_prompt 冻结进 execution_options | 404 loop/run 不存在；409 状态冲突；422 参数无效或 append_prompt 超过 64 KiB |
 | 停止 / 恢复 Run | run_id；恢复 mode=retry/continue | 更新后的 Run 摘要 | 404 run 不存在；409 状态冲突、重放分歧或 continue 不支持 |
-| 查询 / 回答 Intervention | run_id、request_id、JSON response | 请求详情；回答后 running Run 摘要 | 404 请求不存在；409 已回答或状态冲突；422 schema 不匹配 |
+| 查询 / 回答 Intervention | run_id；非空 `responses:[{request_id,response}]`，必须覆盖本次全部 pending requests | 请求详情；全部回答原子持久化后只恢复一次，返回 running Run 摘要 | 404 请求不存在；409 已回答或状态冲突；422 集合不完整、重复 request_id 或回答不匹配 |
 | 修复 stale Run | run_id | status=failed 的 Run 摘要 | 404 run 不存在；409 Run 非 stale 或进程重新可用；500 原子写失败 |
 | 查询 / 诊断 Backends | 可选 backend 名 | Backend 摘要、能力和诊断日志 | 404 backend 不存在；503 诊断进程不可启动 |
 | 暂停解除 / 恢复 Loop | loop 名 | 更新后的 Loop 摘要（含 paused 状态） | 404 loop 不存在 |
@@ -577,7 +612,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | 实时性 | 已落盘事件到 SSE 可读 | 在单客户端、1KB 事件、无后端执行负载的 CI 测试中，p95 < 500ms；连续测量 100 条 |
 | 可靠性 | 事件流断线恢复 | 从最后 event_id 恢复，不丢失已持久化事件 |
 | 安全性 | 默认网络暴露 | 仅绑定 127.0.0.1；文件读取限制在 Loop/Run 允许根目录 |
-| 兼容性 | 历史 Run | legacy/unversioned JSONL 可显示原始时间线；关联不确定的事件标记 unattributed，不要求迁移原文件 |
+| 兼容性 | 历史 Run | legacy/unversioned JSONL 可显示原始时间线；关联不确定的事件标记 unattributed；旧 Intervention 缺少 source/options/allow_custom 时按数据模型默认值读取；均不要求迁移原文件 |
 | 可访问性 | 键盘与状态表达 | 核心监控和 run/stop/recover/respond 可键盘完成；状态不只依赖颜色 |
 
 ---
@@ -602,7 +637,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 |------|------|
 | Loop | 一个文件夹，包含 loop.md + workflow.py + agents/，定义了一个 Agent 循环工作流 |
 | loop.md | Loop 的声明式定义文件，frontmatter 给机器读，body 给 Agent 和人类读 |
-| Run | Loop 的一次执行实例，有唯一 uuid，状态持久化到 `runs/lf_<pwd>/<uuid>/` |
+| Run | Loop 的一次执行实例，有唯一 uuid，状态持久化到 `runs/lf_<group-path>/<uuid>/`；实际执行目录由 `working_directory` 单独记录 |
 | Dispatch | 扫描队列、按优先级取任务、加资源锁、执行 loop 的调度过程 |
 | Queue | `~/.loopflow/queue/` 下的 JSON 文件，每个文件是一个待执行任务 |
 | Resource Lock | 文件锁，防止同一资源（如 repo）被多个 loop 同时操作 |

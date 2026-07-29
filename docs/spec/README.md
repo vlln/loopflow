@@ -5,7 +5,7 @@
 
 | 文件 | 状态 |
 |------|------|
-| [0001-loopflow.md](0001-loopflow.md) | active (v17) |
+| [0001-loopflow.md](0001-loopflow.md) | active (v18) |
 
 ## 状态说明
 

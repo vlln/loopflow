@@ -28,6 +28,7 @@
 | [0054](0054-webui-default-workdir-isolation.md) | WebUI/API 默认工作目录隔离 | accepted | ADR-0042 / BL-026 |
 | [0055](0055-single-agent-run.md) | 单 agent 运行入口 | accepted | BL-047 / Spec v17 / AC-032 |
 | [0056](0056-waiting-input-lifecycle.md) | waiting_input 生命周期：CLI 应答通道与无人值守策略 | accepted | BL-044 / BL-045 / ADR-0036 §5 / Spec v17 / AC-031 |
+| [0057](0057-agent-intervention-protocol.md) | Agent intervention 控制协议与 capability preflight | accepted | BL-046 / Spec v18 / AC-023 |
 
 ## 状态说明
 

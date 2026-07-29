@@ -39,8 +39,10 @@ created: 2026-07-18T22:00:00Z
 | 410 | `process_gone` / `cursor_out_of_range` | 执行进程或事件游标已不可用 |
 | 413 | `request_too_large` | 请求体超过 1 MiB |
 | 422 | `validation_failed` / `file_not_previewable` | 字段、参数或文件类型不合约 |
-| 500 | `atomic_write_failed` / `internal_error` | 服务端持久化或未分类错误 |
+| 500 | `atomic_write_failed` / `file_read_failed` / `internal_error` | 服务端持久化、已校验文件读取或未分类错误 |
 | 503 | `diagnostic_start_failed` | Backend 诊断进程无法启动 |
+
+`agent_intervention_not_supported` 是 Agent 输出处理期间产生的异步 Call/Run failure code，不是 HTTP error envelope code。对应 Run 进入 `failed`，`error_summary` 以该稳定 code 标识失败并附带改用 workflow `intervene()` 或可续接 backend 的行动提示；最初的 `POST /runs` 仍已返回 201。
 
 ## 二、公共数据类型
 
@@ -49,7 +51,7 @@ created: 2026-07-18T22:00:00Z
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | run_id | string | 是 | 完整 Run ID |
-| working_directory | string | 是 | `runs_index.jsonl` 中记录的真实绝对工作目录；旧 Run 缺少有效映射时回退为 `lf_<pwd-path>` 分组名 |
+| working_directory | string | 是 | `runs_index.jsonl` 中记录的真实绝对工作目录；旧 Run 缺少有效映射时回退为 `lf_<group-path>` 分组名 |
 | loop | string/null | 是 | Loop 名；unreadable 时无法证明则为 null |
 | status | string | 是 | `running/waiting_input/cancelling/cancelled/done/failed/stopped/stale/unreadable`；stopped 仅 legacy |
 | current_phase | string/null | 是 | 最近聚合 Phase title |
@@ -120,23 +122,7 @@ PhaseEdge：`from:string`、`to:string`、`count:integer >= 1`、`is_backedge:bo
 
 ### InterventionSummary
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| request_id | string | 是 | Run 内唯一请求 ID |
-| key | string | 是 | workflow 稳定请求键 |
-| prompt | string | 是 | 向用户展示的问题 |
-| schema | object/null | 是 | 回答 JSON Schema；null 表示任意 JSON 值 |
-| status | string | 是 | `pending/answered/closed` |
-| call_id | string/null | 是 | 关联 Agent Call |
-| resume_mode | string | 是 | `replay` 或 `continue` |
-| can_continue_session | boolean | 是 | session 和 backend capability 均满足 continue 条件 |
-| response | any | 条件必填 | status=answered 时必填；其他状态不返回该字段 |
-| created_at | string | 是 | 请求创建时间 |
-| responded_at | string/null | 是 | 回答时间 |
-
-### InterventionSummary vNext
-
-Agent structured intervention vNext 将替代 `schema`/任意 JSON response 形态。迁移完成后 read model 使用：
+新写入 request 使用以下结构；read model 将 legacy 文件补齐兼容默认值后也统一返回该结构，因此不产生两套不可判别的响应类型：
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
@@ -144,15 +130,34 @@ Agent structured intervention vNext 将替代 `schema`/任意 JSON response 形�
 | source | string | 是 | `workflow` 或 `agent` |
 | key | string | 是 | 稳定请求键；workflow source 下参与 replay 对齐 |
 | prompt | string | 是 | 向用户展示的问题 |
+| schema | object/null | 是 | 回答 JSON Schema；null 表示任意 JSON 值 |
 | options | string[] | 是 | Agent/workflow 提供的预设选项；可为空 |
 | allow_custom | boolean | 是 | false 时 response 必须属于 options；true 时可为任意非空 string |
 | status | string | 是 | `pending/answered/closed` |
+| request_group_id | string/null | 是 | 同一次 Agent 控制输出的稳定组 ID；workflow request 为 null |
+| request_index | integer | 是 | 在 request_group_id 内的零基顺序；workflow request 为 0 |
 | call_id | string/null | 是 | 关联 Agent Call；workflow source 为 null |
+| session_id | string/null | 是 | Agent continue 使用的 durable backend session；workflow source 为 null |
 | resume_mode | string | 是 | `replay` 或 `continue` |
 | can_continue_session | boolean | 是 | session 和 backend capability 均满足 continue 条件 |
-| response | string | 条件必填 | status=answered 时必填；其他状态不返回该字段 |
+| response | any | 条件必填 | status=answered 时必填且 immutable；Agent source 时为 string，workflow source 时按 schema |
 | created_at | string | 是 | 请求创建时间 |
 | responded_at | string/null | 是 | 回答时间 |
+| timeout_seconds | number/null | 是 | 仅 workflow request 可声明；null 表示无超时 |
+| response_source | string | 条件必填 | status=answered 时为 `human/default/timeout_default`；legacy 缺省归一化为 `human` |
+
+旧记录缺少 `source/options/allow_custom/timeout_seconds` 时按 Spec v18 的兼容默认值归一化。旧 Agent request 缺少 `request_group_id`/`request_index` 时，read model 以 `(call_id, session_id)` 派生 group，并按 `(created_at, request_id)` 给出稳定顺序；旧 workflow request 归一化为 `request_group_id=null`、`request_index=0`。legacy 恢复证据标记为 unverified，不改写旧文件。
+
+### FilePreview
+
+文本与 raw 预览共享字段 `path:string`、`media_type:string/null`、`size:integer`、`read_only:true`；raw 分支的 media_type 必须是 string：
+
+| 分支 | content | encoding | raw_url |
+|------|---------|----------|---------|
+| UTF-8 文本（不超过 1 MiB） | string | 缺省 | 缺省 |
+| png/jpg/jpeg/gif/svg/webp/bmp/ico/pdf（不超过 50 MiB） | null | 固定 `raw` | 同一资源 raw 端点的 URL |
+
+`raw_url` 仅是只读内容 URL，不放入业务 schema、Run digest 或 Agent prompt。
 
 ## 三、Runs
 
@@ -191,12 +196,15 @@ Query：
 | mock | string/null | 否 | null | `bash/auto/null` |
 | from_phase | string/null | 否 | null | 声明的 Phase title 或 null |
 | only_phase | string/null | 否 | null | 声明的 Phase title 或 null；非 null 时服务端令有效 from_phase 等于该值；请求同时传非同值 from_phase 返回 422 |
-| working_directory | string/null | 否 | null | run 的显式工作目录（ADR-0042）；非 null 时必须是已存在的目录的绝对路径，否则 422（details 指明 `not_absolute` / `not_found` / `not_a_directory`）；null 时为进程 cwd（向后兼容） |
+| working_directory | string/null | 否 | null | run 的显式工作目录（ADR-0042）；非 null 时必须是已存在目录的绝对路径，否则 422（details 指明 `not_absolute` / `not_found` / `not_a_directory`）；null 时使用下述框架隔离目录 |
 | transport | string | 否 | cli | `cli` 或 `acp`；`acp` 路由到 ACP 后端（AcpSdkBackend），加载可选依赖 agent-client-protocol，缺失时报错提示安装 extra `[acp]`（对应 422 `validation_failed` 或 503） |
+| append_prompt | string | 否 | `""` | UTF-8 编码不超过 65536 bytes；空字符串等价于缺省；作为不受信任的用户 prompt 段冻结进 execution_options，参与 Call input_digest，不进入 system prompt |
+
+`working_directory=null` 或缺省时，服务端先按 server cwd 确定 storage group/run_dir，再创建 `run_dir/work` 作为 actual working_directory；该实际路径写入 `run.json` 和 `runs_index.jsonl`。
 
 201：`RunSummary`，同时设置 `Location: /api/v1/runs/{run_id}`。
 
-错误：404 `loop_not_found`；409 `invalid_run_transition`；422 `validation_failed`。
+错误：404 `loop_not_found`；409 `invalid_run_transition`；422 `validation_failed`。append_prompt 超限时 `error.details.field="append_prompt"`，且不创建 Run、不调用 backend。
 
 ### `POST /runs/{run_id}/stop`
 
@@ -206,11 +214,13 @@ Query：
 
 ### `POST /runs/{run_id}/recover`
 
-failed Run 或存在可重放取消边界的 cancelled Run 可调用。恢复沿用原 Run 的 loop、args、backend、model 和其他执行选项，不接受覆盖：
+failed Run 或存在可重放取消边界的 cancelled Run 可调用。恢复沿用原 Run 的 loop、args、backend、model、append_prompt 和其他执行选项，不接受覆盖：
 
 | 字段 | 类型 | 必填 | 默认 | 约束 |
 |------|------|------|------|------|
 | mode | string | 是 | — | `retry` 或 `continue`；retry 是默认恢复路径，continue 仅在 durable session 和取消/失败点都允许时可用 |
+
+body 只允许 `mode`；包括 `append_prompt` 在内的任何额外字段均返回 422 `validation_failed`，`error.details.fields` 列出额外字段，且不修改 execution_options、不启动恢复 worker。
 
 200：相同 run_id、status=running、execution_epoch 已递增的 `RunSummary`。
 
@@ -221,6 +231,8 @@ failed Run 或存在可重放取消边界的 cancelled Run 可调用。恢复沿
 200：`{"items": InterventionSummary[]}`。错误：404 `run_not_found`。
 
 ### `POST /runs/{run_id}/interventions/{request_id}/response`
+
+这是 legacy 兼容端点，仅当目标 request 是 Run 当前唯一 pending request 时可用；存在其他 pending request 时返回 422 `validation_failed`，所有 response 均不落盘且不启动恢复 worker。新客户端统一使用批量端点。
 
 Body：
 
@@ -245,7 +257,7 @@ response 持久化成功后，后续恢复 worker/agent 失败按普通 Run exec
 
 错误：404 `run_not_found` 或 `intervention_not_found`；409 `invalid_run_transition`、`intervention_already_answered`、`replay_diverged` 或 `continue_not_supported`；422 `validation_failed`。
 
-### `POST /runs/{run_id}/interventions/responses` vNext
+### `POST /runs/{run_id}/interventions/responses`
 
 批量回答同一 Run 当前 pending requests。Body：
 
@@ -264,15 +276,16 @@ response 持久化成功后，后续恢复 worker/agent 失败按普通 Run exec
 |------|------|------|------|
 | responses | object[] | 是 | 非空数组；同一 request_id 不得重复 |
 | responses[].request_id | string | 是 | Run 内 request ID |
-| responses[].response | string | 是 | 非空 string；按 request options/allow_custom 校验 |
+| responses[].response | any | 是 | Agent source 必须是非空 string 并按 options/allow_custom 校验；workflow source 按 schema 校验，schema=null 时接受任意 JSON 值 |
 
-成功语义：all-or-nothing 持久化全部 response，追加对应 `intervention_responded` 事件，然后只启动一次恢复 worker。200：status=running、execution_epoch 已递增的 `RunSummary`。
+成功语义：请求必须恰好覆盖该 Run 当前全部 pending requests；all-or-nothing 持久化全部 response，追加对应 `intervention_responded` 事件，然后只启动一次恢复 worker。Agent requests 按 `request_group_id` 分组、`request_index` 排序，每组构造一个仅含 `key/response` 的 `input_received` 信封并继续其原 `call_id/session_id`；同一次 workflow 重放必须到达全部 continue targets。200：status=running、execution_epoch 已递增的 `RunSummary`。
 
 前置条件错误由 application command 保证 all-or-nothing 副作用边界：
 
 | 错误 | HTTP/code | 副作用边界 |
 |------|-----------|------------|
-| body 不合约、response 为空、response 不符合 options/allow_custom | 422 `validation_failed` | 所有 responses 均不落盘；不启动恢复 worker |
+| body 不合约或 response 字段缺失；Agent response 是空 string/不符合 options/allow_custom；workflow response 不符合非 null schema | 422 `validation_failed` | 所有 responses 均不落盘；不启动恢复 worker |
+| request_id 重复，或未恰好覆盖 Run 当前全部 pending requests | 422 `validation_failed` | 所有 responses 均不落盘；不启动恢复 worker |
 | 任一 request 不存在 | 404 `intervention_not_found` | 所有 responses 均不落盘；不启动恢复 worker |
 | 任一 request 已 answered | 409 `intervention_already_answered` | 不覆盖既有 response；其他 responses 也不落盘；不启动恢复 worker |
 | Run 当前不允许 respond | 409 `invalid_run_transition` | 所有 requests 不变；不启动恢复 worker |
@@ -355,7 +368,7 @@ Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`e
 
 读取 run 工作目录（ADR-0042）内单个文件的内容，供 WebUI 文件预览。
 
-200：
+200：`FilePreview`。文本示例：
 
 ```json
 {
@@ -367,9 +380,33 @@ Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`e
 }
 ```
 
+raw 示例：
+
+```json
+{
+  "path": "figures/chart.png",
+  "media_type": "image/png",
+  "content": null,
+  "encoding": "raw",
+  "raw_url": "/api/v1/runs/abc/file/raw?path=figures/chart.png",
+  "size": 2048,
+  "read_only": true
+}
+```
+
 限制：path 必须是相对 POSIX 路径；resolve 后仍在 run 的 working_directory 内；文本预览上限 1 MiB；只读。
 
-错误：403 `path_forbidden`；404 `run_not_found`/`file_not_found`；422 `file_not_previewable`。
+错误：403 `path_forbidden`；404 `run_not_found`/`file_not_found`；422 `file_not_previewable`；500 `file_read_failed`。
+
+### `GET /runs/{run_id}/file/raw?path={relative_path}`
+
+只读返回 Run actual working_directory 内允许预览的图片或 PDF bytes。`path` 采用与 preview 端点相同的相对 POSIX 路径和 resolve 边界；允许扩展名为 png/jpg/jpeg/gif/svg/webp/bmp/ico/pdf，大小不超过 50 MiB。
+
+media type 映射固定为：png=`image/png`；jpg/jpeg=`image/jpeg`；gif=`image/gif`；svg=`image/svg+xml`；webp=`image/webp`；bmp=`image/bmp`；ico=`image/x-icon`；pdf=`application/pdf`。不得依赖平台 MIME 数据库产生不同结果。
+
+200：body 为完整原始 bytes；`Content-Type` 使用上述固定映射，`Content-Length` 为完整长度，`Cache-Control: no-store`。服务端必须在发送 200 header 前完成读取；读取失败不得返回部分 bytes。
+
+错误：403 `path_forbidden`；404 `run_not_found`/`file_not_found`；422 `file_not_previewable`；500 `file_read_failed`。
 
 ## 五、Loops 与文件
 
@@ -410,9 +447,20 @@ Query：可选 `q`、`limit`、`cursor`。200：
 | agents | AgentDefinitionSummary[] | 是 | Agent 摘要 |
 | runs | RunSummary[] | 是 | 最近 20 个关联 Runs，按 created 降序 |
 | declared_phases | object[] | 否 | loop.md `meta.phases` 声明（ADR-0040），`[{title, detail}]` |
-| declared_args | object[] | 否 | loop.md `meta.args` 声明（BR-047），`[{name, default, description, required}]`；无声明时缺省或空列表 |
+| declared_args | object[] | 否 | loop.md 顶层 `args` 声明（BR-047），`[{name, default, description, required}]`；仅在 loop.md 不存在时回退读取 workflow.py `meta.args`；无声明时缺省或空列表 |
 
 LoopSummary 在列表接口中同样携带 `declared_phases` / `declared_args`（可选字段），供 New Run 对话框预填。
+
+DeclaredArg：
+
+| 字段 | 类型 | 必填 | 缺省 | 说明 |
+|------|------|------|------|------|
+| name | string | 是 | — | trim 后非空的参数名 |
+| default | any | 否 | 缺省 | JSON 可表示的预填值；false、0、空字符串和 object 不得因 truthiness 丢失 |
+| description | string | 否 | `""` | 参数说明 |
+| required | boolean | 否 | false | 仅作为 UI 提示；空值是否提交沿用 args 编辑器规则 |
+
+loop.md 顶层 `args` 不是数组时 `declared_args=[]`，且不得回退到 workflow.py。数组中的非 object、name 非 string 或 trim 后为空的条目静默忽略，其他合法条目保序返回；仅当 loop.md 不存在时才读取 workflow.py `meta.args` 并应用同一归一化规则。
 
 LoopFileSummary：`path:string`、`media_type:string/null`、`size:integer`、`previewable:boolean`，全部必填。
 
@@ -422,7 +470,7 @@ AgentDefinitionSummary：`name:string`、`description:string`、`path:string`，
 
 ### `GET /loops/{loop_name}/file?path={relative_path}`
 
-200：
+200：`FilePreview`，文本与 raw 分支同 Run preview 端点。文本示例：
 
 ```json
 {
@@ -436,7 +484,13 @@ AgentDefinitionSummary：`name:string`、`description:string`、`path:string`，
 
 限制：path 必须是相对 POSIX 路径；resolve 后仍在 Loop 根目录；文本预览上限 1 MiB。
 
-错误：403 `path_forbidden`；404 `loop_not_found/file_not_found`；422 `file_not_previewable`。
+错误：403 `path_forbidden`；404 `loop_not_found/file_not_found`；422 `file_not_previewable`；500 `file_read_failed`。
+
+### `GET /loops/{loop_name}/file/raw?path={relative_path}`
+
+只读返回 Loop 根目录内允许预览的图片或 PDF bytes。路径、允许扩展名、50 MiB 上限、200 headers 和“读取完成后才发送 header”的原子响应语义与 Run raw 端点相同。
+
+错误：403 `path_forbidden`；404 `loop_not_found/file_not_found`；422 `file_not_previewable`；500 `file_read_failed`。
 
 ## 六、Queue
 

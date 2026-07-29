@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` complete (v0.26.0) |
-| **设计评估** | 0.26.0：BL-047 单 agent 运行入口（ADR-0055）、BL-044 CLI 内联应答 + loopflow respond、BL-045 intervene default/timeout + `--unattended`（ADR-0056）。549 Python + 41 前端 + 13 Playwright 全绿；严格 manifest：recovery 84 / scheduling 32 / agent 26 / singleagent 9 全过。tag v0.26.0，main + develop 已同步。既有债：BL-049（--write 无早退）、BL-050（web profile 无 TEST_NODES 机制）。 |
+| **当前阶段** | `TEST_INFRA` (0.27.0) |
+| **设计评估** | Spec v18、AC-0011/0013/0015、Interface 0001 已 active，ADR-0057 已 accepted；独立审查与 BL-046 spike 均通过，人类已批量确认冻结。当前仅搭建和验证本轮增量测试基建：BL-051 契约闭环、BL-046 Agent waiting_input 协议、BL-052 append_prompt、BL-054 declared args 符合性；不得提前实现业务功能。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
