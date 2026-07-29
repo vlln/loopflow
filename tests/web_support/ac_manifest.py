@@ -109,6 +109,57 @@ def _targets() -> dict[str, list[str]]:
 
 TARGETS = _targets()
 
+# Only scenarios whose current tests cover the complete active AC semantics belong
+# here. Partial candidates remain planned so strict mode exposes the coverage gap.
+TEST_NODES = {
+    "AC-014-N-7": "tests/unit/test_web_application.py::test_rerun_preserves_source_and_queue_validates",
+    "AC-014-N-9": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
+    "AC-014-N-10": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
+    "AC-014-B-1": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+    "AC-014-B-3": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
+    "AC-014-B-4": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
+    "AC-014-B-5": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
+    "AC-014-E-1": "tests/unit/test_web_storage.py::test_unreadable_run_does_not_hide_valid_siblings",
+    "AC-014-F-2": "tests/unit/test_web_storage.py::test_reconcile_atomically_fails_stale_run_and_clears_identity",
+    "AC-015-N-9": "web/src/App.test.tsx::AC-015-N-9: call-list shows call_id as primary, session_id in tooltip",
+    "AC-015-B-5": "web/src/App.test.tsx::AC-015-B-5: call without session_id shows call_id and no empty row",
+    "AC-015-F-2": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
+    "AC-015-F-3": "tests/integration/test_web_api.py::test_workflow_syntax_error_run_start_fails_without_placeholders",
+    "AC-015-F-4": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
+    "AC-016-N-3": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
+    "AC-016-N-4": "tests/integration/test_web_api.py::test_sse_multi_topic_per_topic_cursor_reconnect",
+    "AC-016-B-3": "tests/integration/test_web_api.py::test_sse_stream_end_waits_for_file_changes_terminal",
+    "AC-016-E-1": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
+    "AC-016-E-2": "web/src/eventReducer.test.ts::deduplicates replayed persisted event ids",
+    "AC-016-E-3": "tests/integration/test_web_api.py::test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+    "AC-016-F-2": "tests/integration/test_web_api.py::test_sse_reader_failure_after_headers_emits_stream_error",
+    "AC-016-F-3": "tests/integration/test_web_api.py::test_sse_file_changes_read_failure_emits_stream_error_and_closes",
+    "AC-017-E-1": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-017-E-2": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-019-N-5": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
+    "AC-019-B-3": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
+    "AC-019-E-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-F-1": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
+}
+
+
+def _test_node_exists(node: str) -> bool:
+    path_text, *selectors = node.split("::")
+    path = Path(path_text)
+    if not path.is_file() or not selectors:
+        return False
+    source = path.read_text(encoding="utf-8")
+    if path.suffix == ".py":
+        for selector in selectors[:-1]:
+            if not re.search(rf"^class\s+{re.escape(selector)}\b", source, re.M):
+                return False
+        return bool(re.search(
+            rf"^(?:\s*)def\s+{re.escape(selectors[-1])}\s*\(",
+            source,
+            re.M,
+        ))
+    return selectors[-1] in source
+
 PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-014-N-4": [{"kind": "http_status", "value": 201}],
     "AC-014-N-5": [{"kind": "http_status", "value": 200}],
@@ -187,7 +238,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
         cases.append(
             {
                 **row,
-                "test_node": f"planned::{ac_id.lower()}",
+                "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
                 "expectations": expectations,
             }
@@ -228,8 +279,16 @@ def check_manifest(
         node = case.get("test_node")
         if not isinstance(node, str) or not node:
             errors.append(f"{ac_id}: test_node is required")
-        elif node.startswith("planned::") and not allow_planned:
-            errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        elif ac_id in TEST_NODES:
+            if node != TEST_NODES[ac_id]:
+                errors.append(f"{ac_id}: test_node does not match implemented mapping")
+            elif not _test_node_exists(node):
+                errors.append(f"{ac_id}: test_node does not exist")
+        elif node.startswith("planned::"):
+            if not allow_planned:
+                errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        else:
+            errors.append(f"{ac_id}: no implemented test_node mapping")
 
         expectations = case.get("expectations")
         if not isinstance(expectations, list) or not expectations:
