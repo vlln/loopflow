@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` (0.27.0) |
-| **设计评估** | 0107 已实现 BL-046/051/052/054，recovery 98 与 iteration027 29 场景 strict manifest、MR 门禁、提测门禁及三路 subagent 审查全部通过并合入 develop。当前按 SYSTEM_TEST 边界执行集成、系统、视觉与专项验证；全绿且无阻塞级缺陷前不得进入 RELEASE。 |
+| **当前阶段** | `TEST_INFRA` (0.27.0 基建修复) |
+| **设计评估** | 0108 SYSTEM_TEST 的集成 99、CLI E2E 22 通过；strict manifest 暴露 Web profile generator 对 86 场景无条件生成 `planned::`，使 strict 门禁不可通过，分类为基建缺陷。其他五 profile strict 全绿。当前以 0109 修复 Web manifest 真实节点校验，TEST_INFRA 门禁通过后恢复 SYSTEM_TEST；0108 保持 pending。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
