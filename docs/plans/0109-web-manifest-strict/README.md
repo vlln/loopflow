@@ -2,7 +2,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Web manifest strict 基建修复](01-plan-web-manifest-strict.md) | 待完成后创建 | pending |
+| 01 | [Web manifest strict 基建修复](01-plan-web-manifest-strict.md) | [Report](01-report-web-manifest-strict.md) | done（基建修复完成，契约/覆盖门禁失败） |
 
 ## 分支
 

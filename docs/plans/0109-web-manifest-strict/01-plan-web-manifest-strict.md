@@ -2,7 +2,7 @@
 title: Web manifest strict 基建修复
 description: 修复 Web AC manifest 无条件生成 planned 节点导致 strict SYSTEM_TEST 不可通过的基础设施缺陷
 type: plan
-status: pending
+status: done
 created: 2026-07-29T00:00:00Z
 ---
 
@@ -27,8 +27,8 @@ created: 2026-07-29T00:00:00Z
 
 # Checkpoint
 
-- [ ] AC-014~019 非 superseded 场景均映射真实测试节点
-- [ ] generator 与提交 manifest 一致
-- [ ] strict checker 拒绝 planned、漂移映射和不存在节点
-- [ ] 增量基础设施测试与 Web strict profile 通过
-- [ ] subagent 审查通过，Report 记录分类与证据
+- [ ] AC-014~019 非 superseded 场景均映射真实测试节点（54 个场景因设计漂移或覆盖不足未完成）
+- [x] generator 与提交 manifest 一致
+- [x] strict checker 拒绝 planned、漂移映射和不存在节点
+- [ ] 增量基础设施测试与 Web strict profile 通过（infra 81/81；strict 正确拒绝 54 planned）
+- [x] subagent 审查通过，Report 记录分类与证据
