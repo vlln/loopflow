@@ -12,4 +12,4 @@
 
 | 文件 | 状态 |
 |------|------|
-| [0001-web-api.md](0001-web-api.md) | active |
+| [0001-web-api.md](0001-web-api.md) | proposed |

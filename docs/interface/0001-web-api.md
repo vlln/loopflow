@@ -2,7 +2,7 @@
 title: loopflow Web API v1
 description: 本地 WebUI 的 REST 与 SSE 接口契约，覆盖 Runs、恢复、停止、人工介入、Loops、Queue、Backends 和事件续传。
 type: interface
-status: active
+status: proposed
 created: 2026-07-18T22:00:00Z
 ---
 
@@ -35,7 +35,7 @@ created: 2026-07-18T22:00:00Z
 | 400 | `invalid_json` | 请求体不是合法 JSON |
 | 403 | `path_forbidden` | 文件路径越过允许根目录 |
 | 404 | `loop_not_found` / `run_not_found` / `intervention_not_found` / `file_not_found` / `backend_not_found` | 资源不存在 |
-| 409 | `invalid_run_transition` / `replay_diverged` / `continue_not_supported` / `intervention_already_answered` / `run_not_stale` / `process_alive` / `legacy_events_not_streamable` | 状态转换、恢复、人工介入或事件协议冲突 |
+| 409 | `invalid_run_transition` / `replay_diverged` / `continue_not_supported` / `intervention_already_answered` / `run_not_stale` / `run_in_grace` / `process_alive` / `legacy_events_not_streamable` | 状态转换、恢复、人工介入或事件协议冲突 |
 | 410 | `process_gone` / `cursor_out_of_range` | 执行进程或事件游标已不可用 |
 | 413 | `request_too_large` | 请求体超过 1 MiB |
 | 422 | `validation_failed` / `file_not_previewable` | 字段、参数或文件类型不合约 |
@@ -54,16 +54,18 @@ created: 2026-07-18T22:00:00Z
 | working_directory | string | 是 | `runs_index.jsonl` 中记录的真实绝对工作目录；旧 Run 缺少有效映射时回退为 `lf_<group-path>` 分组名 |
 | loop | string/null | 是 | Loop 名；unreadable 时无法证明则为 null |
 | status | string | 是 | `running/waiting_input/cancelling/cancelled/done/failed/stopped/stale/unreadable`；stopped 仅 legacy |
-| current_phase | string/null | 是 | 最近聚合 Phase title |
 | created | string/null | 是 | 创建时间；unreadable 时无法证明则为 null |
 | started_at | string/null | 是 | 执行开始时间 |
 | finished_at | string/null | 是 | 结束时间 |
 | updated_at | string/null | 是 | 元数据更新时间；legacy 可为 null |
 | duration_ms | integer/null | 是 | 服务端派生耗时 |
-| iteration_count | integer | 是 | 聚合图最大回边次数 |
 | error_summary | string/null | 是 | 错误摘要 |
+| error_category | string/null | 是 | `auth/quota/transient/task/unknown`；无分类时为 null |
+| error_traceback | string/null | 是 | 可用的失败 traceback；无记录或 unreadable 时为 null |
 | parse_error | string/null | 是 | status=unreadable 时为 JSON 解析异常摘要，格式 `line {line}, column {column}: {message}`；其他状态为 null |
 | execution_epoch | integer/null | 是 | 当前执行 fencing token；legacy/unreadable 无法证明时为 null |
+| stale_since | string/null | 是 | status=stale 时为首次判定 stale 的时间；其他状态为 null |
+| stale_grace_remaining_seconds | number/null | 是 | status=stale 时为 24h 宽限期剩余秒数，最小 0；其他状态为 null |
 | allowed_actions | string[] | 是 | `stop/recover_retry/recover_continue/respond/rerun/reconcile` 的允许子集；`recover_retry` 是兼容 action 名，表示默认 recover/retry 入口，不对应单独能力字段 |
 | transport | string | 是 | `cli` 或 `acp`；默认 `cli`，旧 Run 缺失时回退为 `cli` |
 
@@ -75,42 +77,45 @@ created: 2026-07-18T22:00:00Z
 |------|------|------|------|
 | args | object/null | 是 | 启动参数；unreadable 且无法解析时为 null |
 | state | object/null | 是 | 当前 Run 级 state；缺失为 null |
-| graph | PhaseGraph | 是 | 聚合 Phase 图 |
-| occurrences | PhaseOccurrence[] | 是 | Phase 实际进入序列 |
+| agent_graph | AgentGraph | 是 | 由结构化 Agent 事件涌现的 Call 实例图 |
 | calls | AgentCallSummary[] | 是 | 可明确关联的 Calls |
+| events | RunEvent[] | 是 | 结构合法的 v2 事件及原始 legacy 时间线事件 |
 | interventions | InterventionSummary[] | 是 | Run 的人工输入请求，按 created_at 升序 |
+| unattributed | RunEvent[] | 是 | 结构合法但无法证明 Call 归属的 legacy 事件 |
+| malformed | MalformedEvent[] | 是 | 不合约事件及可观测原因 |
 | unattributed_count | integer | 是 | legacy 无法证明归属的事件数 |
-| malformed_count | integer | 是 | v2 不合约事件数 |
+| malformed_count | integer | 是 | invalid JSON、非 object、unsupported version 或 v2 不合约事件总数 |
 
-### PhaseGraph
+`unattributed_count == len(unattributed)`，`malformed_count == len(malformed)`。Malformed event 不得同时出现在 `events`、`calls`、`agent_graph` 或 `unattributed`。
+
+### AgentGraph
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| nodes | PhaseNode[] | 是 | 空图为空数组 |
-| edges | PhaseEdge[] | 是 | 空图为空数组 |
-| current_phase_id | string/null | 是 | 无当前 Phase 时为 null |
+| nodes | AgentNode[] | 是 | 每个 call_id 至多一个节点；空图为空数组 |
+| edges | AgentEdge[] | 是 | 空图为空数组 |
+| current | string/null | 是 | 最近开始的 call_id；无 Agent Call 时为 null |
 
-PhaseNode：`phase:string`、`occurrence_count:integer >= 1`、`is_current:boolean`，全部必填。
+AgentNode：`id:string`、`label:string`、`agent_def:string/null`、`status:string`，全部必填。`id` 是 call_id；label 缺失或 trim 后为空时回退为 id；status 为 `running/done/failed`。
 
-PhaseEdge：`from:string`、`to:string`、`count:integer >= 1`、`is_backedge:boolean`，全部必填。
+AgentEdge：`from:string`、`to:string`、`kind:string`，全部必填；from/to 均引用现有 node id，kind 为 `sequential/fork/join`。
 
-### PhaseOccurrence
+### RunEvent 与 MalformedEvent
 
-| 字段 | 类型 | 必填 |
-|------|------|------|
-| phase_id | string | 是 |
-| phase | string | 是 |
-| occurrence | integer | 是 |
-| started_at | string/null | 是；legacy 无时间证据时为 null |
-| ended_at | string/null | 是 |
-| call_ids | string[] | 是 |
+RunEvent 的 v2 字段为 `version:2`、`event_id:integer >= 1`、`type:string`、`ts:string`、`run_id:string`、`payload:object`；Agent 关联事件还必须含非空 `call_id:string`。Agent 关联事件指 type 以 `agent_` 开头，或属于 `tool_call/tool_call_update/usage_update/message/retry`。Legacy event 保持原 object 字段，不补造 call_id。
+
+MalformedEvent 固定为：
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| reason | string | 是 | `invalid_json/non_object/unsupported_version/invalid_envelope/missing_call_id` |
+| raw | any | 是 | 可解析行保留原 JSON 值；invalid_json 为 UTF-8 replacement 解码的原始行 |
 
 ### AgentCallSummary
 
 | 字段 | 类型 | 必填 |
 |------|------|------|
 | call_id | string | 是 |
-| phase_id | string | 是 |
 | session | string/null | 是 |
 | status | string | 是 | `pending/running/succeeded/failed/retrying/waiting_input/blocked` |
 | started_at | string/null | 是 |
@@ -145,6 +150,8 @@ PhaseEdge：`from:string`、`to:string`、`count:integer >= 1`、`is_backedge:bo
 | responded_at | string/null | 是 | 回答时间 |
 | timeout_seconds | number/null | 是 | 仅 workflow request 可声明；null 表示无超时 |
 | response_source | string | 条件必填 | status=answered 时为 `human/default/timeout_default`；legacy 缺省归一化为 `human` |
+
+`response` 是由 `source` 判别的联合类型：`source=agent` 时必须是非空 string，并满足 options/allow_custom；`source=workflow` 时可以是任意 JSON 值，但 schema 非 null 时必须通过该 schema。`status!=answered` 时不得返回 response；`status=answered` 时必须返回，即使 workflow response 是 JSON null。
 
 旧记录缺少 `source/options/allow_custom/timeout_seconds` 时按 Spec v18 的兼容默认值归一化。旧 Agent request 缺少 `request_group_id`/`request_index` 时，read model 以 `(call_id, session_id)` 派生 group，并按 `(created_at, request_id)` 给出稳定顺序；旧 workflow request 归一化为 `request_group_id=null`、`request_index=0`。legacy 恢复证据标记为 unverified，不改写旧文件。
 
@@ -194,8 +201,6 @@ Query：
 | backend | string/null | 否 | null | 已知 Backend 名或 null=auto |
 | model | string/null | 否 | null | 非空字符串或 null |
 | mock | string/null | 否 | null | `bash/auto/null` |
-| from_phase | string/null | 否 | null | 声明的 Phase title 或 null |
-| only_phase | string/null | 否 | null | 声明的 Phase title 或 null；非 null 时服务端令有效 from_phase 等于该值；请求同时传非同值 from_phase 返回 422 |
 | working_directory | string/null | 否 | null | run 的显式工作目录（ADR-0042）；非 null 时必须是已存在目录的绝对路径，否则 422（details 指明 `not_absolute` / `not_found` / `not_a_directory`）；null 时使用下述框架隔离目录 |
 | transport | string | 否 | cli | `cli` 或 `acp`；`acp` 路由到 ACP 后端（AcpSdkBackend），加载可选依赖 agent-client-protocol，缺失时报错提示安装 extra `[acp]`（对应 422 `validation_failed` 或 503） |
 | append_prompt | string | 否 | `""` | UTF-8 编码不超过 65536 bytes；空字符串等价于缺省；作为不受信任的用户 prompt 段冻结进 execution_options，参与 Call input_digest，不进入 system prompt |
@@ -304,13 +309,18 @@ response 持久化成功后，后续恢复 worker/agent 失败按普通 Run exec
 
 无 body。200：相同 run_id、status=failed 的 `RunSummary`。
 
-错误：404 `run_not_found`；409 `run_not_stale` 或 `process_alive`；500 `atomic_write_failed`。
+错误：404 `run_not_found`；409 `run_not_stale`、`run_in_grace` 或 `process_alive`；500 `atomic_write_failed`。`run_in_grace` 的 `error.details.stale_since` 与 `error.details.grace_remaining_seconds` 分别给出计时起点和剩余秒数；不把 Run 改为 failed。
 
 ## 四、Run 事件
 
 ### `GET /runs/{run_id}/events`
 
-Query：`last_event_id`，integer >= 0，默认 0。
+Query：
+
+| 字段 | 类型 | 必填 | 默认 | 说明 |
+|------|------|------|------|------|
+| last_event_id | integer >= 0 | 否 | 0 | `run_event` topic 最后收到的 event_id |
+| last_file_changes_id | integer >= 0 | 否 | 0 | `file_changes` topic 最后收到的 seq |
 
 正常响应为 SSE。每个 v2 事件使用：
 
@@ -319,18 +329,21 @@ id: 12
 event: run_event
 data: {"version":2,"event_id":12,"type":"agent_done",...}
 
+id: 7
+event: file_changes
+data: {"seq":7,"call_id":"call-3","label":"review","ts":"...","changes":[]}
+
 ```
 
 已结束 Run 完成重放后发送并关闭：
 
 ```text
-id: 12
 event: stream_end
-data: {"last_event_id":12}
+data: {"last_event_id":12,"last_file_changes_id":7}
 
 ```
 
-建立连接前错误使用通用 JSON 错误信封：404 `run_not_found`；409 `legacy_events_not_streamable`；410 `cursor_out_of_range`，`error.details.max_event_id` 为当前最大值；422 `validation_failed`。
+建立连接前错误使用通用 JSON 错误信封：404 `run_not_found`；409 `legacy_events_not_streamable`；410 `cursor_out_of_range`，run_event 游标越界时 `error.details.max_event_id` 为当前最大值；422 `validation_failed`。
 
 连接建立后 reader 失败，发送并关闭：
 
@@ -340,6 +353,8 @@ data: {"code":"event_read_failed","last_event_id":12}
 
 ```
 
+`file_changes` 游标越界只发送该 topic 的 `stream_error`，data 含 `topic="file_changes"`、`code="cursor_out_of_range"`、`max_file_changes_id`；不得关闭仍可继续的 run_event topic。任一 topic 的底层 reader 在连接建立后发生 I/O 失败时，发送不含 topic 的 `stream_error`，data 含 `code="event_read_failed"` 和当前 `last_event_id`，随后关闭整个连接；失败前已发送的数据不得重复。跨 topic 不承诺全局顺序。
+
 Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`error.details.legacy_endpoint` 为 `/api/v1/runs/{run_id}/legacy-events`。Legacy Run 通过该端点一次性读取，不提供精确 SSE 游标。
 
 ### `GET /runs/{run_id}/legacy-events`
@@ -347,7 +362,7 @@ Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`e
 200：
 
 ```json
-{"items": [], "unattributed_count": 0, "malformed_count": 0}
+{"items": [], "unattributed": [], "malformed": [], "unattributed_count": 0, "malformed_count": 0}
 ```
 
 错误：404 `run_not_found`。
@@ -357,10 +372,12 @@ Legacy Run 请求本 SSE 端点时返回 409 `legacy_events_not_streamable`，`e
 200：
 
 ```json
-{"items": [{"seq": 1, "phase": "Plan", "phase_id": "plan-1", "ts": "...", "changes": [{"path": "data/raw.json", "action": "created", "size": 1024}]}], "count": 1}
+{"items": [{"seq": 1, "call_id": "call-1", "label": "planner", "ts": "...", "changes": [{"path": "data/raw.json", "action": "created", "size": 1024}]}], "count": 1}
 ```
 
 按 seq 升序返回 run 的全部文件变化记录；无 `file_changes.jsonl` 的 legacy Run 返回空列表。
+
+每条 FileChangeRecord 的 `seq:integer >= 1`、`call_id:string`、`label:string`、`ts:string`、`changes:FileChange[]` 均必填。label 只用于显示，不作为关联键；changes 元素含 `path:string`、`action:created/modified/deleted`，created/modified 时 `size:integer` 必填，modified/deleted 时 `prev_size:integer` 必填。
 
 错误：404 `run_not_found`。
 
@@ -446,10 +463,9 @@ Query：可选 `q`、`limit`、`cursor`。200：
 | files | LoopFileSummary[] | 是 | 允许预览的目录树平铺列表 |
 | agents | AgentDefinitionSummary[] | 是 | Agent 摘要 |
 | runs | RunSummary[] | 是 | 最近 20 个关联 Runs，按 created 降序 |
-| declared_phases | object[] | 否 | loop.md `meta.phases` 声明（ADR-0040），`[{title, detail}]` |
 | declared_args | object[] | 否 | loop.md 顶层 `args` 声明（BR-047），`[{name, default, description, required}]`；仅在 loop.md 不存在时回退读取 workflow.py `meta.args`；无声明时缺省或空列表 |
 
-LoopSummary 在列表接口中同样携带 `declared_phases` / `declared_args`（可选字段），供 New Run 对话框预填。
+LoopSummary 在列表接口中同样携带 `declared_args`（可选字段），供 New Run 对话框预填。LoopSummary 与 LoopDetail 均不得返回 `declared_phases`；legacy `meta.phases` 不参与 API 投影。
 
 DeclaredArg：
 
