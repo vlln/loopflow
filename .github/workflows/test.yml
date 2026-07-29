@@ -40,7 +40,10 @@ jobs:
           --junitxml=artifacts/python-junit.xml
 
       - name: Verify AC manifest infrastructure
-        run: uv run python scripts/check-ac-manifest.py --allow-planned
+        run: |
+          uv run python scripts/check-ac-manifest.py --allow-planned
+          uv run python scripts/check-ac-manifest.py --profile recovery --allow-planned
+          uv run python scripts/check-ac-manifest.py --profile iteration027 --allow-planned
 
       - name: Upload Python evidence
         if: always() && matrix.python-version == '3.14'

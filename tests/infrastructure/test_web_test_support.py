@@ -26,6 +26,65 @@ def test_contract_validator_rejects_shape_drift():
         validate_contract("intervention", invalid_intervention)
 
 
+def test_v18_file_preview_union_and_declared_args_contracts():
+    examples = contract_examples()
+    validate_contract("file_preview", examples["file_preview"])
+    validate_contract(
+        "file_preview",
+        {
+            "path": "notes.txt",
+            "media_type": "text/plain",
+            "content": "hello",
+            "size": 5,
+            "read_only": True,
+        },
+    )
+    validate_contract("declared_arg", examples["declared_arg"])
+
+    invalid_raw = dict(examples["file_preview"])
+    invalid_raw["content"] = "base64 bytes"
+    with pytest.raises(ValidationError):
+        validate_contract("file_preview", invalid_raw)
+
+    invalid_arg = {"name": "topic", "unknown": True}
+    with pytest.raises(ValidationError):
+        validate_contract("declared_arg", invalid_arg)
+    with pytest.raises(ValidationError):
+        validate_contract("declared_arg", {"name": "   "})
+
+
+def test_run_create_append_prompt_uses_utf8_byte_limit():
+    create = contract_examples()["run_create"]
+    validate_contract("run_create", create)
+    validate_contract("run_create", {"loop": "hello", "append_prompt": "界" * 21845})
+
+    with pytest.raises(ValidationError, match="65536 UTF-8 bytes"):
+        validate_contract("run_create", {"loop": "hello", "append_prompt": "界" * 21846})
+
+
+def test_normalized_intervention_requires_group_and_answer_provenance():
+    intervention = contract_examples()["intervention_v18"]
+    validate_contract("intervention_v18", intervention)
+
+    agent_request = dict(intervention)
+    agent_request.update(
+        {
+            "source": "agent",
+            "request_group_id": "group-1",
+            "call_id": "call-1",
+            "session_id": "session-1",
+            "resume_mode": "continue",
+            "can_continue_session": True,
+        }
+    )
+    validate_contract("intervention_v18", agent_request)
+
+    answered = dict(intervention)
+    answered.update({"status": "answered", "response": False})
+    with pytest.raises(ValidationError):
+        validate_contract("intervention_v18", answered)
+
+
 def test_filesystem_factory_creates_v2_legacy_and_unreadable_runs(tmp_path):
     factory = WebFixtureFactory(tmp_path)
     run = factory.create_run("run-v2", status="running", state={"attempt": 2})

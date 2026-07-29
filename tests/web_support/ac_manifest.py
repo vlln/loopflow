@@ -24,6 +24,7 @@ HTTP_STATUS_BY_CODE = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "file_read_failed": 500,
     "atomic_write_failed": 500,
     "internal_error": 500,
     "diagnostic_start_failed": 503,

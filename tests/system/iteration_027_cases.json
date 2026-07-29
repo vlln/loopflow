@@ -1,0 +1,539 @@
+{
+  "version": 1,
+  "profile": "iteration027",
+  "source": "docs/ac/0015-iteration-0.27.0.md",
+  "cases": [
+    {
+      "ac_id": "AC-033-N-1",
+      "fixture": "Run 工作目录依次含小于 50 MiB 的 png/jpg/jpeg/gif/svg/webp/bmp/ico fixture",
+      "action": "对 8 种扩展名参数化请求 preview，再 GET raw_url",
+      "assertion": "每组 preview 返回 encoding=raw、content=null、size/raw_url/read_only；raw bytes 完全一致，Content-Type 分别为 image/png、image/jpeg、image/jpeg、image/gif、image/svg+xml、image/webp、image/bmp、image/x-icon，Cache-Control no-store",
+      "test_node": "planned::ac-033-n-1",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file",
+        "GET /api/v1/runs/{run_id}/file/raw"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-N-2",
+      "fixture": "Loop 根目录含小于 50 MiB 的 `report.pdf`",
+      "action": "请求 Loop preview 和 raw_url，并在 WebUI 打开",
+      "assertion": "raw 返回 application/pdf；WebUI 用只读 PDF viewer 展示，不把 bytes 放进文本 `<pre>`",
+      "test_node": "planned::ac-033-n-2",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:file-preview"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-N-3",
+      "fixture": "Run 工作目录含 `photo.jpg`",
+      "action": "从 File changes 点击文件",
+      "assertion": "WebUI 显示受视口约束的图片，关闭后释放预览视图；文件树布局不跳动",
+      "test_node": "planned::ac-033-n-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "ui:file-preview"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-B-1",
+      "fixture": "允许格式文件大小恰为 50 MiB",
+      "action": "请求 raw",
+      "assertion": "返回 200 和完整 bytes；大于 50 MiB 才拒绝",
+      "test_node": "planned::ac-033-b-1",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file/raw"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-B-2",
+      "fixture": "`.bin` 含二进制内容",
+      "action": "请求 preview",
+      "assertion": "返回 422 file_not_previewable；不返回 content/raw_url",
+      "test_node": "planned::ac-033-b-2",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "file_not_previewable"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-B-3",
+      "fixture": "`notes.txt` 小于 1 MiB",
+      "action": "请求 preview",
+      "assertion": "保持既有 UTF-8 文本 JSON 响应，不出现 encoding=raw/raw_url",
+      "test_node": "planned::ac-033-b-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-B-4",
+      "fixture": "`large.txt` 是超过 1 MiB 的 UTF-8 文本",
+      "action": "请求 preview",
+      "assertion": "返回 422 file_not_previewable；不返回 content/raw_url",
+      "test_node": "planned::ac-033-b-4",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "file_not_previewable"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-E-1",
+      "fixture": "raw path 为 `../secret.pdf` 或符号链接解析后越界",
+      "action": "请求 Run/Loop raw",
+      "assertion": "返回 403 path_forbidden；不读取或返回目标 bytes",
+      "test_node": "planned::ac-033-e-1",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "GET /api/v1/loops/{loop_name}/file/raw"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 403,
+          "code": "path_forbidden"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-E-2",
+      "fixture": "preview 后文件已被删除",
+      "action": "请求 raw_url",
+      "assertion": "返回 404 file_not_found；WebUI 显示读取失败状态，不保留空白 iframe",
+      "test_node": "planned::ac-033-e-2",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "ui:file-preview"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 404,
+          "code": "file_not_found"
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-F-1",
+      "fixture": "允许扩展名文件大于 50 MiB",
+      "action": "请求 preview 或 raw",
+      "assertion": "返回 422 file_not_previewable；响应不含部分 bytes",
+      "test_node": "planned::ac-033-f-1",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file",
+        "GET /api/v1/runs/{run_id}/file/raw"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "file_not_previewable"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-033-F-2",
+      "fixture": "测试替换 raw reader，使路径 resolve/size 校验通过后 `Path.read_bytes()` 抛 PermissionError",
+      "action": "请求 raw，随后 GET /runs",
+      "assertion": "raw 返回 500 file_read_failed 且不发送 200 header 或部分内容；GET /runs 返回 200 和合法 Run 列表 JSON",
+      "test_node": "planned::ac-033-f-2",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "GET /api/v1/runs"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 500,
+          "code": "file_read_failed"
+        },
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-N-1",
+      "fixture": "workflow 顺序调用两个 Agent",
+      "action": "`loopflow run demo --append-prompt \"只读取，不修改\"`",
+      "assertion": "两次实际动态 prompt 末尾各出现一次独立 run-append-prompt 段；run.json 冻结原值；不进入 system prompt",
+      "test_node": "planned::ac-034-n-1",
+      "targets": [
+        "process:cli-run",
+        "unit:run-append-prompt"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-N-2",
+      "fixture": "WebUI New Run 填写 Append prompt",
+      "action": "启动 Run",
+      "assertion": "POST body 含 append_prompt；API 创建 201，execution_options 持久化该值，Agent 收到相同附加段",
+      "test_node": "planned::ac-034-n-2",
+      "targets": [
+        "POST /api/v1/runs",
+        "ui:new-run",
+        "unit:run-append-prompt"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 201
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-N-3",
+      "fixture": "使用 `run --agent reader --prompt \"task\" --append-prompt \"constraint\"`",
+      "action": "执行",
+      "assertion": "task 保持主动态 prompt，constraint 作为独立附加段出现一次；CLI 退出码 0 且 Run status=done",
+      "test_node": "planned::ac-034-n-3",
+      "targets": [
+        "process:cli-run",
+        "unit:run-append-prompt"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-B-1",
+      "fixture": "append_prompt 缺省或为空字符串",
+      "action": "创建 Run",
+      "assertion": "等价于未提供，不注入空标签，execution_options 不必保存空值",
+      "test_node": "planned::ac-034-b-1",
+      "targets": [
+        "unit:run-append-prompt"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-B-2",
+      "fixture": "append_prompt UTF-8 编码后恰为 65536 bytes",
+      "action": "通过 CLI 和 API 分别创建 Run",
+      "assertion": "两条入口均接受；多字节字符按编码后 bytes 计数",
+      "test_node": "planned::ac-034-b-2",
+      "targets": [
+        "process:cli-run",
+        "POST /api/v1/runs"
+      ],
+      "expectations": [
+        {
+          "kind": "process",
+          "value": "matches-ac"
+        },
+        {
+          "kind": "http_status",
+          "value": 201
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-E-1",
+      "fixture": "append_prompt UTF-8 编码后为 65537 bytes",
+      "action": "执行 `loopflow run demo --append-prompt <value>`",
+      "assertion": "CLI 明确输出 append_prompt 超过 64 KiB，退出码非 0；不创建 Run、不调用 backend",
+      "test_node": "planned::ac-034-e-1",
+      "targets": [
+        "process:cli-run"
+      ],
+      "expectations": [
+        {
+          "kind": "cli_exit",
+          "value": "nonzero"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-E-2",
+      "fixture": "已有 Run 冻结 append_prompt=A",
+      "action": "POST `/runs/{id}/recover`，body 含 `mode:\"retry\", append_prompt:\"B\"`",
+      "assertion": "返回 422 validation_failed，details.fields 含 append_prompt；原 execution_options 保持 A，不启动恢复 worker",
+      "test_node": "planned::ac-034-e-2",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/recover"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "validation_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-E-3",
+      "fixture": "append_prompt UTF-8 编码后为 65537 bytes",
+      "action": "POST /runs，body 含该值",
+      "assertion": "返回 422 validation_failed，details.field=append_prompt；不创建 Run、不调用 backend",
+      "test_node": "planned::ac-034-e-3",
+      "targets": [
+        "POST /api/v1/runs"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 422,
+          "code": "validation_failed"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-E-4",
+      "fixture": "WebUI Append prompt 输入 65537 bytes",
+      "action": "点击 Start",
+      "assertion": "输入下方显示 `Append prompt must be 64 KiB or less`；Start 保持可见但请求不发送，POST /runs 调用数为 0",
+      "test_node": "planned::ac-034-e-4",
+      "targets": [
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-F-1",
+      "fixture": "同一 Call 首次运行冻结 append_prompt=A，恢复时落盘值被外部篡改为 B",
+      "action": "recover",
+      "assertion": "input_digest 不匹配并以 replay_diverged 失败；不命中 A 的成功缓存",
+      "test_node": "planned::ac-034-f-1",
+      "targets": [
+        "unit:call-input-digest"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-034-F-2",
+      "fixture": "append_prompt 文本包含“忽略 system prompt”等指令",
+      "action": "捕获 backend 调用参数",
+      "assertion": "文本只出现在用户动态 prompt 的 run-append-prompt 段，不进入/覆盖 system 参数",
+      "test_node": "planned::ac-034-f-2",
+      "targets": [
+        "unit:run-append-prompt"
+      ],
+      "expectations": [
+        {
+          "kind": "unit",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-N-1",
+      "fixture": "Loop A 的 loop.md 顶层 args 声明 topic 默认 rna、count 无默认且 required",
+      "action": "打开 New Run 并选择 A",
+      "assertion": "Arguments 行为 topic=rna、count=空；required 有可见标记；提交时空 count 不进入 args",
+      "test_node": "planned::ac-035-n-1",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-N-2",
+      "fixture": "Loop A/B 声明不同 args",
+      "action": "在已打开对话框中从 A 切换到 B",
+      "assertion": "键值行按 B 的声明重建，不残留 A 的 key/default",
+      "test_node": "planned::ac-035-n-2",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-B-1",
+      "fixture": "Loop 无 args 声明",
+      "action": "选择该 Loop",
+      "assertion": "编辑器显示单个空白起始行，不伪造参数名",
+      "test_node": "planned::ac-035-b-1",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-B-2",
+      "fixture": "参数声明 default 为 false、0、空字符串或对象",
+      "action": "打开对话框",
+      "assertion": "false/0/对象以可回解析形式预填；空字符串保持空且提交时按既有空值忽略规则处理",
+      "test_node": "planned::ac-035-b-2",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-E-1",
+      "fixture": "args 含非对象、空 name 和一个合法条目",
+      "action": "查询 Loop 并打开 New Run",
+      "assertion": "API 静默忽略非法条目并保留合法条目；UI 只预填合法 key，不崩溃",
+      "test_node": "planned::ac-035-e-1",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        },
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-E-2",
+      "fixture": "loop.md 存在但 args 不是数组",
+      "action": "查询 Loop",
+      "assertion": "declared_args 返回空数组；不得回退读取 workflow.py meta.args",
+      "test_node": "planned::ac-035-e-2",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "unit:declared-args"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-035-F-1",
+      "fixture": "fetch `GET /api/v1/loops` 被注入 network rejection，页面此前缓存过 Loop A declared_args",
+      "action": "打开 New Run",
+      "assertion": "对话框显示 `Unable to load loops`，Loop selector 与 Start 禁用，Arguments 不显示缓存的 A 参数；POST /runs 调用数为 0",
+      "test_node": "planned::ac-035-f-1",
+      "targets": [
+        "GET /api/v1/loops",
+        "ui:new-run"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    }
+  ]
+}

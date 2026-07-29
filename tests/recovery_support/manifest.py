@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +90,24 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-023-F-1", "unit:agent-control-output")
     assign("AC-023-F-2", "unit:session-intervention")
     assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
+    assign("AC-023-N-6", "unit:agent-intervention-prompt")
+    assign("AC-023-N-7", "unit:agent-control-schema")
+    assign("AC-023-N-8", "unit:intervention-group-resume")
+    assign(
+        "AC-023-N-9",
+        "unit:parallel-intervention-resume",
+        "POST /api/v1/runs/{run_id}/interventions/responses",
+    )
+    assign("AC-023-B-4", "unit:agent-control-output")
+    assign("AC-023-B-5", "unit:goal-control-schema")
+    assign("AC-023-B-6", "unit:legacy-intervention-normalization")
+    assign("AC-023-E-6", "unit:agent-intervention-preflight")
+    assign("AC-023-E-7", "unit:agent-control-schema")
+    assign("AC-023-E-8", "POST /api/v1/runs/{run_id}/interventions/responses")
+    assign("AC-023-E-9", "unit:agent-control-schema")
+    assign("AC-023-E-10", "unit:agent-control-schema", "unit:session-intervention")
+    assign("AC-023-F-4", "unit:agent-intervention-capability-gate")
+    assign("AC-023-F-5", "unit:intervention-replay-target")
 
     assign(
         "AC-026-N-1 AC-026-N-2 AC-026-N-3 AC-026-N-4 AC-026-N-5 AC-026-B-1 AC-026-B-2 AC-026-B-3 AC-026-E-1 AC-026-E-2 AC-026-E-3",
@@ -263,6 +282,9 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-023-F-3": [{"kind": "http_status", "value": 200}],
+    "AC-023-E-8": [
+        {"kind": "http_status", "value": 422, "code": "validation_failed"}
+    ],
     "AC-029-N-1": [{"kind": "http_status", "value": 200}],
     "AC-029-N-2": [{"kind": "http_status", "value": 200}],
     "AC-029-B-1": [{"kind": "http_status", "value": 409, "code": "run_in_grace"}],
@@ -293,7 +315,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
                 **row,
                 "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
-                "expectations": expectations,
+                "expectations": deepcopy(expectations),
             }
         )
     return {"version": 1, "profile": "recovery", "source": str(ac_path), "cases": cases}

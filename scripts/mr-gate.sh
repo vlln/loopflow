@@ -21,12 +21,14 @@ if grep -Eq '\| \*\*当前阶段\*\* \| `(INIT|DESIGN|TEST_INFRA|DEVELOP)` \|' d
   python3 scripts/check-ac-manifest.py --profile scheduling --allow-planned
   python3 scripts/check-ac-manifest.py --profile agent --allow-planned
   python3 scripts/check-ac-manifest.py --profile singleagent --allow-planned
+  python3 scripts/check-ac-manifest.py --profile iteration027 --allow-planned
 else
   python3 scripts/check-ac-manifest.py
   python3 scripts/check-ac-manifest.py --profile recovery
   python3 scripts/check-ac-manifest.py --profile scheduling
   python3 scripts/check-ac-manifest.py --profile agent
   python3 scripts/check-ac-manifest.py --profile singleagent
+  python3 scripts/check-ac-manifest.py --profile iteration027
 fi
 
 cd "$repo_dir/web"
