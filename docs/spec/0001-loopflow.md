@@ -358,7 +358,9 @@ CLI 后端将其原生输出转换为 ACP 兼容事件后写入缓存。未来 A
 {"version":2,"event_id":3,"type":"agent_done","ts":"2026-07-18T20:00:03Z","run_id":"abc","call_id":"call-1","payload":{"exit_code":0,"duration_ms":2000}}
 ```
 
-没有 `version` 信封的历史 `events.jsonl` 视为 `legacy`。Legacy reader 保证原始事件时间线可读；只有具备明确 call_id 或其他稳定证据时才建立 Call 关联。并行交错或证据不足的事件标记为 `unattributed`，不得按文件位置或最近事件虚构归属。legacy phase 事件可在原始时间线显示，但不恢复为当前 AgentGraph 节点。
+事件分类按以下顺序判定，分类互斥：无法解析的完整 JSONL 行或解析后不是 object，进入 `malformed`；object 缺少 `version` 字段时视为 `legacy`；存在 `version` 但值不是 integer `2` 时进入 `malformed`；`version=2` 时再校验必填信封字段，Agent 关联事件还必须有非空 string `call_id`，不合约者进入 `malformed`。Agent 关联事件可机械判定为 `type` 以 `agent_` 开头，或 `type` 属于 `tool_call`、`tool_call_update`、`usage_update`、`message`、`retry`；其他事件类型不因缺少 call_id 单独判为 malformed。Legacy reader 保证原始事件时间线可读；只有具备明确 call_id 或其他稳定证据时才建立 Call 关联。并行交错或证据不足的结构合法 legacy 事件标记为 `unattributed`，不得按文件位置或最近事件虚构归属。legacy phase 事件可在原始时间线显示，但不恢复为当前 AgentGraph 节点。
+
+RunDetail 事件投影同时公开 `unattributed`、`malformed` 数组及对应 count，count 必须等于对应数组长度。`unattributed` 元素是保持原字段的 legacy event object。`malformed` 元素固定为 `{reason, raw}`：`reason` 是 `invalid_json`、`non_object`、`unsupported_version`、`invalid_envelope` 或 `missing_call_id`；`raw` 对可解析行保留原 JSON 值，对 `invalid_json` 保留 UTF-8 replacement 解码后的原始行。Malformed 事件不进入 AgentGraph、Call、合法事件数组或 unattributed；同文件中的其他合法事件仍继续投影。
 
 ### file_changes.jsonl
 
