@@ -32,7 +32,7 @@ created: 2026-07-29T13:20:37Z
 | strict 正确拦截 | PASS | recovery 仅拒绝 14 个新增 planned nodes；iteration027 仅拒绝 29 个 planned nodes；其他错误均为 0 |
 | 既有 API 契约兼容 | PASS | `uv run pytest tests/integration/test_web_api.py -k intervention -q`：2 passed、42 deselected；v17 fixture 保留至 DEVELOP 迁移真实 API 测试 |
 | Python CI 可运行 | PASS | `uv run pytest tests/ -q --junitxml=.artifacts/0106-python-junit.xml`：561 passed、1 skipped；机器证据位于 `.artifacts/0106-python-junit.xml` |
-| 范围边界 | PASS | commit `f32d716` 未修改产品实现、active 设计文档或具体 AC 业务测试用例 |
+| 范围边界 | PASS | develop squash commit `15e62b0` 未修改产品实现、active 设计文档或具体 AC 业务测试用例 |
 
 # Notes
 
