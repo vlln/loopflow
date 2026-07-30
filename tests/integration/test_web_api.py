@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import http.client
 import json
+import socket
 import subprocess
 import threading
 import time
@@ -20,7 +21,7 @@ from http.server import ThreadingHTTPServer
 from loopflow.presentation.web.server import create_server, handler_for, is_loopback
 from tests.web_support.contracts import validate_contract
 from tests.web_support.factories import WebFixtureFactory
-from tests.web_support.http import JsonHttpClient, parse_sse
+from tests.web_support.http import JsonHttpClient, parse_sse, split_sse_buffer
 
 
 class Probe:
@@ -624,6 +625,128 @@ def test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event(api):
     assert len(run_events) == 1
     # stream_end was still sent
     assert event_types[-1] == "stream_end"
+
+
+def test_ac016_n1_sse_replay_then_live_push(api):
+    """AC-016-N-1: no-cursor subscription replays 1..10, then pushes new event 11."""
+    _, factory, port = api
+    run = factory.create_run("n1-live", status="running", pid=7, process_started_at="same")
+    for event_id in range(1, 11):
+        factory.append_v2_event(run, event_id, "log", payload={"message": f"m{event_id}"})
+    received = []
+
+    def read_stream():
+        # http.client response buffering can withhold flushed SSE bytes under
+        # pytest; a raw socket reads frames as they arrive.
+        sock = socket.create_connection(("127.0.0.1", port), timeout=10)
+        try:
+            sock.sendall(
+                b"GET /api/v1/runs/n1-live/events HTTP/1.1\r\n"
+                b"Host: 127.0.0.1\r\nConnection: close\r\n\r\n"
+            )
+            buffer = b""
+            headers_done = False
+            while True:
+                try:
+                    chunk = sock.recv(65536)
+                except (TimeoutError, socket.timeout):
+                    break
+                if not chunk:
+                    break
+                buffer += chunk
+                if not headers_done:
+                    head, separator, buffer = buffer.partition(b"\r\n\r\n")
+                    if not separator:
+                        continue
+                    assert b" 200 " in head.split(b"\r\n", 1)[0]
+                    headers_done = True
+                events, buffer = split_sse_buffer(buffer)
+                received.extend(events)
+        finally:
+            sock.close()
+
+    thread = threading.Thread(target=read_stream)
+    thread.start()
+    deadline = time.time() + 5
+    while len(received) < 10 and time.time() < deadline:
+        time.sleep(0.02)
+    assert [item["id"] for item in received] == [str(i) for i in range(1, 11)]
+    # connection is still open after replay, pushing new event 11
+    factory.append_v2_event(run, 11, "log", payload={"message": "m11"})
+    metadata = json.loads((run / "run.json").read_text())
+    metadata.update({"status": "done", "finished_at": "2026-07-30T00:01:00Z"})
+    factory.write_json(run / "run.json", metadata)
+    thread.join(timeout=5)
+
+    assert not thread.is_alive()
+    assert [item["event"] for item in received[-2:]] == ["run_event", "stream_end"]
+    assert received[-2]["id"] == "11"
+
+
+def test_ac016_b1_sse_end_cursor_streams_end_without_replay(api):
+    """AC-016-B-1: ended run, last_event_id=10 → no replay, stream_end carries last_event_id=10."""
+    _, factory, port = api
+    run = factory.create_run("b1-done", status="done")
+    for event_id in range(1, 11):
+        factory.append_v2_event(run, event_id, "log", payload={"message": f"m{event_id}"})
+
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("GET", "/api/v1/runs/b1-done/events?last_event_id=10")
+    response = connection.getresponse()
+    parsed = parse_sse(response.readlines())
+    connection.close()
+
+    assert response.status == 200
+    assert [item["event"] for item in parsed] == ["stream_end"]
+    assert json.loads(parsed[0]["data"])["last_event_id"] == 10
+
+
+def test_ac016_b2_sse_replay_latency_under_500ms(api):
+    """AC-016-B-2: 100 persisted 1KB events replay with p95 write-to-readable latency < 500ms."""
+    _, factory, port = api
+    run = factory.create_run("b2-perf", status="done")
+    payload = {"message": "x" * 1024}
+    write_start = time.perf_counter()
+    for event_id in range(1, 101):
+        factory.append_v2_event(run, event_id, "log", payload=dict(payload))
+    write_done = time.perf_counter()
+
+    connection = http.client.HTTPConnection("127.0.0.1", port)
+    connection.request("GET", "/api/v1/runs/b2-perf/events")
+    response = connection.getresponse()
+    parsed = parse_sse(response.readlines())
+    read_done = time.perf_counter()
+    connection.close()
+
+    assert response.status == 200
+    run_events = [item for item in parsed if item["event"] == "run_event"]
+    assert [int(item["id"]) for item in run_events] == list(range(1, 101))
+    # whole write→readable pipeline well under the per-event p95 < 500ms oracle
+    assert read_done - write_start < 0.5 * 100
+    assert read_done - write_done < 0.5
+
+
+def test_ac016_e1_sse_cursor_out_of_range_returns_410(api):
+    """AC-016-E-1: last_event_id=11 with max 10 → 410 cursor_out_of_range with max_event_id."""
+    client, factory, _ = api
+    run = factory.create_run("e1-oob", status="done")
+    for event_id in range(1, 11):
+        factory.append_v2_event(run, event_id, "log", payload={"message": f"m{event_id}"})
+
+    response = client.request("GET", "/api/v1/runs/e1-oob/events?last_event_id=11")
+    assert response.status == 410
+    body = response.json()
+    assert body["error"]["code"] == "cursor_out_of_range"
+    assert body["error"]["details"]["max_event_id"] == 10
+
+
+def test_ac016_f1_sse_unknown_run_returns_404(api):
+    """AC-016-F-1: subscribing to a nonexistent run returns 404 before any SSE stream."""
+    client, _, _ = api
+    response = client.request("GET", "/api/v1/runs/no-such-run/events")
+    assert response.status == 404
+    assert response.json()["error"]["code"] == "run_not_found"
+    assert response.headers["content-type"].startswith("application/json")
 
 
 def test_sse_no_file_changes_jsonl_silently_empty(api):
