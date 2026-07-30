@@ -475,6 +475,15 @@ class RunRepository:
         return None
 
     def _working_directory(self, run_dir: Path) -> str:
+        # Persisted working_directory is authoritative (AC-014-B-6): the run
+        # list shows its basename. Fall back to the index, then the dir name.
+        try:
+            metadata = read_json(run_dir / "run.json")
+        except (OSError, json.JSONDecodeError):
+            metadata = {}
+        persisted = metadata.get("working_directory") if isinstance(metadata, dict) else None
+        if isinstance(persisted, str) and persisted:
+            return persisted
         record = self._index_records().get(run_dir.name)
         if record and Path(record["runs_directory"]).resolve() == run_dir.parent.resolve():
             return record["working_directory"]
