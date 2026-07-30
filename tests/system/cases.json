@@ -109,7 +109,7 @@
       "fixture": "done Run A",
       "action": "对 A 执行 Rerun",
       "assertion": "API 返回 201 和新 Run B；B.run_id != A.run_id，B.loop/args 与 A 相同，A 文件不变",
-      "test_node": "tests/unit/test_web_application.py::test_rerun_preserves_source_and_queue_validates",
+      "test_node": "planned::ac-014-n-7",
       "targets": [
         "POST /api/v1/runs/{run_id}/rerun",
         "ui:runs"
@@ -157,10 +157,10 @@
     },
     {
       "ac_id": "AC-014-N-10",
-      "fixture": "Loop 声明 `meta.args`（`review` 默认 `main`，`count` 无默认）",
+      "fixture": "Loop 的 loop.md 顶层声明 args（review 默认 main，count 无默认）",
       "action": "打开 New Run 对话框并选择该 Loop",
-      "assertion": "键值编辑器预填 `review=main` 与空值 `count` 行；直接启动时 POST body args 含 `{\"review\":\"main\"}`（空值行忽略）",
-      "test_node": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
+      "assertion": "键值编辑器预填 review=main 与空 count 行；直接启动时 POST args 只含 review=main",
+      "test_node": "planned::ac-014-n-10",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "POST /api/v1/runs",
@@ -260,10 +260,10 @@
     },
     {
       "ac_id": "AC-014-B-5",
-      "fixture": "Loop 无 `meta.args` 声明",
+      "fixture": "loop.md 存在但无 args，workflow.py legacy meta.args 有值",
       "action": "打开 New Run 对话框",
-      "assertion": "键值编辑器为空白起始（无预填行），行为与声明前一致",
-      "test_node": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
+      "assertion": "loop.md 权威：编辑器为空白，不读取 workflow.py 声明",
+      "test_node": "planned::ac-014-b-5",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "POST /api/v1/runs",
@@ -294,11 +294,29 @@
       ]
     },
     {
+      "ac_id": "AC-014-B-7",
+      "fixture": "Run 已记录 stale_since 且仍在 24h 宽限期，进程仍不存在",
+      "action": "请求 reconcile",
+      "assertion": "返回 409 run_in_grace；run.json 除允许的首次 stale_since 记录外不改为 failed",
+      "test_node": "planned::ac-014-b-7",
+      "targets": [
+        "POST /api/v1/runs/{run_id}/reconcile",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 409,
+          "code": "run_in_grace"
+        }
+      ]
+    },
+    {
       "ac_id": "AC-014-E-1",
       "fixture": "一个 run.json 是非法 JSON，另一个合法",
       "action": "查询 Runs",
       "assertion": "合法 Run 正常返回；非法条目作为 status=unreadable 的摘要返回并包含 parse_error；请求不返回 500",
-      "test_node": "tests/unit/test_web_storage.py::test_unreadable_run_does_not_hide_valid_siblings",
+      "test_node": "planned::ac-014-e-1",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -312,9 +330,9 @@
     },
     {
       "ac_id": "AC-014-E-2",
-      "fixture": "Run status=running，但进程不存在",
-      "action": "选择该 Run",
-      "assertion": "UI 显示 stale；Stop 禁用；显示 Reconcile；读取操作不修改 run.json",
+      "fixture": "Run status=running、进程不存在且 stale_since 缺失",
+      "action": "首次选择该 Run，再刷新详情",
+      "assertion": "首次读取原子记录 stale_since 并显示 stale；后续读取不重复改写；Stop 禁用且显示 Reconcile",
       "test_node": "planned::ac-014-e-2",
       "targets": [
         "GET /api/v1/runs/{run_id}",
@@ -347,10 +365,10 @@
     },
     {
       "ac_id": "AC-014-F-2",
-      "fixture": "Run 为 stale，reconcile 二次校验仍为 stale",
+      "fixture": "Run 为 stale，stale_since 已超过 24h，reconcile 二次校验仍 stale",
       "action": "请求 reconcile",
-      "assertion": "API 返回更新后 status=failed 的 Run；run.json 原子替换且 pid/process_started_at 已清除",
-      "test_node": "tests/unit/test_web_storage.py::test_reconcile_atomically_fails_stale_run_and_clears_identity",
+      "assertion": "返回 status=failed；run.json 原子替换且 pid/process_started_at/stale_since 已清除",
+      "test_node": "planned::ac-014-f-2",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile"
       ],
@@ -363,13 +381,13 @@
     },
     {
       "ac_id": "AC-015-N-1",
-      "fixture": "v2 事件包含 `Review(p1) → Fix(p2) → Review(p3)`",
+      "fixture": "v2 事件包含顺序 call-1(planner) → call-2(fixer) → call-3(reviewer)",
       "action": "打开 Run",
-      "assertion": "图有 Review、Fix 两个聚合节点和 Fix→Review 回边；Review 显示 2 个 occurrence",
+      "assertion": "AgentGraph 有 3 个 call_id 节点、2 条 sequential edge、current=call-3；dagre rankdir=LR，edge 从左侧节点指向右侧节点",
       "test_node": "planned::ac-015-n-1",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -380,13 +398,14 @@
     },
     {
       "ac_id": "AC-015-N-2",
-      "fixture": "p1 关联 call-1，p3 关联 call-3",
-      "action": "依次选择 p1、p3",
-      "assertion": "Calls/Events 分别只显示 call-1、call-3；右侧过程同步切换",
+      "fixture": "call-1 与 call-3 各有消息、工具调用和文件变化",
+      "action": "依次选择两个图节点",
+      "assertion": "Events 与文件变化分别只高亮对应 call_id；右侧 Call 过程同步切换",
       "test_node": "planned::ac-015-n-2",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -397,13 +416,13 @@
     },
     {
       "ac_id": "AC-015-N-3",
-      "fixture": "一个 Phase 内两个并行 Call 的事件均有 call_id",
-      "action": "选择该 occurrence",
-      "assertion": "两个 Call 分开显示；各自消息、工具调用、重试和 done 不串线",
+      "fixture": "结构化事件表达 call-a 后 parallel(call-b, call-c) 再 call-d",
+      "action": "打开 Run 并选择 b、c",
+      "assertion": "b/c 是不同节点且各自事件不串线；图含 a→b/a→c fork edge 和 b→d/c→d join edge",
       "test_node": "planned::ac-015-n-3",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -414,13 +433,13 @@
     },
     {
       "ac_id": "AC-015-N-4",
-      "fixture": "事件形成 `Plan→Implement` 和 `Plan→Review` 两个分支，当前 phase_id 属于 Review",
+      "fixture": "两组连续 parallel 产生 back-to-back fork/join，当前 call 为最后一组子节点",
       "action": "打开 Run",
-      "assertion": "聚合图同时显示两条分支；Review 路径标记 current，另一条路径降低权重但仍可选择",
+      "assertion": "所有 fork/join edge 均可见；current 只标记当前 call_id，未完成图也不出现孤立子节点",
       "test_node": "planned::ac-015-n-4",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -431,13 +450,81 @@
     },
     {
       "ac_id": "AC-015-N-5",
-      "fixture": "state.json 为 `{\"attempt\":2}`，选中 Review occurrence",
-      "action": "打开 Run Inspector 和 Phase 详情",
-      "assertion": "Run Inspector 显示 attempt=2；Phase 详情只有 Calls/Events，不出现 Phase State 或伪造 state diff",
+      "fixture": "state.json 为 `{\"attempt\":2}`，选中 call-2",
+      "action": "打开 Run Inspector 和 Call 详情",
+      "assertion": "Inspector 显示 attempt=2；Call 详情只显示结构化事件，不伪造 Call state diff",
       "test_node": "planned::ac-015-n-5",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-N-6",
+      "fixture": "新 Run 尚未产生 agent_start，Loop legacy meta.phases 非空",
+      "action": "查询 RunDetail 并打开页面",
+      "assertion": "响应含 agent_graph={nodes:[],edges:[],current:null}，不含 graph/occurrences/declared_phases；UI 不预造节点",
+      "test_node": "planned::ac-015-n-6",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-N-7",
+      "fixture": "Run 随后产生 call-1 的 agent_start(label=采集)",
+      "action": "保持页面打开或重新加载",
+      "assertion": "图新增唯一 call-1 节点并标记 running/current，不存在声明占位节点",
+      "test_node": "planned::ac-015-n-7",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-N-8",
+      "fixture": "两次顺序 Agent Call 的 label 都是 review，call_id 分别为 call-1/call-2",
+      "action": "打开 Run",
+      "assertion": "图显示两个独立节点和 call-1→call-2 edge；不按同 label 合并或显示 occurrence",
+      "test_node": "planned::ac-015-n-8",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-N-9",
+      "fixture": "Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id",
+      "action": "打开 Run，查看 Calls 列表",
+      "assertion": "call-list 主显 call_id；session_id 仅在 tooltip 显示，不作为独立行重复显示",
+      "test_node": "planned::ac-015-n-9",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -448,13 +535,13 @@
     },
     {
       "ac_id": "AC-015-B-1",
-      "fixture": "Run 没有 phase 事件",
+      "fixture": "Run 没有 Agent 事件",
       "action": "打开 Run",
-      "assertion": "Phase 区显示空状态；原始 Events 仍可查看；页面不崩溃",
+      "assertion": "AgentGraph 显示空状态；其他原始 Events 仍可查看；页面不崩溃",
       "test_node": "planned::ac-015-b-1",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -465,13 +552,65 @@
     },
     {
       "ac_id": "AC-015-B-2",
-      "fixture": "Phase 有 100 次 occurrence",
-      "action": "选择聚合节点并切换第 1、100 次",
-      "assertion": "occurrence 可选择且顺序稳定；右侧关联结果正确",
+      "fixture": "Run 有 100 个顺序 Call",
+      "action": "选择第 1、100 个节点",
+      "assertion": "全部节点可到达且顺序稳定；详情分别只显示目标 call_id 的事件",
       "test_node": "planned::ac-015-b-2",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-B-3",
+      "fixture": "Loop legacy meta.phases 非空，但 workflow 未调用 Agent 后 done",
+      "action": "查询 Loop/Run 并打开 Run",
+      "assertion": "Loop/Run 响应不含 declared_phases；AgentGraph 为空；原始日志仍可见",
+      "test_node": "planned::ac-015-b-3",
+      "targets": [
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-B-4",
+      "fixture": "workflow 只完成一个 Agent Call",
+      "action": "打开 Run",
+      "assertion": "图只有一个 done 节点、无 edge；页面无 Phase filter、is-in-phase 样式或 PhaseGraph 控件",
+      "test_node": "planned::ac-015-b-4",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-B-5",
+      "fixture": "Call 有 call_id 但 session_id 缺失",
+      "action": "查看 Calls 列表",
+      "assertion": "列表显示 call_id；tooltip 不显示 session 或显示 no session；不渲染空白行或报错",
+      "test_node": "planned::ac-015-b-5",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -487,8 +626,9 @@
       "assertion": "原始时间线可见；歧义事件标记 unattributed；不归入任一虚构 Call",
       "test_node": "planned::ac-015-e-1",
       "targets": [
+        "GET /api/v1/runs/{run_id}",
         "GET /api/v1/runs/{run_id}/legacy-events",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -499,13 +639,47 @@
     },
     {
       "ac_id": "AC-015-E-2",
-      "fixture": "v2 Agent 事件缺少 required phase_id",
-      "action": "打开 Run",
-      "assertion": "该事件进入 malformed 集合且不进入 unattributed；其余合法事件继续构图",
+      "fixture": "v2 Agent 事件缺少 required call_id，另有一个合法 call-1 事件",
+      "action": "查询 RunDetail 并打开 Run",
+      "assertion": "`malformed == [{\"reason\":\"missing_call_id\",\"raw\":<原坏事件>}]` 且 `malformed_count == len(malformed) == 1`；该 raw 事件不在合法 events、Call、AgentGraph 或 unattributed 中；合法 call-1 仍进入 AgentGraph",
       "test_node": "planned::ac-015-e-2",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-E-3",
+      "fixture": "agent_start 的 label 为空或缺失，但 call_id=call-1",
+      "action": "打开 Run",
+      "assertion": "节点仍以 call-1 存在并使用 call_id 作为可见 fallback label；页面不崩溃",
+      "test_node": "planned::ac-015-e-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
+      ],
+      "expectations": [
+        {
+          "kind": "dom",
+          "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-015-E-4",
+      "fixture": "AgentGraph 有 5 个节点，当前选择第 3 个；EventTimeline 含 12 个事件",
+      "action": "查看图、Call 详情和 EventTimeline",
+      "assertion": "图节点数、选中 call_id 和事件数分别准确显示，不混用 occurrence 术语",
+      "test_node": "planned::ac-015-e-4",
+      "targets": [
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -518,11 +692,11 @@
       "ac_id": "AC-015-F-1",
       "fixture": "events.jsonl 不存在",
       "action": "打开 Run",
-      "assertion": "API 返回 Run 摘要和空事件集合；UI 显示无执行记录，不返回 500",
+      "assertion": "API 返回 Run 摘要、空 AgentGraph 和空事件集合；UI 显示无执行记录，不返回 500",
       "test_node": "planned::ac-015-f-1",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -539,7 +713,7 @@
       "test_node": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -549,48 +723,15 @@
       ]
     },
     {
-      "ac_id": "AC-015-N-9",
-      "fixture": "Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id",
-      "action": "打开 Run，查看 Calls 列表",
-      "assertion": "call-list 主显 call_id（如 \"call-1\"）；session_id 降为 tooltip（hover 显示完整 session 值）；session_id 不作为独立行或列重复显示",
-      "test_node": "web/src/App.test.tsx::AC-015-N-9: call-list shows call_id as primary, session_id in tooltip",
+      "ac_id": "AC-015-F-3",
+      "fixture": "workflow.py 语法错误",
+      "action": "在 WebUI 启动 Run",
+      "assertion": "API 返回 500 internal_error；不创建 Run、不渲染 Agent 节点；Loop 查询与服务继续可用",
+      "test_node": "planned::ac-015-f-3",
       "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-B-5",
-      "fixture": "Call 有 call_id 但 session_id 缺失（如 mock backend 不产生 session）",
-      "action": "查看 Calls 列表",
-      "assertion": "列表显示 call_id；tooltip 不显示 session 或显示 \"no session\"；不渲染空白行或报错",
-      "test_node": "web/src/App.test.tsx::AC-015-B-5: call without session_id shows call_id and no empty row",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-E-4",
-      "fixture": "Phase 有 5 次 occurrence，当前选中第 3 次；EventTimeline 含 12 个事件",
-      "action": "查看聚合节点、occurrence 详情和 EventTimeline",
-      "assertion": "聚合节点显示 \"×5\"；occurrence 详情显示 \"第 3 次执行\"；EventTimeline 标题显示 \"12 个事件\"；三处数字各自独立、不混淆",
-      "test_node": "planned::ac-015-e-4",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "POST /api/v1/runs",
+        "GET /api/v1/loops",
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -603,130 +744,11 @@
       "ac_id": "AC-015-F-4",
       "fixture": "legacy 事件缺少 call_id，无法关联到 Call",
       "action": "查看 Calls 列表和原始 EventTimeline",
-      "assertion": "无法关联的事件不出现在任何 Call 详情中；原始 EventTimeline 仍可见（标记 unattributed）；call-list 不显示虚构 Call；页面不崩溃",
-      "test_node": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
+      "assertion": "事件不出现在任何 Call 详情；原始时间线标记 unattributed；不显示虚构 Call；页面不崩溃",
+      "test_node": "planned::ac-015-f-4",
       "targets": [
         "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-N-6",
-      "fixture": "Loop 含 `meta.phases = [{\"title\":\"采集\",\"detail\":\"从数据源拉取\"},{\"title\":\"处理\",\"detail\":\"清洗转换\"}]`",
-      "action": "在 WebUI 启动该 Loop 的 Run",
-      "assertion": "Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件",
-      "test_node": "planned::ac-015-n-6",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-N-7",
-      "fixture": "同 AC-015-N-6，runtime 已产生 phase(\"采集\") 事件",
-      "action": "（重新）加载 Run 详情，观察 phase graph",
-      "assertion": "采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位",
-      "test_node": "planned::ac-015-n-7",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-N-8",
-      "fixture": "declared [\"采集\",\"处理\"], runtime 出现 phase(\"归档\")",
-      "action": "（重新）加载 Run 详情，观察 phase graph",
-      "assertion": "归档作为 undeclared 节点出现，带 undeclared 视觉标记（is-undeclared 类，accent 边框色）；采集、处理按实际状态显示",
-      "test_node": "planned::ac-015-n-8",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-B-3",
-      "fixture": "Loop 无 `meta.phases` 声明",
-      "action": "在 WebUI 启动 Run",
-      "assertion": "phase graph 从空白开始，按 SSE 事件涌现（现有行为不变）",
-      "test_node": "planned::ac-015-b-3",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-B-4",
-      "fixture": "declared [\"采集\",\"归档\"], runtime 只执行采集后 done",
-      "action": "打开完成的 Run",
-      "assertion": "采集为 done 节点（✓），归档保持 pending 占位，不报错",
-      "test_node": "planned::ac-015-b-4",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-E-3",
-      "fixture": "workflow.py 含 `meta.phases = [{\"title\":\"\"}]`（title 为空）",
-      "action": "在 WebUI 启动 Run",
-      "assertion": "跳过无效声明，不渲染该占位节点，不报错",
-      "test_node": "planned::ac-015-e-3",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
-      ],
-      "expectations": [
-        {
-          "kind": "dom",
-          "value": "matches-ac"
-        }
-      ]
-    },
-    {
-      "ac_id": "AC-015-F-3",
-      "fixture": "workflow.py 语法错误（loop.md 正常；declared phases 来自 loop.md frontmatter，不受影响）",
-      "action": "在 WebUI 启动 Run",
-      "assertion": "API 返回错误（run 进程启动失败，500 internal_error），不创建 Run、不渲染占位节点；Loop 详情与 declared phases 不受影响，服务不崩溃",
-      "test_node": "tests/integration/test_web_api.py::test_workflow_syntax_error_run_start_fails_without_placeholders",
-      "targets": [
-        "GET /api/v1/runs/{run_id}",
-        "ui:phase"
+        "ui:agent-graph"
       ],
       "expectations": [
         {
@@ -756,7 +778,7 @@
       "fixture": "客户端已收到 event_id=7 后断线",
       "action": "以 last_event_id=7 重连",
       "assertion": "只返回 8 及之后 `event: run_event`；客户端集合无重复 event_id",
-      "test_node": "planned::ac-016-n-2",
+      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -860,7 +882,7 @@
       "fixture": "服务端最大 event_id=10，客户端以 last_event_id=11 订阅",
       "action": "订阅 SSE",
       "assertion": "返回 410 JSON；body.error.code=`cursor_out_of_range`、body.error.details.max_event_id=10",
-      "test_node": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
+      "test_node": "planned::ac-016-e-1",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -877,7 +899,7 @@
       "fixture": "客户端重复收到同一 event_id",
       "action": "应用前端事件 reducer",
       "assertion": "状态只应用一次，不重复增加 Call 消息或边计数",
-      "test_node": "web/src/eventReducer.test.ts::deduplicates replayed persisted event ids",
+      "test_node": "planned::ac-016-e-2",
       "targets": [
         "ui:event-reducer"
       ],
@@ -972,18 +994,39 @@
     },
     {
       "ac_id": "AC-017-N-2",
-      "fixture": "Loop 含 loop.md、workflow.py、agents/reviewer.md",
-      "action": "依次打开 Overview、Workflow、Agents",
-      "assertion": "Markdown 被渲染；Python 只读展示；Agent 列表和定义可查看",
+      "fixture": "Loop 含 loop.md、workflow.py、agents/reviewer.md、chart.png、report.pdf",
+      "action": "打开文本和二进制文件",
+      "assertion": "Markdown 被渲染、Python 只读、Agent 定义可查看；图片用 img、PDF 用 iframe/raw viewer；raw bytes 不转码，chart.png 返回 `Content-Type: image/png`，report.pdf 返回 `Content-Type: application/pdf`",
       "test_node": "planned::ac-017-n-2",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
         "ui:loops"
       ],
       "expectations": [
         {
-          "kind": "dom",
-          "value": "matches-ac"
+          "kind": "http_status",
+          "value": 200
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-017-N-3",
+      "fixture": "Run file changes 含 chart.png 和 report.pdf",
+      "action": "依次选择两文件",
+      "assertion": "preview 返回 encoding=raw/raw_url；图片和 PDF 在 Run 文件面板可见且不作为文本解码",
+      "test_node": "planned::ac-017-n-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "GET /api/v1/runs/{run_id}/file",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "ui:runs"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 200
         }
       ]
     },
@@ -1006,12 +1049,13 @@
     },
     {
       "ac_id": "AC-017-B-2",
-      "fixture": "文件为二进制或超过预览上限",
+      "fixture": "文件是非白名单二进制，或文本超过 1 MiB，或白名单 raw 超过 50 MiB",
       "action": "请求预览",
-      "assertion": "返回 422 和不可预览原因，不把内容作为文本返回",
+      "assertion": "返回 422 file_not_previewable，不返回 content 或部分 bytes",
       "test_node": "planned::ac-017-b-2",
       "targets": [
         "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
         "ui:loops"
       ],
       "expectations": [
@@ -1091,6 +1135,26 @@
         {
           "kind": "dom",
           "value": "matches-ac"
+        }
+      ]
+    },
+    {
+      "ac_id": "AC-017-F-3",
+      "fixture": "raw 文件通过路径/大小校验，但完整读取抛 OSError",
+      "action": "请求 Run 或 Loop raw URL",
+      "assertion": "返回 500 file_read_failed；不得先发送 200 headers 或部分 bytes；UI 显示可读失败态",
+      "test_node": "planned::ac-017-f-3",
+      "targets": [
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:runs",
+        "ui:loops"
+      ],
+      "expectations": [
+        {
+          "kind": "http_status",
+          "value": 500,
+          "code": "file_read_failed"
         }
       ]
     },
@@ -1236,7 +1300,7 @@
       "ac_id": "AC-019-N-1",
       "fixture": "1440x900 视口，Runs fixture 已加载",
       "action": "截图并检查布局",
-      "assertion": "Runs 列表、Phase 工作区和 Inspector 同时可见；无元素重叠或水平页面滚动",
+      "assertion": "Runs、AgentGraph/Events、Inspector 同时可见；AgentGraph 节点按 LR 排列且 edge 不穿过无关节点；无重叠或水平页面滚动",
       "test_node": "planned::ac-019-n-1",
       "targets": [
         "ui:layout"
@@ -1250,9 +1314,9 @@
     },
     {
       "ac_id": "AC-019-N-2",
-      "fixture": "Runs 工作区打开，焦点置于左栏第一个 failed Run A；A 含 Phase p1 和 Call c1；fixture DOM 的区域顺序为 Runs→Phase→Calls→Run actions",
-      "action": "按 Enter 选择 A；按 Tab 1 次进入 Phase 并按 ArrowRight 选择 p1；按 Tab 1 次进入 Calls 并按 ArrowDown 选择 c1；按 Tab 1 次聚焦 accessible name=`Resume run` 的按钮并按 Enter",
-      "assertion": "每步有可见 focus；详情依次显示 A、p1、c1；最后只发出一次 A 的 resume 请求",
+      "fixture": "Runs 工作区打开，焦点置于 failed Run A；A 含 call-1/call-2；DOM 区域顺序为 Runs→AgentGraph→Calls→Run actions",
+      "action": "用键盘选择 A、call-1，再聚焦 accessible name=`Retry failed call` 并按 Enter",
+      "assertion": "每步有可见 focus；详情依次显示 A 和 call-1；最后只发出一次 A 的 recover retry 请求",
       "test_node": "planned::ac-019-n-2",
       "targets": [
         "ui:layout"
@@ -1301,7 +1365,7 @@
       "fixture": "WebUI 已打开",
       "action": "点击 rail 主题切换按钮，然后刷新页面",
       "assertion": "日夜主题切换；选择持久化（刷新后保持）；未做过选择时默认跟随系统 `prefers-color-scheme`",
-      "test_node": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
+      "test_node": "planned::ac-019-n-5",
       "targets": [
         "ui:layout"
       ],
@@ -1316,7 +1380,7 @@
       "ac_id": "AC-019-B-1",
       "fixture": "1024x768 视口",
       "action": "打开 Run",
-      "assertion": "主列表和 Phase 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠",
+      "assertion": "主列表和 AgentGraph 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠",
       "test_node": "planned::ac-019-b-1",
       "targets": [
         "ui:layout"
@@ -1331,8 +1395,8 @@
     {
       "ac_id": "AC-019-B-2",
       "fixture": "390x844 视口",
-      "action": "在 Runs、Phase、Process 间切换",
-      "assertion": "一次只显示一个主区域；Stop/Resume 可到达；无水平页面滚动",
+      "action": "在 Runs、AgentGraph、Call process 间切换",
+      "assertion": "一次只显示一个主区域；当前 Run 的允许操作可到达；无水平页面滚动",
       "test_node": "planned::ac-019-b-2",
       "targets": [
         "ui:layout"
@@ -1349,7 +1413,7 @@
       "fixture": "light 主题",
       "action": "打开 Runs 工作区",
       "assertion": "面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域",
-      "test_node": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
+      "test_node": "planned::ac-019-b-3",
       "targets": [
         "ui:layout"
       ],
@@ -1364,7 +1428,7 @@
       "ac_id": "AC-019-B-4",
       "fixture": "failed Run 的 error_summary 超过 2 行文本（如多行 schema 校验错误）",
       "action": "查看该 Run 详情",
-      "assertion": "error_banner 的 error_summary 文本截断为 2 行（-webkit-line-clamp），不挤占 Phase 工作区和 Inspector；Traceback 折叠条仍可展开查看完整信息",
+      "assertion": "error_banner 的 error_summary 文本截断为 2 行（-webkit-line-clamp），不挤占 AgentGraph 工作区和 Inspector；Traceback 折叠条仍可展开查看完整信息",
       "test_node": "planned::ac-019-b-4",
       "targets": [
         "ui:layout"
@@ -1381,7 +1445,7 @@
       "fixture": "Agent 输出含 500 字符无空格字符串",
       "action": "显示 Output",
       "assertion": "Output 使用 `overflow-wrap:anywhere` 在面板内换行；页面无水平滚动且不遮挡相邻面板",
-      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+      "test_node": "planned::ac-019-e-1",
       "targets": [
         "ui:layout"
       ],
@@ -1413,7 +1477,7 @@
       "fixture": "图标按钮无可见文字",
       "action": "扫描可访问性树",
       "assertion": "每个按钮都有 accessible name；陌生图标有 tooltip",
-      "test_node": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
+      "test_node": "planned::ac-019-f-1",
       "targets": [
         "ui:layout"
       ],
@@ -1427,7 +1491,7 @@
     {
       "ac_id": "AC-019-F-2",
       "fixture": "状态颜色样式被禁用",
-      "action": "查看 Runs、Phase 和 Backend 状态",
+      "action": "查看 Runs、Agent Call 和 Backend 状态",
       "assertion": "每个状态仍可由文字或图标区分",
       "test_node": "planned::ac-019-f-2",
       "targets": [

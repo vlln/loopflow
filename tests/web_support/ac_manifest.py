@@ -17,6 +17,7 @@ HTTP_STATUS_BY_CODE = {
     "backend_not_found": 404,
     "invalid_run_transition": 409,
     "run_not_stale": 409,
+    "run_in_grace": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
     "process_gone": 410,
@@ -58,6 +59,7 @@ def _targets() -> dict[str, list[str]]:
     )
     assign("AC-014-N-11", "GET /api/v1/system/meta", "ui:layout")
     assign("AC-014-B-6", "GET /api/v1/runs", "ui:runs")
+    assign("AC-014-B-7", "POST /api/v1/runs/{run_id}/reconcile", "ui:runs")
     assign(
         "AC-014-F-1",
         "POST /api/v1/runs/{run_id}/stop",
@@ -71,8 +73,31 @@ def _targets() -> dict[str, list[str]]:
         "AC-015-B-1 AC-015-B-2 AC-015-B-3 AC-015-B-4 AC-015-B-5 "
         "AC-015-E-2 AC-015-E-3 AC-015-E-4 AC-015-F-1 AC-015-F-2 AC-015-F-3 AC-015-F-4"
     ).split():
-        targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:phase"]
-    assign("AC-015-E-1", "GET /api/v1/runs/{run_id}/legacy-events", "ui:phase")
+        targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:agent-graph"]
+    assign(
+        "AC-015-N-2",
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-E-1",
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/legacy-events",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-B-3",
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-F-3",
+        "POST /api/v1/runs",
+        "GET /api/v1/loops",
+        "ui:agent-graph",
+    )
 
     for ac_id in (
         "AC-016-N-1 AC-016-N-2 AC-016-N-3 AC-016-N-4 "
@@ -84,13 +109,40 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-016-E-2", "ui:event-reducer")
 
     assign("AC-017-N-1 AC-017-F-2", "GET /api/v1/loops", "ui:loops")
-    assign("AC-017-N-2 AC-017-B-1", "GET /api/v1/loops/{loop_name}", "ui:loops")
+    assign("AC-017-B-1", "GET /api/v1/loops/{loop_name}", "ui:loops")
     assign(
-        "AC-017-B-2 AC-017-E-1 AC-017-E-2",
+        "AC-017-N-2",
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:loops",
+    )
+    assign(
+        "AC-017-N-3",
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "GET /api/v1/runs/{run_id}/file",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "ui:runs",
+    )
+    assign(
+        "AC-017-B-2",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:loops",
+    )
+    assign(
+        "AC-017-E-1 AC-017-E-2",
         "GET /api/v1/loops/{loop_name}/file",
         "ui:loops",
     )
     assign("AC-017-F-1", "GET /api/v1/loops/{loop_name}", "GET /api/v1/loops", "ui:loops")
+    assign(
+        "AC-017-F-3",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:runs",
+        "ui:loops",
+    )
 
     assign("AC-018-N-1 AC-018-B-1 AC-018-B-2", "GET /api/v1/backends", "ui:backends")
     assign(
@@ -112,34 +164,20 @@ TARGETS = _targets()
 # Only scenarios whose current tests cover the complete active AC semantics belong
 # here. Partial candidates remain planned so strict mode exposes the coverage gap.
 TEST_NODES = {
-    "AC-014-N-7": "tests/unit/test_web_application.py::test_rerun_preserves_source_and_queue_validates",
     "AC-014-N-9": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
-    "AC-014-N-10": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
     "AC-014-B-1": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
     "AC-014-B-3": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
     "AC-014-B-4": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
-    "AC-014-B-5": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
-    "AC-014-E-1": "tests/unit/test_web_storage.py::test_unreadable_run_does_not_hide_valid_siblings",
-    "AC-014-F-2": "tests/unit/test_web_storage.py::test_reconcile_atomically_fails_stale_run_and_clears_identity",
-    "AC-015-N-9": "web/src/App.test.tsx::AC-015-N-9: call-list shows call_id as primary, session_id in tooltip",
-    "AC-015-B-5": "web/src/App.test.tsx::AC-015-B-5: call without session_id shows call_id and no empty row",
     "AC-015-F-2": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
-    "AC-015-F-3": "tests/integration/test_web_api.py::test_workflow_syntax_error_run_start_fails_without_placeholders",
-    "AC-015-F-4": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
     "AC-016-N-3": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
+    "AC-016-N-2": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
     "AC-016-N-4": "tests/integration/test_web_api.py::test_sse_multi_topic_per_topic_cursor_reconnect",
     "AC-016-B-3": "tests/integration/test_web_api.py::test_sse_stream_end_waits_for_file_changes_terminal",
-    "AC-016-E-1": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
-    "AC-016-E-2": "web/src/eventReducer.test.ts::deduplicates replayed persisted event ids",
     "AC-016-E-3": "tests/integration/test_web_api.py::test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
     "AC-016-F-2": "tests/integration/test_web_api.py::test_sse_reader_failure_after_headers_emits_stream_error",
     "AC-016-F-3": "tests/integration/test_web_api.py::test_sse_file_changes_read_failure_emits_stream_error_and_closes",
     "AC-017-E-1": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
     "AC-017-E-2": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
-    "AC-019-N-5": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
-    "AC-019-B-3": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
-    "AC-019-E-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
-    "AC-019-F-1": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
 }
 
 
@@ -169,6 +207,9 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-014-F-2": [{"kind": "http_status", "value": 200}],
+    "AC-014-B-7": [
+        {"kind": "http_status", "value": 409, "code": "run_in_grace"}
+    ],
     "AC-015-E-1": [{"kind": "http_status", "value": 200}],
     "AC-015-F-1": [{"kind": "http_status", "value": 200}],
     "AC-016-N-1": [{"kind": "sse_event", "value": "run_event"}],
@@ -189,9 +230,12 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-017-B-2": [
         {"kind": "http_status", "value": 422, "code": "file_not_previewable"}
     ],
+    "AC-017-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-017-N-3": [{"kind": "http_status", "value": 200}],
     "AC-017-E-1": [{"kind": "http_status", "value": 403, "code": "path_forbidden"}],
     "AC-017-E-2": [{"kind": "http_status", "value": 403, "code": "path_forbidden"}],
     "AC-017-F-1": [{"kind": "http_status", "value": 404, "code": "loop_not_found"}],
+    "AC-017-F-3": [{"kind": "http_status", "value": 500, "code": "file_read_failed"}],
     "AC-018-N-2": [{"kind": "http_status", "value": 200}],
     "AC-018-E-1": [{"kind": "http_status", "value": 200}],
     "AC-018-E-2": [{"kind": "http_status", "value": 200}],

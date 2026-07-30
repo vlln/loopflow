@@ -15,12 +15,45 @@ from tests.web_support.ac_manifest import (
 AC_PATH = Path("docs/ac/0010-webui.md")
 MANIFEST_PATH = Path("tests/system/cases.json")
 
+EXPECTED_TEST_NODES = {
+    "AC-014-N-9": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
+    "AC-014-B-1": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+    "AC-014-B-3": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
+    "AC-014-B-4": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
+    "AC-015-F-2": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
+    "AC-016-N-2": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
+    "AC-016-N-3": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
+    "AC-016-N-4": "tests/integration/test_web_api.py::test_sse_multi_topic_per_topic_cursor_reconnect",
+    "AC-016-B-3": "tests/integration/test_web_api.py::test_sse_stream_end_waits_for_file_changes_terminal",
+    "AC-016-E-3": "tests/integration/test_web_api.py::test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+    "AC-016-F-2": "tests/integration/test_web_api.py::test_sse_reader_failure_after_headers_emits_stream_error",
+    "AC-016-F-3": "tests/integration/test_web_api.py::test_sse_file_changes_read_failure_emits_stream_error_and_closes",
+    "AC-017-E-1": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-017-E-2": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+}
+
 
 def test_generated_manifest_covers_every_frozen_scenario():
     manifest = generate_manifest(AC_PATH)
 
     assert check_manifest(manifest, AC_PATH, allow_planned=True) == []
-    assert len(manifest["cases"]) == 86
+    assert len(manifest["cases"]) == 89
+    assert TEST_NODES == EXPECTED_TEST_NODES
+
+
+def test_agentgraph_targets_and_new_scenarios_are_frozen():
+    manifest = generate_manifest(AC_PATH)
+    cases = {case["ac_id"]: case for case in manifest["cases"]}
+
+    assert "ui:agent-graph" in cases["AC-015-N-1"]["targets"]
+    assert all("ui:phase" not in case["targets"] for case in manifest["cases"])
+    assert cases["AC-014-B-7"]["expectations"] == [
+        {"kind": "http_status", "value": 409, "code": "run_in_grace"}
+    ]
+    assert "GET /api/v1/runs/{run_id}/file/raw" in cases["AC-017-N-3"]["targets"]
+    assert cases["AC-017-F-3"]["expectations"] == [
+        {"kind": "http_status", "value": 500, "code": "file_read_failed"}
+    ]
 
 
 def test_committed_manifest_matches_generator():
@@ -58,6 +91,10 @@ def test_strict_manifest_rejects_planned_nodes():
         if case["ac_id"] not in SUPERSEDED_AC_IDS
         and case["test_node"].startswith("planned::")
     ]
+    assert len(planned) == 71
+    assert len(SUPERSEDED_AC_IDS) == 4
+    assert set(TEST_NODES).isdisjoint(SUPERSEDED_AC_IDS)
+    assert len(manifest["cases"]) == len(TEST_NODES) + len(planned) + len(SUPERSEDED_AC_IDS)
     assert len(errors) == len(planned)
     assert all("planned test node is not allowed" in error for error in errors)
 
