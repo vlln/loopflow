@@ -1397,3 +1397,292 @@ def test_loop_unpause_endpoint(api, tmp_path, monkeypatch):
     missing = client.request("POST", "/api/v1/loops/nonexistent/unpause")
     assert missing.status == 404
     assert missing.json()["error"]["code"] == "loop_not_found"
+
+
+# --- AC-017 / AC-018 coverage (0112-02) ---
+
+
+def _backend_app(tmp_path, backend_repo):
+    factory = WebFixtureFactory(tmp_path)
+    factory.create_loop("hello")
+    runs = RunRepository(factory.runs, Probe())
+    app = WebApplication(runs, LoopRepository(factory.loops, runs), QueueRepository(tmp_path / "queue"), backend_repo, Executor(factory), {"kimi"})
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text("<!doctype html>")
+    (static / "assets" / "app.js").write_text("x")
+    server = create_server("127.0.0.1", 0, application=app, static_root=static)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, factory
+
+
+def test_ac018_n1_backends_list_real_fields(api, tmp_path, monkeypatch):
+    """AC-018-N-1: backends list returns real status/cli_path/version/capabilities/transport."""
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+    from loopflow.infrastructure.backends.diagnostics import BACKEND_META
+
+    binary = next(iter(BACKEND_META.values()))["binary"]
+    monkeypatch.setattr("loopflow.infrastructure.web_resources.shutil.which", lambda b: f"/usr/bin/{b}" if b == binary else None)
+    monkeypatch.setattr("loopflow.infrastructure.web_resources._make_backend", lambda name: (_ for _ in ()).throw(RuntimeError("no backend")))
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout=b"mock 1.2.3\n", stderr=b"")
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo(runner=runner))
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        items = c.request("GET", "/api/v1/backends").json()["items"]
+        assert len(items) == len(BACKEND_META)
+        available = [i for i in items if i["status"] == "available"]
+        missing = [i for i in items if i["status"] == "missing"]
+        assert len(available) == 1 and len(missing) == len(BACKEND_META) - 1
+        entry = available[0]
+        assert entry["cli_path"] == f"/usr/bin/{binary}"
+        assert entry["version"] == "mock 1.2.3"
+        assert entry["transport"] in {"cli", "acp"}
+        assert set(entry["capabilities"]) >= {"native_goal", "structured_output"}
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac018_b1_no_backends_empty_state(api):
+    """AC-018-B-1: no backends → empty items, no fabricated health percentage."""
+    client, _, _ = api
+    body = client.request("GET", "/api/v1/backends").json()
+    assert body == {"items": []}
+    assert "health" not in body and "health_percent" not in body
+
+
+def test_ac018_n2_stderr_token_redacted(api, tmp_path):
+    """AC-018-N-2: diagnostic stderr token is redacted in API response."""
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+    from loopflow.infrastructure.backends.diagnostics import BACKEND_META
+
+    name = next(iter(BACKEND_META))
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"token=lf-secret-123; connection failed")
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo(runner=runner))
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        body = c.request("POST", f"/api/v1/backends/{name}/diagnostics", {"timeout_ms": 1000}).json()
+        assert body["exit_code"] == 1
+        assert "lf-secret-123" not in body["stderr"]
+        assert "token=[REDACTED]" in body["stderr"]
+        assert "connection failed" in body["stderr"]
+        assert body["diagnosed_at"]
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac018_b2_unknown_version_renders_null(api, tmp_path, monkeypatch):
+    """AC-018-B-2: backend unable to report version → API version is null."""
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+    from loopflow.infrastructure.backends.diagnostics import BACKEND_META
+
+    binary = next(iter(BACKEND_META.values()))["binary"]
+    monkeypatch.setattr("loopflow.infrastructure.web_resources.shutil.which", lambda b: f"/usr/bin/{b}" if b == binary else None)
+    monkeypatch.setattr("loopflow.infrastructure.web_resources._make_backend", lambda name: (_ for _ in ()).throw(RuntimeError("no backend")))
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 1, stdout=b"", stderr=b"unknown")
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo(runner=runner))
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        items = c.request("GET", "/api/v1/backends").json()["items"]
+        entry = next(i for i in items if i["status"] == "available")
+        assert entry["version"] is None
+        assert entry["capabilities"]
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac018_e1_diagnostic_timeout(api, tmp_path):
+    """AC-018-E-1: diagnostic exceeding timeout → unavailable/timeout, log mentions duration."""
+    import subprocess as sp
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+    from loopflow.infrastructure.backends.diagnostics import BACKEND_META
+
+    name = next(iter(BACKEND_META))
+
+    def runner(command, **kwargs):
+        raise sp.TimeoutExpired(command, kwargs.get("timeout", 0.1))
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo(runner=runner))
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        body = c.request("POST", f"/api/v1/backends/{name}/diagnostics", {"timeout_ms": 100}).json()
+        assert body["status"] == "unavailable"
+        assert body["reason"] == "timeout"
+        assert "diagnostic timed out after 100ms" in body["stderr"]
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac018_e2_invalid_encoding_uses_replacement(api, tmp_path):
+    """AC-018-E-2: invalid-encoding diagnostic output is safely replaced, no 500."""
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+    from loopflow.infrastructure.backends.diagnostics import BACKEND_META
+
+    name = next(iter(BACKEND_META))
+
+    def runner(command, **kwargs):
+        return subprocess.CompletedProcess(command, 0, stdout=b"\xff\xfe invalid bytes", stderr=b"")
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo(runner=runner))
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        response = c.request("POST", f"/api/v1/backends/{name}/diagnostics", {"timeout_ms": 1000})
+        assert response.status == 200
+        assert "�" in response.json()["stdout"]
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac018_f1_unknown_backend_404(api, tmp_path):
+    """AC-018-F-1: unknown backend name → 404, no command started."""
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo())
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        response = c.request("POST", "/api/v1/backends/does-not-exist/diagnostics", {"timeout_ms": 100})
+        assert response.status == 404
+        assert response.json()["error"]["code"] == "backend_not_found"
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac018_f2_diagnostic_start_failed_503(api, tmp_path):
+    """AC-018-F-2: diagnostic process cannot start → 503, no fabricated metrics."""
+    from loopflow.infrastructure.web_resources import BackendRepository as RealBackendRepo
+    from loopflow.infrastructure.backends.diagnostics import BACKEND_META
+
+    name = next(iter(BACKEND_META))
+
+    def runner(command, **kwargs):
+        raise OSError("cannot fork")
+
+    server, thread, _ = _backend_app(tmp_path / "be", RealBackendRepo(runner=runner))
+    try:
+        c = JsonHttpClient("127.0.0.1", server.server_port)
+        response = c.request("POST", f"/api/v1/backends/{name}/diagnostics", {"timeout_ms": 1000})
+        assert response.status == 503
+        assert response.json()["error"]["code"] == "diagnostic_start_failed"
+        body = response.body.decode()
+        assert "latency" not in body and "vram" not in body and "health" not in body
+    finally:
+        server.shutdown(); server.server_close(); thread.join()
+
+
+def test_ac017_f2_invalid_yaml_marks_loop_invalid(api):
+    """AC-017-F-2: invalid loop.md YAML → loop marked invalid with parse error, service alive."""
+    client, factory, _ = api
+    loop_dir = factory.create_loop("broken-yaml")
+    (loop_dir / "loop.md").write_text("---\ndescription: [unclosed\n---\nbody", encoding="utf-8")
+
+    items = client.request("GET", "/api/v1/loops").json()["items"]
+    broken = next(i for i in items if i["name"] == "broken-yaml")
+    assert broken["valid"] is False
+    assert broken["error_summary"]
+    # service stays up and other loops fine
+    hello = next(i for i in items if i["name"] == "hello")
+    assert hello["valid"] is True
+
+
+def test_ac017_f3_loop_raw_read_failure_no_partial_headers(api, tmp_path, monkeypatch):
+    """AC-017-F-3: raw read OSError after validation → 500 file_read_failed, JSON not partial bytes."""
+    client, factory, _ = api
+    loop_dir = factory.create_loop("rawfail")
+    target = loop_dir / "chart.png"
+    target.write_bytes(b"\x89PNG fixture")
+    original = Path.read_bytes
+
+    def denied(path):
+        if path == target.resolve() or path == target:
+            raise OSError("read failed")
+        return original(path)
+
+    monkeypatch.setattr(Path, "read_bytes", denied)
+    response = client.request("GET", "/api/v1/loops/rawfail/file/raw?path=chart.png")
+    assert response.status == 500
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["error"]["code"] == "file_read_failed"
+    # no PNG bytes leaked into a 200 response
+    assert b"\x89PNG" not in response.body
+
+
+def test_ac017_n2_loop_file_previews_text_and_binary(api):
+    """AC-017-N-2: loop text previews inline; png/pdf preview as raw with correct Content-Type."""
+    client, factory, _ = api
+    loop_dir = factory.loops / "hello"
+    (loop_dir / "agents" / "reviewer.md").write_text("---\nname: reviewer\n---\n# Reviewer", encoding="utf-8")
+    (loop_dir / "chart.png").write_bytes(b"\x89PNG fixture")
+    (loop_dir / "report.pdf").write_bytes(b"%PDF fixture")
+
+    markdown = client.request("GET", "/api/v1/loops/hello/file?path=loop.md")
+    assert markdown.status == 200 and markdown.json().get("encoding") != "raw"
+    assert markdown.json()["content"]
+    workflow = client.request("GET", "/api/v1/loops/hello/file?path=workflow.py")
+    assert workflow.status == 200 and workflow.json()["read_only"] is True
+    agent = client.request("GET", "/api/v1/loops/hello/file?path=agents/reviewer.md")
+    assert agent.status == 200 and "Reviewer" in agent.json()["content"]
+
+    for name, media in (("chart.png", "image/png"), ("report.pdf", "application/pdf")):
+        preview = client.request("GET", f"/api/v1/loops/hello/file?path={name}")
+        assert preview.status == 200 and preview.json()["encoding"] == "raw"
+        raw = client.request("GET", preview.json()["raw_url"])
+        assert raw.status == 200 and raw.headers["content-type"] == media
+
+
+def test_ac017_n3_run_file_changes_binary_preview(api, tmp_path):
+    """AC-017-N-3: run file changes png/pdf preview returns raw encoding, not text decoding."""
+    client, factory, _ = api
+    workdir = tmp_path / "fc-binary"
+    workdir.mkdir()
+    (workdir / "chart.png").write_bytes(b"\x89PNG run")
+    (workdir / "report.pdf").write_bytes(b"%PDF run")
+    factory.create_run("fc-run", working_directory=str(workdir))
+
+    for name, media in (("chart.png", "image/png"), ("report.pdf", "application/pdf")):
+        preview = client.request("GET", f"/api/v1/runs/fc-run/file?path={name}")
+        assert preview.status == 200
+        assert preview.json()["encoding"] == "raw" and preview.json()["content"] is None
+        raw = client.request("GET", preview.json()["raw_url"])
+        assert raw.status == 200 and raw.headers["content-type"] == media
+        assert raw.body == (workdir / name).read_bytes()
+
+
+def test_ac017_b2_loop_preview_rejects_binary_oversized(api):
+    """AC-017-B-2: non-whitelisted binary, >1 MiB text, >50 MiB raw → 422 file_not_previewable."""
+    client, factory, _ = api
+    loop_dir = factory.loops / "hello"
+    (loop_dir / "data.bin").write_bytes(b"\x00\x01binary")
+    big_text = loop_dir / "big.txt"
+    big_text.write_text("x" * (1024 * 1024 + 1), encoding="utf-8")
+
+    binary = client.request("GET", "/api/v1/loops/hello/file?path=data.bin")
+    assert binary.status == 422 and binary.json()["error"]["code"] == "file_not_previewable"
+    assert "content" not in binary.json().get("error", {})
+    oversized_text = client.request("GET", "/api/v1/loops/hello/file?path=big.txt")
+    assert oversized_text.status == 422
+    raw_too_large = client.request("GET", "/api/v1/loops/hello/file/raw?path=data.bin")
+    assert raw_too_large.status == 422
+
+
+def test_ac017_f1_loop_deleted_returns_404(api):
+    """AC-017-F-1: loop deleted after listing → detail 404 loop_not_found; others still work."""
+    import shutil
+    client, factory, _ = api
+    factory.create_loop("ephemeral")
+    assert client.request("GET", "/api/v1/loops/ephemeral").status == 200
+    shutil.rmtree(factory.loops / "ephemeral")
+
+    gone = client.request("GET", "/api/v1/loops/ephemeral")
+    assert gone.status == 404 and gone.json()["error"]["code"] == "loop_not_found"
+    items = client.request("GET", "/api/v1/loops").json()["items"]
+    assert all(item["name"] != "ephemeral" for item in items)
+    assert client.request("GET", "/api/v1/loops/hello").status == 200

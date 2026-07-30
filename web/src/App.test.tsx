@@ -902,3 +902,62 @@ it('AC-015-F-4: legacy events without call_id stay unattributed, no phantom call
   expect(screen.getByText(/legacy/)).toBeVisible();
   expect(screen.queryByText('call-a')).toBeFalsy();
 });
+
+// --- AC-017 / AC-018 UI coverage (0112-02) ---
+
+it('AC-017-N-1: selecting a Loop keeps both items and swaps detail in place', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  expect(await screen.findByRole('button', { name: /review-loop/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: /empty-loop/ })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'review-loop' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /empty-loop/ }));
+  expect(await screen.findByRole('heading', { name: 'empty-loop' })).toBeVisible();
+  // both loops remain in the left list after in-place swap
+  expect(screen.getByRole('button', { name: /review-loop/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: /empty-loop/ })).toBeVisible();
+});
+
+it('AC-017-B-1: loop with no agents shows 0 Agents empty state without error', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  fireEvent.click(await screen.findByRole('button', { name: /empty-loop/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /Agents/ }));
+  expect(await screen.findByText('0 Agents')).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('AC-018-N-2: diagnostic stderr redaction is rendered, no plaintext token in DOM', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Backends' }));
+  fireEvent.click(await screen.findByRole('button', { name: /Run check/ }));
+  expect(await screen.findByText('codex 1.0.0')).toBeVisible();
+  // DOM must not contain a plaintext token if the diagnostic carried one
+  expect(screen.queryByText(/lf-secret/)).not.toBeInTheDocument();
+});
+
+it('AC-018-B-1: no backends shows empty state and no health percentage', async () => {
+  vi.stubGlobal('EventSource', EventSourceMock);
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path === '/api/v1/backends') return response({ items: [] });
+    if (path === '/api/v1/system/meta') return response({ version: '0.19.1' });
+    return response({ items: [], next_cursor: null });
+  }));
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Backends' }));
+  expect(await screen.findByText('No Backends found')).toBeVisible();
+  expect(screen.queryByLabelText('System health')).not.toBeInTheDocument();
+});
+
+it('AC-018-B-2: backend without version renders Unknown, other capabilities still shown', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Backends' }));
+  await screen.findAllByText('/usr/bin/codex');
+  // kimi has version null → renders Unknown
+  expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
+});

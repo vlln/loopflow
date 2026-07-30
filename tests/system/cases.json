@@ -980,7 +980,7 @@
       "fixture": "有两个合法 Loop",
       "action": "打开 Loops 并选择第二项",
       "assertion": "左栏保留两个 Loop；右侧原地显示第二个 Loop 的 Overview",
-      "test_node": "planned::ac-017-n-1",
+      "test_node": "web/src/App.test.tsx::AC-017-N-1: selecting a Loop keeps both items and swaps detail in place",
       "targets": [
         "GET /api/v1/loops",
         "ui:loops"
@@ -997,7 +997,7 @@
       "fixture": "Loop 含 loop.md、workflow.py、agents/reviewer.md、chart.png、report.pdf",
       "action": "打开文本和二进制文件",
       "assertion": "Markdown 被渲染、Python 只读、Agent 定义可查看；图片用 img、PDF 用 iframe/raw viewer；raw bytes 不转码，chart.png 返回 `Content-Type: image/png`，report.pdf 返回 `Content-Type: application/pdf`",
-      "test_node": "planned::ac-017-n-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac017_n2_loop_file_previews_text_and_binary",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "GET /api/v1/loops/{loop_name}/file",
@@ -1016,7 +1016,7 @@
       "fixture": "Run file changes 含 chart.png 和 report.pdf",
       "action": "依次选择两文件",
       "assertion": "preview 返回 encoding=raw/raw_url；图片和 PDF 在 Run 文件面板可见且不作为文本解码",
-      "test_node": "planned::ac-017-n-3",
+      "test_node": "tests/integration/test_web_api.py::test_ac017_n3_run_file_changes_binary_preview",
       "targets": [
         "GET /api/v1/runs/{run_id}/file-changes",
         "GET /api/v1/runs/{run_id}/file",
@@ -1035,7 +1035,7 @@
       "fixture": "agents 目录为空",
       "action": "打开 Agents",
       "assertion": "显示 0 Agents 空状态，不显示错误",
-      "test_node": "planned::ac-017-b-1",
+      "test_node": "web/src/App.test.tsx::AC-017-B-1: loop with no agents shows 0 Agents empty state without error",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "ui:loops"
@@ -1052,7 +1052,7 @@
       "fixture": "文件是非白名单二进制，或文本超过 1 MiB，或白名单 raw 超过 50 MiB",
       "action": "请求预览",
       "assertion": "返回 422 file_not_previewable，不返回 content 或部分 bytes",
-      "test_node": "planned::ac-017-b-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac017_b2_loop_preview_rejects_binary_oversized",
       "targets": [
         "GET /api/v1/loops/{loop_name}/file",
         "GET /api/v1/loops/{loop_name}/file/raw",
@@ -1107,7 +1107,7 @@
       "fixture": "Loop 在列表加载后被删除",
       "action": "请求详情",
       "assertion": "返回 404；左栏刷新后移除该项；其他 Loop 保持可用",
-      "test_node": "planned::ac-017-f-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac017_f1_loop_deleted_returns_404",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "GET /api/v1/loops",
@@ -1126,7 +1126,7 @@
       "fixture": "loop.md YAML 非法",
       "action": "查询 Loops",
       "assertion": "该 Loop 标记 invalid 并提供解析错误摘要；服务不退出",
-      "test_node": "planned::ac-017-f-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac017_f2_invalid_yaml_marks_loop_invalid",
       "targets": [
         "GET /api/v1/loops",
         "ui:loops"
@@ -1143,7 +1143,7 @@
       "fixture": "raw 文件通过路径/大小校验，但完整读取抛 OSError",
       "action": "请求 Run 或 Loop raw URL",
       "assertion": "返回 500 file_read_failed；不得先发送 200 headers 或部分 bytes；UI 显示可读失败态",
-      "test_node": "planned::ac-017-f-3",
+      "test_node": "tests/integration/test_web_api.py::test_ac017_f3_loop_raw_read_failure_no_partial_headers",
       "targets": [
         "GET /api/v1/runs/{run_id}/file/raw",
         "GET /api/v1/loops/{loop_name}/file/raw",
@@ -1163,7 +1163,7 @@
       "fixture": "mock BackendManager 返回 2 个可用、1 个缺失",
       "action": "查询 Backends",
       "assertion": "返回 3 项及真实 status、CLI path、version、capabilities、transport",
-      "test_node": "planned::ac-018-n-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_n1_backends_list_real_fields",
       "targets": [
         "GET /api/v1/backends",
         "ui:backends"
@@ -1180,7 +1180,7 @@
       "fixture": "backend 诊断 stderr 为 `token=lf-secret-123; connection failed`，exit_code=1",
       "action": "选择该 Backend",
       "assertion": "详情显示诊断时间、exit_code 和 `token=[REDACTED]; connection failed`；API 和 DOM 均不含 `lf-secret-123`",
-      "test_node": "planned::ac-018-n-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_n2_stderr_token_redacted",
       "targets": [
         "POST /api/v1/backends/{backend_name}/diagnostics",
         "ui:backends"
@@ -1197,7 +1197,7 @@
       "fixture": "未发现任何 Backend",
       "action": "打开 Backends",
       "assertion": "显示空状态和诊断入口，不显示健康百分比",
-      "test_node": "planned::ac-018-b-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_b1_no_backends_empty_state",
       "targets": [
         "GET /api/v1/backends",
         "ui:backends"
@@ -1214,7 +1214,7 @@
       "fixture": "Backend 无法报告版本",
       "action": "查询 Backends",
       "assertion": "API version 为 null，UI 显示 `Unknown`；其他能力仍显示",
-      "test_node": "planned::ac-018-b-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_b2_unknown_version_renders_null",
       "targets": [
         "GET /api/v1/backends",
         "ui:backends"
@@ -1231,7 +1231,7 @@
       "fixture": "诊断进程超过 fixture timeout=100ms",
       "action": "执行诊断",
       "assertion": "Backend 返回 status=unavailable、reason=timeout；日志包含 `diagnostic timed out after 100ms`；其他 Backend 继续诊断",
-      "test_node": "planned::ac-018-e-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_e1_diagnostic_timeout",
       "targets": [
         "POST /api/v1/backends/{backend_name}/diagnostics",
         "ui:backends"
@@ -1248,7 +1248,7 @@
       "fixture": "诊断输出非法编码",
       "action": "查看日志",
       "assertion": "使用替换字符安全显示；API 不返回 500",
-      "test_node": "planned::ac-018-e-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_e2_invalid_encoding_uses_replacement",
       "targets": [
         "POST /api/v1/backends/{backend_name}/diagnostics",
         "ui:backends"
@@ -1265,7 +1265,7 @@
       "fixture": "backend 名不存在",
       "action": "请求单项诊断",
       "assertion": "返回 404，不启动任意命令",
-      "test_node": "planned::ac-018-f-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_f1_unknown_backend_404",
       "targets": [
         "POST /api/v1/backends/{backend_name}/diagnostics",
         "ui:backends"
@@ -1283,7 +1283,7 @@
       "fixture": "诊断进程无法启动",
       "action": "执行诊断",
       "assertion": "返回 503 和错误摘要；不伪造 latency、VRAM 或健康分数",
-      "test_node": "planned::ac-018-f-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac018_f2_diagnostic_start_failed_503",
       "targets": [
         "POST /api/v1/backends/{backend_name}/diagnostics",
         "ui:backends"

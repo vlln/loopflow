@@ -184,6 +184,22 @@ TEST_NODES = {
     "AC-016-F-3": "tests/integration/test_web_api.py::test_sse_file_changes_read_failure_emits_stream_error_and_closes",
     "AC-017-E-1": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
     "AC-017-E-2": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-017-N-1": "web/src/App.test.tsx::AC-017-N-1: selecting a Loop keeps both items and swaps detail in place",
+    "AC-017-N-2": "tests/integration/test_web_api.py::test_ac017_n2_loop_file_previews_text_and_binary",
+    "AC-017-N-3": "tests/integration/test_web_api.py::test_ac017_n3_run_file_changes_binary_preview",
+    "AC-017-B-1": "web/src/App.test.tsx::AC-017-B-1: loop with no agents shows 0 Agents empty state without error",
+    "AC-017-B-2": "tests/integration/test_web_api.py::test_ac017_b2_loop_preview_rejects_binary_oversized",
+    "AC-017-F-1": "tests/integration/test_web_api.py::test_ac017_f1_loop_deleted_returns_404",
+    "AC-017-F-2": "tests/integration/test_web_api.py::test_ac017_f2_invalid_yaml_marks_loop_invalid",
+    "AC-017-F-3": "tests/integration/test_web_api.py::test_ac017_f3_loop_raw_read_failure_no_partial_headers",
+    "AC-018-N-1": "tests/integration/test_web_api.py::test_ac018_n1_backends_list_real_fields",
+    "AC-018-N-2": "tests/integration/test_web_api.py::test_ac018_n2_stderr_token_redacted",
+    "AC-018-B-1": "tests/integration/test_web_api.py::test_ac018_b1_no_backends_empty_state",
+    "AC-018-B-2": "tests/integration/test_web_api.py::test_ac018_b2_unknown_version_renders_null",
+    "AC-018-E-1": "tests/integration/test_web_api.py::test_ac018_e1_diagnostic_timeout",
+    "AC-018-E-2": "tests/integration/test_web_api.py::test_ac018_e2_invalid_encoding_uses_replacement",
+    "AC-018-F-1": "tests/integration/test_web_api.py::test_ac018_f1_unknown_backend_404",
+    "AC-018-F-2": "tests/integration/test_web_api.py::test_ac018_f2_diagnostic_start_failed_503",
 }
 
 
