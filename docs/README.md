@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` (0.27.0 Web AgentGraph strict 补齐) |
-| **设计评估** | 0111 已将 Web manifest 对齐 89 个冻结场景；14 个现有节点经逐项语义审查完整成立，71 个保持 planned，4 个 superseded，strict 无其他错误。增量 infrastructure 82 passed、1 skipped，最终 subagent 复审 PASS。DEVELOP 仅补完整测试和必要产品行为；0108 SYSTEM_TEST 保持 pending，恢复时从 Web strict 层继续。 |
+| **当前阶段** | `SYSTEM_TEST` (0.27.0) |
+| **设计评估** | 0112 已补齐 Web manifest 全部 71 个 planned 场景，strict web 89 场景 0 planned 全绿；提测门禁与 Report 验收合理性审查通过。过程中对齐 ADR-0046 reconcile 契约（Spec v20/AC-014-B-7/AC-029-B-1/Interface 0001）、修复 recovery manifest 节点存在性检查基建缺陷、4 处产品修复。0108 SYSTEM_TEST 从 Web strict 层恢复，已通过层不重跑。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
