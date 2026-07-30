@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.27.0] — 2026-07-30
+
+### Added
+- **WebUI 二进制文件预览**（BL-051 / AC-033）：图片（png/jpg/jpeg/gif/svg/webp/bmp/ico）与 PDF 经 raw 端点只读返回，固定 media type 与 `Cache-Control: no-store`；preview 返回 `encoding=raw`/`raw_url`，>50 MiB 或非白名单返回 422 `file_not_previewable`；读取 OSError 返回 500 `file_read_failed` 且不发部分 bytes。
+- **Run 级追加 prompt**（BL-052 / AC-034）：`--append-prompt` 与 WebUI New Run Append prompt 字段，附加段注入每个 workflow Agent 的动态 prompt 末尾，冻结进 run.json，不进入 system prompt；UTF-8 超 64 KiB 在 CLI/API/WebUI 三入口拒绝（422 / 退出码非 0 / 前端校验）。
+- **New Run declared args 契约符合性**（BL-054 / AC-035）：`loop.md` 顶层 `args` 声明驱动 Arguments 编辑器预填（required 标记、空值忽略、false/0/对象/空串类型保留），切换 Loop 重建键值行，非法条目静默忽略；不回退 legacy `workflow.py meta.args`。
+- **Agent waiting_input 控制协议**（BL-046 / ADR-0057 / AC-023）：并行 Agent 分组批量应答与各自 session 恢复、控制分支绕过业务 schema、answer envelope 保留组序并隐藏内部字段。
+
+### Changed
+- **reconcile 宽限期语义对齐 ADR-0046**（契约修订）：宽限期不再阻塞 reconcile——进程探活确认死亡即直接清理为 failed（后端 session 仍可 resume，阻塞无安全收益）。`stale_since` 仅供 UI 呈现失联参考时间。Spec v19→v20、AC-014-B-7、AC-029-B-1、Interface 0001 同步；`run_in_grace` 错误码保留仅为向后兼容，不再触发。
+
+### Fixed
+- **Web 契约测试基建**（BL-051 契约闭环）：AC manifest 对齐 AgentGraph/call_id 契约（ADR-0052），89 个冻结 Web 场景全部映射真实测试节点，strict 模式 0 planned。逐项语义审查既有节点，partial 节点保持诚实 planned 后逐一补齐。
+- **recovery manifest 节点存在性检查**：补 `_test_node_exists` 校验，修正 AC-029-B-1/AC-020-F-3 引用已改名测试函数的漂移。
+- **AgentGraph 投影**：malformed 事件包装为 `{reason, raw}` 结构且 detail `events` 排除坏事件 raw；空/缺失 label 回退 call_id；loop/run 响应移除已删除的 `declared_phases`（对齐 ADR-0052）。
+- **working_directory 显示**：`_working_directory` 优先读 run.json 持久化值（AC-014-B-6 左栏 basename 显示）。
+- **mr-gate 阶段测试**：不再假设仓库当前处于 DEVELOP，阶段推进后 CI 仍绿。
+- **性能专项**：新增 Runs 首屏 p95 < 500ms 测试（1000 Runs + 1000 事件 fixture，30 次测量）。
+
 ## [0.26.0] — 2026-07-28
 
 ### Added
