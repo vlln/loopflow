@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import mimetypes
 import re
 import shutil
+import stat
 import subprocess
 import uuid
 from datetime import datetime, timezone
@@ -23,6 +25,19 @@ from loopflow.infrastructure.repository import parse_agent
 from loopflow.infrastructure.web_storage import RunRepository, atomic_write_json
 
 PREVIEW_LIMIT = 1024 * 1024
+RAW_LIMIT = 50 * 1024 * 1024  # 50 MiB for binary previews (images, PDFs)
+_RAW_MEDIA_TYPES = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".svg": "image/svg+xml",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+    ".ico": "image/x-icon",
+    ".pdf": "application/pdf",
+}
+_BINARY_PREVIEW_EXTS = frozenset(_RAW_MEDIA_TYPES)
 _SECRET = re.compile(
     r"(?i)\b(token|password|secret|api_key)(\s*(?:=|:)\s*)([^\s;,]+)"
 )
@@ -33,6 +48,10 @@ class PathForbidden(ValueError):
 
 
 class FileNotPreviewable(ValueError):
+    pass
+
+
+class FileReadFailed(RuntimeError):
     pass
 
 
@@ -93,13 +112,39 @@ def _extract_declared_args(metadata: dict[str, Any]) -> list[dict[str, Any]]:
         name = entry.get("name")
         if not isinstance(name, str) or not name.strip():
             continue
-        result.append({
+        item = {
             "name": name.strip(),
-            "default": entry.get("default"),
             "description": str(entry.get("description") or ""),
             "required": entry.get("required") is True,
-        })
+        }
+        if "default" in entry:
+            try:
+                json.dumps(entry["default"])
+            except (TypeError, ValueError):
+                continue
+            item["default"] = entry["default"]
+        result.append(item)
     return result
+
+
+def _workflow_literal_meta(path: Path) -> dict[str, Any]:
+    """Read a legacy workflow.py meta assignment without executing code."""
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    except (OSError, UnicodeError, SyntaxError):
+        return {}
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if not any(isinstance(target, ast.Name) and target.id == "meta" for target in targets):
+            continue
+        try:
+            value = ast.literal_eval(node.value)
+        except (ValueError, TypeError):
+            return {}
+        return value if isinstance(value, dict) else {}
+    return {}
 
 
 class LoopRepository:
@@ -117,13 +162,16 @@ class LoopRepository:
         return [self.summary(path) for path in sorted(self.loops_root.iterdir()) if path.is_dir()]
 
     def summary(self, loop_dir: Path) -> dict[str, Any]:
+        loop_md = loop_dir / "loop.md"
         try:
-            metadata = _frontmatter(loop_dir / "loop.md")
+            metadata = _frontmatter(loop_md)
             if not (loop_dir / "workflow.py").is_file():
                 raise ValueError("workflow.py is missing")
             valid, error = True, None
         except (OSError, UnicodeError, ValueError) as exc:
             metadata, valid, error = {}, False, str(exc)
+            if not loop_md.exists():
+                metadata = _workflow_literal_meta(loop_dir / "workflow.py")
         agents = list((loop_dir / "agents").glob("*.md")) if (loop_dir / "agents").is_dir() else []
         state = loop_state.load(loop_dir.name)
         return {
@@ -131,7 +179,6 @@ class LoopRepository:
             "description": str(metadata.get("description") or ""),
             "agent_count": len([path for path in agents if not path.name.startswith("_")]),
             "triggers": metadata.get("triggers") if isinstance(metadata.get("triggers"), list) else [],
-            "declared_phases": _extract_declared_phases(metadata),
             "declared_args": _extract_declared_args(metadata),
             "valid": valid,
             "error_summary": error,
@@ -168,7 +215,6 @@ class LoopRepository:
             "triggers": summary["triggers"],
             "resources": summary.get("_resources", []),
             "environment": summary.get("_environment"),
-            "declared_phases": summary.get("declared_phases", []),
             "declared_args": summary.get("declared_args", []),
             "consecutive_failures": summary["consecutive_failures"],
             "paused": summary["paused"],
@@ -191,13 +237,25 @@ class LoopRepository:
         return candidate
 
     def preview(self, loop_dir: Path, relative: str) -> dict[str, Any]:
-        path = self.resolve_file(loop_dir, relative)
-        if not path.is_file():
-            raise FileNotFoundError(relative)
-        size = path.stat().st_size
+        path, size = self._preview_file(loop_dir, relative)
+        suffix = path.suffix.lower()
+        if suffix in _BINARY_PREVIEW_EXTS:
+            if size > RAW_LIMIT:
+                raise FileNotPreviewable(f"file exceeds the {RAW_LIMIT // (1024 * 1024)} MiB binary preview limit")
+            return {
+                "path": relative,
+                "media_type": _RAW_MEDIA_TYPES[suffix],
+                "content": None,
+                "encoding": "raw",
+                "size": size,
+                "read_only": True,
+            }
         if size > PREVIEW_LIMIT:
             raise FileNotPreviewable("file exceeds the 1 MiB preview limit")
-        raw = path.read_bytes()
+        raw = self._read_bytes(path, relative)
+        if len(raw) > PREVIEW_LIMIT:
+            raise FileNotPreviewable("file exceeds the 1 MiB preview limit")
+        size = len(raw)
         if b"\x00" in raw:
             raise FileNotPreviewable("binary files cannot be previewed")
         try:
@@ -206,18 +264,59 @@ class LoopRepository:
             raise FileNotPreviewable("file is not UTF-8 text") from error
         return {"path": relative, "media_type": _media_type(path), "content": content, "size": size, "read_only": True}
 
+    def serve_raw(self, loop_dir: Path, relative: str) -> tuple[bytes, str]:
+        """Read an allowed binary file fully before the HTTP layer sends headers."""
+        path, size = self._preview_file(loop_dir, relative)
+        media_type = _RAW_MEDIA_TYPES.get(path.suffix.lower())
+        if media_type is None:
+            raise FileNotPreviewable("file type is not allowed for raw preview")
+        if size > RAW_LIMIT:
+            raise FileNotPreviewable(f"file exceeds the {RAW_LIMIT // (1024 * 1024)} MiB binary preview limit")
+        content = self._read_bytes(path, relative)
+        if len(content) > RAW_LIMIT:
+            raise FileNotPreviewable(f"file exceeds the {RAW_LIMIT // (1024 * 1024)} MiB binary preview limit")
+        return content, media_type
+
+    def _preview_file(self, loop_dir: Path, relative: str) -> tuple[Path, int]:
+        try:
+            path = self.resolve_file(loop_dir, relative)
+            info = path.stat()
+        except FileNotFoundError:
+            raise FileNotFoundError(relative) from None
+        except OSError as error:
+            raise FileReadFailed(f"failed to inspect file '{relative}'") from error
+        if not stat.S_ISREG(info.st_mode):
+            raise FileNotFoundError(relative)
+        return path, info.st_size
+
+    @staticmethod
+    def _read_bytes(path: Path, relative: str) -> bytes:
+        try:
+            return path.read_bytes()
+        except FileNotFoundError:
+            raise FileNotFoundError(relative) from None
+        except OSError as error:
+            raise FileReadFailed(f"failed to read file '{relative}'") from error
+
     def file_summary(self, loop_dir: Path, path: Path) -> dict[str, Any]:
         relative = path.relative_to(loop_dir).as_posix()
         try:
             resolved = self.resolve_file(loop_dir, relative)
             size = resolved.stat().st_size
-            previewable = resolved.is_file() and size <= PREVIEW_LIMIT and b"\x00" not in resolved.read_bytes()[:8192]
+            suffix = resolved.suffix.lower()
+            if suffix in _BINARY_PREVIEW_EXTS:
+                previewable = resolved.is_file() and size <= RAW_LIMIT
+            else:
+                previewable = resolved.is_file() and size <= PREVIEW_LIMIT and b"\x00" not in resolved.read_bytes()[:8192]
         except (OSError, PathForbidden):
             size, previewable = path.lstat().st_size, False
         return {"path": relative, "media_type": _media_type(path), "size": size, "previewable": previewable}
 
 
 def _media_type(path: Path) -> str | None:
+    raw_media_type = _RAW_MEDIA_TYPES.get(path.suffix.lower())
+    if raw_media_type is not None:
+        return raw_media_type
     if path.name.endswith(".md"):
         return "text/markdown"
     if path.name.endswith(".py"):

@@ -8,6 +8,8 @@ created: 2026-07-18T00:00:00Z
 
 # ADR 0033: 本地 WebUI 技术栈与分层
 
+> 2026-07-29 修订（待确认）：React/TypeScript/Vite、标准库 HTTP server、REST/SSE 分工和应用层边界继续有效。本文中 PhaseGraph、Phase occurrence、Phase 过滤及相关验证 fixture 已由 [ADR-0052](0052-remove-phase.md) 替代；现行 Web 图是 AgentGraph，每个 `call_id` 是唯一节点，`label` 仅用于显示，前端使用 dagre `rankdir=LR` 布局并按结构化 sequential/fork/join edge 渲染，不恢复任何 Phase UI surface。
+
 ## Context
 
 Spec 0001 v12 增加本地 WebUI 控制台。WebUI 需要读取 Loop、Run、Queue 与 Backend 的现有文件模型，实时重放和订阅 Run 事件，并执行 run、stop、resume、reconcile 等受状态约束的命令。

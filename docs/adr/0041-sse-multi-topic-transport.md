@@ -8,6 +8,8 @@ created: 2026-07-23T14:00:00Z
 
 # ADR 0041: SSE 多 topic 传输层
 
+> 2026-07-29 修订（待确认）：多 topic transport、per-topic cursor 与 `file_changes` 独立存储决策继续有效。本文示例中的 Phase payload 及 `file_changes.jsonl` 的 `phase`/`phase_id` 字段由 [ADR-0052](0052-remove-phase.md) 替代；现行 `run_event` 只投影 Agent 事件，`file_changes` record 使用 `call_id`（关联主键）与 `label`（显示名）。SSE topic、`event_id`/`seq` 游标和重连语义不变。
+
 ## Context
 
 当前 SSE 是 `events.jsonl` 的直接管道延伸：

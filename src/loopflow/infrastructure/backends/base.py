@@ -24,6 +24,14 @@ class BaseBackend(ABC):
         """Backend capability declaration. Override in subclasses."""
         return Capabilities()
 
+    def prepare_capabilities(self) -> Capabilities:
+        """Prepare dynamic capability discovery before prompt assembly.
+
+        Static backends perform no I/O. Dynamic backends override this method
+        and keep it idempotent so session creation can reuse the preparation.
+        """
+        return self.capabilities
+
     # Backward-compatible class-level flag
     supports_native_goal: bool = False
 

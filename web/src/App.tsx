@@ -333,7 +333,28 @@ function RunFilePreviewDialog({ runId, path, onClose }: { runId: string; path: s
     void api.runFile(runId, path).then((file) => { if (active) setState({ status: 'done', file }); }).catch((cause) => { if (active) setState({ status: 'error', message: previewErrorOf(cause) }); });
     return () => { active = false; };
   }, [runId, path]);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="file-preview-title"><header><div><span className="eyebrow">{state.status === 'done' ? `${state.file.media_type} · Read only` : 'File preview'}</span><h2 id="file-preview-title">{name}</h2></div><IconButton label="Close preview" onClick={onClose}><X /></IconButton></header>{state.status === 'loading' && <span className="file-preview-status">Loading preview…</span>}{state.status === 'error' && <span className="file-preview-status" role="alert">{state.message}</span>}{state.status === 'done' && <div className="file-preview-body"><pre className="code-preview scroll-area">{state.file.content}</pre></div>}</div></div>;
+  const isImage = state.status === 'done' && state.file.encoding === 'raw' && !!state.file.media_type?.startsWith('image/');
+  const isPdf = state.status === 'done' && state.file.encoding === 'raw' && state.file.media_type === 'application/pdf';
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog file-preview-dialog" role="dialog" aria-modal="true" aria-labelledby="file-preview-title"><header><div><span className="eyebrow">{state.status === 'done' ? `${state.file.media_type} · Read only` : 'File preview'}</span><h2 id="file-preview-title">{name}</h2></div><IconButton label="Close preview" onClick={onClose}><X /></IconButton></header>{state.status === 'loading' && <span className="file-preview-status">Loading preview…</span>}{state.status === 'error' && <span className="file-preview-status" role="alert">{state.message}</span>}{state.status === 'done' && <div className="file-preview-body">{(isImage || isPdf) && <RawMediaPreview file={state.file} name={name} />}{!isImage && !isPdf && <pre className="code-preview scroll-area">{state.file.content}</pre>}</div>}</div></div>;
+}
+
+function RawMediaPreview({ file, name }: { file: RunFileContent; name: string }) {
+  const [state, setState] = useState<{ status: 'loading' } | { status: 'error' } | { status: 'ready'; url: string }>({ status: 'loading' });
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl: string | null = null;
+    if (!file.raw_url) { setState({ status: 'error' }); return () => controller.abort(); }
+    void fetch(file.raw_url, { signal: controller.signal }).then(async (response) => {
+      if (!response.ok) throw new Error('raw preview failed');
+      objectUrl = URL.createObjectURL(await response.blob());
+      setState({ status: 'ready', url: objectUrl });
+    }).catch((cause) => { if (cause instanceof Error && cause.name === 'AbortError') return; setState({ status: 'error' }); });
+    return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [file.raw_url]);
+  if (state.status === 'loading') return <span className="file-preview-status">Loading preview…</span>;
+  if (state.status === 'error') return <span className="file-preview-status" role="alert">Unable to load file preview</span>;
+  if (file.media_type?.startsWith('image/')) return <img src={state.url} alt={name} className="file-preview-image" />;
+  return <iframe src={state.url} title={name} className="file-preview-pdf" />;
 }
 
 function EventContent({ event }: { event: RunEvent }) {
@@ -343,7 +364,7 @@ function EventContent({ event }: { event: RunEvent }) {
   return <>{message && <div className="event-message markdown"><ReactMarkdown>{message}</ReactMarkdown></div>}{!message && event.type === 'agent_start' && <p className="event-message">Agent started</p>}{!message && event.type === 'agent_done' && <p className="event-message">Agent completed</p>}{details.length > 0 && <dl className="event-details">{details.map(([key, value]) => <div key={key}><dt>{key.replaceAll('_', ' ')}</dt><dd>{formatEventValue(value)}</dd></div>)}</dl>}{!message && details.length === 0 && !['agent_start', 'agent_done'].includes(event.type) && <p className="event-message muted">Event recorded</p>}</>;
 }
 
-interface ArgEntry { key: string; value: string; required?: boolean }
+interface ArgEntry { key: string; value: string; required?: boolean; declaredDefault?: unknown; hasDeclaredDefault?: boolean; initialValue?: string }
 
 function parseArgValue(raw: string): unknown {
   try { return JSON.parse(raw); } catch { return raw; }
@@ -351,9 +372,37 @@ function parseArgValue(raw: string): unknown {
 
 function declaredEntries(items: LoopSummary[], name: string): ArgEntry[] {
   const declared = items.find((item) => item.name === name)?.declared_args;
-  return declared?.length
-    ? declared.map((arg) => ({ key: arg.name, value: arg.default === undefined ? '' : typeof arg.default === 'string' ? arg.default : JSON.stringify(arg.default), required: !!arg.required }))
+  const valid = Array.isArray(declared)
+    ? declared.filter((arg) => arg && typeof arg === 'object' && typeof arg.name === 'string' && arg.name.trim())
+    : [];
+  return valid.length
+    ? valid.map((arg) => {
+      const hasDefault = Object.prototype.hasOwnProperty.call(arg, 'default');
+      const value = !hasDefault ? '' : typeof arg.default === 'string' ? arg.default : JSON.stringify(arg.default);
+      return { key: arg.name, value, required: !!arg.required, declaredDefault: arg.default, hasDeclaredDefault: hasDefault, initialValue: value };
+    })
     : [{ key: '', value: '' }];
+}
+
+function entriesObject(entries: ArgEntry[]): Record<string, unknown> {
+  const object: Record<string, unknown> = {};
+  for (const entry of entries) {
+    const key = entry.key.trim();
+    if (!key || entry.value === '') continue;
+    object[key] = entry.hasDeclaredDefault && entry.value === entry.initialValue
+      ? entry.declaredDefault
+      : parseArgValue(entry.value);
+  }
+  return object;
+}
+
+function entriesFromObject(value: unknown): ArgEntry[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Arguments must be a JSON object');
+  const entries = Object.entries(value).map(([key, item]) => ({
+    key,
+    value: typeof item === 'string' ? item : JSON.stringify(item),
+  }));
+  return entries.length ? entries : [{ key: '', value: '' }];
 }
 
 function DirectoryPickerModal({ onSelect, onClose }: { onSelect: (path: string) => void; onClose: () => void }) {
@@ -400,46 +449,65 @@ function NewRunDialog({ onClose, onCreated }: { onClose: () => void; onCreated: 
   const [entries, setEntries] = useState<ArgEntry[]>([{ key: '', value: '' }]);
   const [args, setArgs] = useState('{}');
   const [workdir, setWorkdir] = useState('');
+  const [appendPrompt, setAppendPrompt] = useState('');
+  const [appendPromptError, setAppendPromptError] = useState<string | null>(null);
   const [showDirPicker, setShowDirPicker] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loopsLoading, setLoopsLoading] = useState(true);
+  const [loopsFailed, setLoopsFailed] = useState(false);
   useEffect(() => {
     void api.loops().then((page) => {
       setLoops(page.items);
       const first = page.items[0]?.name ?? '';
       setLoop(first);
       setEntries((current) => current.length === 1 && !current[0].key && !current[0].value ? declaredEntries(page.items, first) : current);
-    });
+    }).catch(() => {
+      setLoops([]); setLoop(''); setEntries([{ key: '', value: '' }]);
+      setLoopsFailed(true); setError('Unable to load loops');
+    }).finally(() => setLoopsLoading(false));
   }, []);
   const selectLoop = (name: string) => { setLoop(name); setEntries(declaredEntries(loops, name)); };
+  const toggleArgsMode = () => {
+    try {
+      if (argsMode === 'editor') {
+        setArgs(JSON.stringify(entriesObject(entries), null, 2));
+        setArgsMode('json');
+      } else {
+        setEntries(entriesFromObject(JSON.parse(args)));
+        setArgsMode('editor');
+      }
+      setError(null);
+    } catch (cause) { setError(messageOf(cause)); }
+  };
   const submit = async () => {
     try {
+      if (new TextEncoder().encode(appendPrompt).length > 65536) {
+        setAppendPromptError('Append prompt must be 64 KiB or less');
+        return;
+      }
       let parsed: unknown;
       if (argsMode === 'json') {
         parsed = JSON.parse(args);
+        entriesFromObject(parsed);
       } else {
-        const object: Record<string, unknown> = {};
-        for (const entry of entries) {
-          const key = entry.key.trim();
-          if (!key || entry.value === '') continue;
-          object[key] = parseArgValue(entry.value);
-        }
-        parsed = object;
+        parsed = entriesObject(entries);
       }
       const body: Record<string, unknown> = { loop, args: parsed };
       if (workdir.trim()) body.working_directory = workdir.trim();
+      if (appendPrompt) body.append_prompt = appendPrompt;
       onCreated(await api.createRun(body));
     } catch (cause) { setError(messageOf(cause)); }
   };
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select value={loop} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={() => setArgsMode(argsMode === 'editor' ? 'json' : 'editor')}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} /><button type="button" className="secondary-button" onClick={() => setShowDirPicker(true)}><Folder size={14} />Browse…</button></div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div>{showDirPicker && <DirectoryPickerModal onSelect={(p) => { setWorkdir(p); setShowDirPicker(false); }} onClose={() => setShowDirPicker(false)} />}</div>;
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><div className="dialog" role="dialog" aria-modal="true" aria-labelledby="new-run-title"><header><div><span className="eyebrow">Command</span><h2 id="new-run-title">New Run</h2></div><IconButton label="Close" onClick={onClose}><X /></IconButton></header><label>Loop<select aria-label="Loop" value={loop} disabled={loopsLoading || loopsFailed} onChange={(event) => selectLoop(event.target.value)}>{loops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><div className="dialog-field"><span className="dialog-field-label">Arguments<button type="button" className="mode-toggle" onClick={toggleArgsMode}>{argsMode === 'editor' ? 'JSON' : 'Editor'}</button></span>{argsMode === 'json' ? <textarea aria-label="Arguments" value={args} onChange={(event) => setArgs(event.target.value)} spellCheck={false} /> : <div className="args-editor">{entries.map((entry, index) => <div className="arg-row" key={index}><span className="arg-key"><input aria-label="Argument key" placeholder="key" value={entry.key} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, key: event.target.value } : item))} spellCheck={false} />{entry.required && <span className="arg-required" title="Required">*</span>}</span><input aria-label="Argument value" placeholder="value" value={entry.value} onChange={(event) => setEntries(entries.map((item, i) => i === index ? { ...item, value: event.target.value, hasDeclaredDefault: false } : item))} spellCheck={false} /><IconButton label="Remove argument" onClick={() => setEntries(entries.filter((_, i) => i !== index))}><X /></IconButton></div>)}<button type="button" className="secondary-button add-argument" onClick={() => setEntries([...entries, { key: '', value: '' }])}><Plus size={14} />Add argument</button></div>}</div><div className="dialog-field"><span className="dialog-field-label">Append prompt</span><textarea aria-label="Append prompt" value={appendPrompt} onChange={(event) => { setAppendPrompt(event.target.value); setAppendPromptError(null); }} spellCheck={false} />{appendPromptError && <span className="form-error">{appendPromptError}</span>}</div><div className="dialog-field"><span className="dialog-field-label">Working directory</span><div className="workdir-row"><input aria-label="Working directory" value={workdir} onChange={(event) => setWorkdir(event.target.value)} placeholder="Server working directory (default)" spellCheck={false} /><button type="button" className="secondary-button" onClick={() => setShowDirPicker(true)}><Folder size={14} />Browse…</button></div></div>{error && <span className="form-error">{error}</span>}<footer><button className="secondary-button" onClick={onClose}>Cancel</button><button className="primary-button" disabled={!loop || loopsLoading || loopsFailed} onClick={() => void submit()}><Play size={14} />Start Run</button></footer></div>{showDirPicker && <DirectoryPickerModal onSelect={(p) => { setWorkdir(p); setShowDirPicker(false); }} onClose={() => setShowDirPicker(false)} />}</div>;
 }
 
 function LoopsWorkspace() {
   const [loops, setLoops] = useState<LoopSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [detail, setDetail] = useState<LoopDetail | null>(null);
-  const [tab, setTab] = useState<'overview' | 'workflow' | 'agents'>('overview');
+  const [tab, setTab] = useState<'overview' | 'workflow' | 'agents' | 'files'>('overview');
   const [file, setFile] = useState('loop.md');
-  const [content, setContent] = useState('');
+  const [preview, setPreview] = useState<RunFileContent | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mobileList, setMobileList] = useState(true);
   useEffect(() => { void api.loops().then((page) => { setLoops(page.items); setSelected(page.items[0]?.name ?? null); }).catch((cause) => setError(messageOf(cause))); }, []);
@@ -447,7 +515,7 @@ function LoopsWorkspace() {
     if (!selected) return;
     let active = true;
     setDetail(null);
-    setContent('');
+    setPreview(null);
     setFile('');
     void api.loop(selected).then((value) => {
       if (!active) return;
@@ -461,17 +529,22 @@ function LoopsWorkspace() {
   useEffect(() => {
     if (!selected || detail?.name !== selected || !file || !detail.files.some((item) => item.path === file && item.previewable)) return;
     let active = true;
-    setContent('');
-    void api.loopFile(selected, file).then((value) => { if (active) setContent(value.content); }).catch((cause) => { if (active) { setContent(''); setError(messageOf(cause)); } });
+    setPreview(null);
+    void api.loopFile(selected, file).then((value) => { if (active) setPreview(value); }).catch((cause) => { if (active) { setPreview(null); setError(messageOf(cause)); } });
     return () => { active = false; };
   }, [selected, detail, file]);
-  const selectTab = (next: 'overview' | 'workflow' | 'agents') => {
+  const selectTab = (next: 'overview' | 'workflow' | 'agents' | 'files') => {
     setTab(next);
     if (next === 'overview') setFile('loop.md');
     if (next === 'workflow') setFile(detail?.files.find((item) => item.path === 'workflow.py')?.path ?? 'workflow.py');
     if (next === 'agents') setFile(detail?.agents[0]?.path ?? '');
+    if (next === 'files') setFile(detail?.files.find((item) => !['loop.md', 'workflow.py'].includes(item.path) && item.previewable)?.path ?? '');
   };
-  return <section className={`workspace loops-workspace ${mobileList ? 'show-list' : 'show-detail'}`} data-testid="loops-workspace"><aside className="panel loop-list-panel"><PanelHeader icon={<GitBranch size={15} />} title="Loops" /><ScrollArea className="loop-list">{loops.map((loop) => <button key={loop.name} className={selected === loop.name ? 'is-selected' : ''} onClick={() => setSelected(loop.name)}><span><strong>{loop.name}</strong><small>{loop.description || 'No description'}</small></span><span className="loop-count">{loop.agent_count}</span>{!loop.valid && <StatusBadge value="failed" />}</button>)}</ScrollArea></aside><section className="panel loop-detail-panel">{detail ? <><header className="loop-definition-header"><div className="mobile-back"><IconButton label="Back to Loops" onClick={() => setMobileList(true)}><ArrowLeft /></IconButton></div><div className="loop-identity"><span className="eyebrow">Loop definition</span><h2 className="panel-title">{detail.name}</h2><p>{detail.description || 'No description'}</p></div>{!detail.valid && <StatusBadge value="failed" />}</header><nav className="loop-tabs" aria-label="Loop definition sections"><button aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => selectTab('overview')}>Overview</button><button aria-current={tab === 'workflow' ? 'page' : undefined} onClick={() => selectTab('workflow')}>Workflow</button><button aria-current={tab === 'agents' ? 'page' : undefined} onClick={() => selectTab('agents')}>Agents <span>{detail.agents.length}</span></button></nav><ScrollArea className="loop-content">{tab === 'overview' && <article className="definition-document markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article>}{tab === 'workflow' && <article className="definition-code"><header><span>workflow.py</span><span>Read only</span></header><pre className="code-preview scroll-area">{content}</pre></article>}{tab === 'agents' && (detail.agents.length ? <div className="agents-workspace"><div className="agent-grid">{detail.agents.map((agent) => <button key={agent.path} className={file === agent.path ? 'is-selected' : ''} onClick={() => setFile(agent.path)}><Bot size={16} /><span><strong>{agent.name}</strong><small>{agent.description || agent.path}</small></span><ChevronRight size={15} /></button>)}</div><article className="agent-definition markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article></div> : <EmptyState title="0 Agents" detail="This Loop has no Agent definitions." />)}</ScrollArea></> : <EmptyState title="No Loop selected" detail="Select a declaration from the list." />}</section>{error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}</section>;
+  const content = preview?.content ?? '';
+  const rawImage = preview?.encoding === 'raw' && !!preview.media_type?.startsWith('image/');
+  const rawPdf = preview?.encoding === 'raw' && preview.media_type === 'application/pdf';
+  const extraFiles = detail?.files.filter((item) => !['loop.md', 'workflow.py'].includes(item.path) && item.previewable) ?? [];
+  return <section className={`workspace loops-workspace ${mobileList ? 'show-list' : 'show-detail'}`} data-testid="loops-workspace"><aside className="panel loop-list-panel"><PanelHeader icon={<GitBranch size={15} />} title="Loops" /><ScrollArea className="loop-list">{loops.map((loop) => <button key={loop.name} className={selected === loop.name ? 'is-selected' : ''} onClick={() => setSelected(loop.name)}><span><strong>{loop.name}</strong><small>{loop.description || 'No description'}</small></span><span className="loop-count">{loop.agent_count}</span>{!loop.valid && <StatusBadge value="failed" />}</button>)}</ScrollArea></aside><section className="panel loop-detail-panel">{detail ? <><header className="loop-definition-header"><div className="mobile-back"><IconButton label="Back to Loops" onClick={() => setMobileList(true)}><ArrowLeft /></IconButton></div><div className="loop-identity"><span className="eyebrow">Loop definition</span><h2 className="panel-title">{detail.name}</h2><p>{detail.description || 'No description'}</p></div>{!detail.valid && <StatusBadge value="failed" />}</header><nav className="loop-tabs" aria-label="Loop definition sections"><button aria-current={tab === 'overview' ? 'page' : undefined} onClick={() => selectTab('overview')}>Overview</button><button aria-current={tab === 'workflow' ? 'page' : undefined} onClick={() => selectTab('workflow')}>Workflow</button><button aria-current={tab === 'agents' ? 'page' : undefined} onClick={() => selectTab('agents')}>Agents <span>{detail.agents.length}</span></button>{extraFiles.length > 0 && <button aria-current={tab === 'files' ? 'page' : undefined} onClick={() => selectTab('files')}>Files <span>{extraFiles.length}</span></button>}</nav><ScrollArea className="loop-content">{tab === 'overview' && <article className="definition-document markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article>}{tab === 'workflow' && <article className="definition-code"><header><span>workflow.py</span><span>Read only</span></header><pre className="code-preview scroll-area">{content}</pre></article>}{tab === 'agents' && (detail.agents.length ? <div className="agents-workspace"><div className="agent-grid">{detail.agents.map((agent) => <button key={agent.path} className={file === agent.path ? 'is-selected' : ''} onClick={() => setFile(agent.path)}><Bot size={16} /><span><strong>{agent.name}</strong><small>{agent.description || agent.path}</small></span><ChevronRight size={15} /></button>)}</div><article className="agent-definition markdown"><ReactMarkdown>{stripFrontmatter(content)}</ReactMarkdown></article></div> : <EmptyState title="0 Agents" detail="This Loop has no Agent definitions." />)}{tab === 'files' && <div className="agents-workspace"><div className="agent-grid">{extraFiles.map((item) => <button key={item.path} className={file === item.path ? 'is-selected' : ''} onClick={() => setFile(item.path)}><span><strong>{item.path}</strong><small>{item.media_type ?? 'File'}</small></span><ChevronRight size={15} /></button>)}</div><article className="file-preview-body">{(rawImage || rawPdf) && preview && <RawMediaPreview file={preview} name={file} />}{!rawImage && !rawPdf && <pre className="code-preview scroll-area">{content}</pre>}</article></div>}</ScrollArea></> : <EmptyState title="No Loop selected" detail="Select a declaration from the list." />}</section>{error && <div className="toast" role="alert">{error}<IconButton label="Dismiss error" onClick={() => setError(null)}><X /></IconButton></div>}</section>;
 }
 
 function BackendsWorkspace() {

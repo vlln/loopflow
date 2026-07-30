@@ -88,6 +88,9 @@ def agent(
                 cache_path=kw.get("cache_path"),
                 resume_session_id=kw.get("resume_session_id"),
                 call_id=kw.get("call_id"),
+                # Dynamic ACP preparation must be reused by the actual call.
+                # Static CLI backends retain the manager-owned execution path.
+                backend_instance=backend_instance if transport == "acp" else None,
             )
 
         runner = AgentRunner(
@@ -154,10 +157,16 @@ def parallel(thunks: list[Callable[[], Any]]) -> list[Any]:
     # Record join in agent graph and emit fork_end event
     _write_event({"type": "fork_end", "call_id": current_call_id})
 
-    if ctx.resume:
-        first = next((error for error in errors if error is not None), None)
-        if first is not None:
-            raise first
+    from loopflow.infrastructure.intervention import InterventionPending
+    pending = next(
+        (error for error in errors if isinstance(error, InterventionPending)),
+        None,
+    )
+    if pending is not None:
+        raise pending
+    first = next((error for error in errors if error is not None), None)
+    if ctx.resume and first is not None:
+        raise first
     return results
 
 

@@ -14,6 +14,7 @@ from tests.recovery_support import manifest as recovery_manifest
 from tests.scheduling_support import manifest as scheduling_manifest
 from tests.agent_support import manifest as agent_manifest
 from tests.single_agent_support import manifest as single_agent_manifest
+from tests.iteration_027_support import manifest as iteration_027_manifest
 
 PROFILES = {
     "web": (web_manifest, "docs/ac/0010-webui.md", "tests/system/cases.json"),
@@ -36,6 +37,11 @@ PROFILES = {
         single_agent_manifest,
         "docs/ac/0014-single-agent-run.md",
         "tests/system/single_agent_cases.json",
+    ),
+    "iteration027": (
+        iteration_027_manifest,
+        "docs/ac/0015-iteration-0.27.0.md",
+        "tests/system/iteration_027_cases.json",
     ),
 }
 

@@ -44,7 +44,10 @@ def execute_workflow(
         "execution_options": {
             key: value
             for key, value in options.items()
-            if key in {"backend", "model", "mock", "unattended"}
+            if key in {
+                "backend", "model", "mock", "transport", "unattended",
+                "append_prompt",
+            }
         },
         "pid": pid,
         "process_group_id": os.getpgrp(),
@@ -86,6 +89,7 @@ def execute_workflow(
         counter=0,
         recovery_mode=options.get("recovery_mode", "retry") if recover else None,
         recovery_target_call_id=run_metadata.get("failed_call_id") if recover else None,
+        continue_targets=run_metadata.get("continue_targets") if recover else None,
         execution_options=run_metadata.get("execution_options"),
     )
     context.default_backend = options.get("backend")
@@ -128,7 +132,10 @@ def execute_workflow(
         import traceback as _tb
         error_traceback = "".join(_tb.format_exception(exc))
     else:
-        if recover and context.recovery_target_call_id and not context.recovery_target_reached:
+        if recover and context.continue_targets and not context.all_continue_targets_reached():
+            status, error = "failed", "replay_diverged"
+            error_traceback = None
+        elif recover and context.recovery_target_call_id and not context.recovery_target_reached:
             status, error = "failed", "replay_diverged"
             error_traceback = None
         else:
@@ -155,9 +162,17 @@ def execute_workflow(
         if context.failed_error_category is not None:
             # ADR-0044 §3 / BR-049：与 error_summary 并列的失败分类
             run_metadata["error_category"] = context.failed_error_category
+        if recover and context.continue_targets:
+            remaining = context.remaining_continue_targets()
+            if remaining:
+                run_metadata["continue_targets"] = remaining
+                run_metadata["failed_call_id"] = remaining[0]["call_id"]
+                run_metadata["failed_session_id"] = remaining[0]["session_id"]
+                run_metadata["can_recover_continue"] = True
     elif status == "done":
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
+        run_metadata.pop("continue_targets", None)
         run_metadata.pop("can_recover_continue", None)
         run_metadata.pop("error_category", None)
         run_metadata.pop("cancel_point", None)
@@ -226,7 +241,10 @@ def execute_single_agent(
         "execution_options": {
             key: value
             for key, value in options.items()
-            if key in {"backend", "model", "mock", "transport", "unattended"}
+            if key in {
+                "backend", "model", "mock", "transport", "unattended",
+                "append_prompt",
+            }
         },
         "single_agent": single_agent,
         "pid": pid,
@@ -270,6 +288,7 @@ def execute_single_agent(
         counter=0,
         recovery_mode=options.get("recovery_mode", "retry") if recover else None,
         recovery_target_call_id=run_metadata.get("failed_call_id") if recover else None,
+        continue_targets=run_metadata.get("continue_targets") if recover else None,
         execution_options=run_metadata.get("execution_options"),
         digest_workflow=False,
     )
@@ -316,7 +335,10 @@ def execute_single_agent(
         import traceback as _tb
         error_traceback = "".join(_tb.format_exception(exc))
     else:
-        if recover and context.recovery_target_call_id and not context.recovery_target_reached:
+        if recover and context.continue_targets and not context.all_continue_targets_reached():
+            status, error = "failed", "replay_diverged"
+            error_traceback = None
+        elif recover and context.recovery_target_call_id and not context.recovery_target_reached:
             status, error = "failed", "replay_diverged"
             error_traceback = None
         else:
@@ -342,9 +364,17 @@ def execute_single_agent(
         run_metadata["can_recover_continue"] = context.failed_can_continue
         if context.failed_error_category is not None:
             run_metadata["error_category"] = context.failed_error_category
+        if recover and context.continue_targets:
+            remaining = context.remaining_continue_targets()
+            if remaining:
+                run_metadata["continue_targets"] = remaining
+                run_metadata["failed_call_id"] = remaining[0]["call_id"]
+                run_metadata["failed_session_id"] = remaining[0]["session_id"]
+                run_metadata["can_recover_continue"] = True
     elif status == "done":
         run_metadata.pop("failed_call_id", None)
         run_metadata.pop("failed_session_id", None)
+        run_metadata.pop("continue_targets", None)
         run_metadata.pop("can_recover_continue", None)
         run_metadata.pop("error_category", None)
         run_metadata.pop("cancel_point", None)

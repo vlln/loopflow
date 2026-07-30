@@ -1,6 +1,7 @@
 import json
 import subprocess
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 import pytest
 
@@ -91,6 +92,52 @@ def test_create_stop_recover_rerun_and_invalid_transition(tmp_path):
     recovered = service.recover_run(failed.name, {"mode": "retry"})
     assert recovered["run_id"] == failed.name and recovered["status"] == "running"
     assert service.executor.calls[-1][2] == {"recover": True, "recovery_mode": "retry"}
+
+
+def test_ac034_n2_b1_create_forwards_normalized_append_prompt(tmp_path):
+    service, _, _ = app(tmp_path)
+
+    service.create_run({"loop": "hello", "append_prompt": "Read only"})
+    assert service.executor.calls[-1][2] == {"append_prompt": "Read only"}
+
+    service.create_run({"loop": "hello", "append_prompt": ""})
+    assert service.executor.calls[-1][2] == {}
+
+
+def test_ac034_b2_e3_api_uses_utf8_byte_limit_before_executor_start(tmp_path):
+    service, _, _ = app(tmp_path)
+
+    service.create_run({"loop": "hello", "append_prompt": "a" * 65536})
+    assert service.executor.calls[-1][2]["append_prompt"] == "a" * 65536
+    calls_before = len(service.executor.calls)
+
+    with pytest.raises(ApplicationError) as error:
+        service.create_run({"loop": "hello", "append_prompt": "界" * 21846})
+
+    assert error.value.code == "validation_failed"
+    assert error.value.details == {"field": "append_prompt"}
+    assert len(service.executor.calls) == calls_before
+
+
+def test_ac034_e2_recover_rejects_append_prompt_without_starting_worker(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("failed-append", status="failed")
+    metadata = json.loads((run / "run.json").read_text())
+    metadata["execution_options"] = {"append_prompt": "A"}
+    factory.write_json(run / "run.json", metadata)
+    calls_before = len(service.executor.calls)
+
+    with pytest.raises(ApplicationError) as error:
+        service.recover_run(
+            "failed-append", {"mode": "retry", "append_prompt": "B"}
+        )
+
+    assert error.value.code == "validation_failed"
+    assert error.value.details == {"fields": ["append_prompt"]}
+    assert len(service.executor.calls) == calls_before
+    assert json.loads((run / "run.json").read_text())["execution_options"] == {
+        "append_prompt": "A"
+    }
 
 
 def test_stop_waiting_input_cancels_without_worker_and_preserves_pending_request(tmp_path):
@@ -617,12 +664,176 @@ def test_batch_intervention_response_is_all_or_nothing(tmp_path):
     assert {path.name: path.read_bytes() for path in interventions.glob("*.json")} == before
 
 
+def test_respond_executor_failure_rolls_back_answers_and_metadata_for_retry(
+    tmp_path
+):
+    service, factory, _ = app(tmp_path)
+    good_executor = service.executor
+    run = factory.create_run("waiting-retry", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve.json", {
+        "request_id": "approve", "source": "agent", "key": "approve",
+        "prompt": "Approve?", "options": ["yes"], "allow_custom": False,
+        "status": "pending", "resume_mode": "continue", "call_id": "0001",
+        "session_id": "sid-1", "request_group_id": "group-1",
+        "request_index": 0,
+    })
+    request_before = json.loads((interventions / "approve.json").read_text())
+    metadata_before = json.loads((run / "run.json").read_text())
+
+    class FailingExecutor:
+        def start(self, *args, **kwargs):
+            raise RuntimeError("run_process_start_failed")
+
+    service.executor = FailingExecutor()
+    with pytest.raises(RuntimeError, match="run_process_start_failed"):
+        service.respond_interventions("waiting-retry", {
+            "responses": [{"request_id": "approve", "response": "yes"}],
+        })
+
+    assert json.loads((interventions / "approve.json").read_text()) == request_before
+    assert json.loads((run / "run.json").read_text()) == metadata_before
+    service.executor = good_executor
+    result = service.respond_interventions("waiting-retry", {
+        "responses": [{"request_id": "approve", "response": "yes"}],
+    })
+    assert result["status"] == "running"
+
+
+def test_respond_metadata_read_failure_leaves_request_pending(tmp_path):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting-read", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve.json", {
+        "request_id": "approve", "source": "agent", "key": "approve",
+        "prompt": "Approve?", "options": ["yes"], "allow_custom": False,
+        "status": "pending", "resume_mode": "continue", "call_id": "0001",
+        "session_id": "sid-1", "request_group_id": "group-1",
+        "request_index": 0,
+    })
+
+    with patch(
+        "loopflow.application.respond.read_json",
+        side_effect=OSError("metadata unavailable"),
+    ), pytest.raises(ApplicationError) as error:
+        service.respond_interventions("waiting-read", {
+            "responses": [{"request_id": "approve", "response": "yes"}],
+        })
+
+    assert error.value.code == "atomic_write_failed"
+    request = json.loads((interventions / "approve.json").read_text())
+    assert request["status"] == "pending" and "response" not in request
+
+
+@pytest.mark.parametrize(
+    "responses",
+    [
+        [{"request_id": "first", "response": "yes"}],
+        [
+            {"request_id": "first", "response": "yes"},
+            {"request_id": "first", "response": "yes"},
+        ],
+    ],
+)
+def test_batch_must_exactly_cover_current_pending_requests(tmp_path, responses):
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    for request_id, index in (("first", 0), ("second", 1)):
+        factory.write_json(interventions / f"{request_id}.json", {
+            "request_id": request_id,
+            "source": "agent",
+            "key": request_id,
+            "prompt": f"{request_id}?",
+            "options": ["yes", "no"],
+            "allow_custom": False,
+            "schema": None,
+            "status": "pending",
+            "resume_mode": "continue",
+            "call_id": "0001",
+            "session_id": "sid-1",
+            "request_group_id": "group-1",
+            "request_index": index,
+        })
+    before = {path.name: path.read_bytes() for path in interventions.glob("*.json")}
+
+    with pytest.raises(ApplicationError) as error:
+        service.respond_interventions("waiting", {"responses": responses})
+
+    assert error.value.code == "validation_failed"
+    assert service.executor.calls == []
+    assert {path.name: path.read_bytes() for path in interventions.glob("*.json")} == before
+
+
+def test_concurrent_batch_response_starts_only_one_recovery(tmp_path):
+    import threading
+
+    service, factory, _ = app(tmp_path)
+    run = factory.create_run("waiting-race", status="waiting_input")
+    interventions = run / "interventions"
+    interventions.mkdir()
+    factory.write_json(interventions / "approve.json", {
+        "request_id": "approve",
+        "source": "workflow",
+        "key": "approve",
+        "prompt": "Approve?",
+        "options": ["yes"],
+        "allow_custom": False,
+        "status": "pending",
+        "resume_mode": "replay",
+        "call_id": None,
+    })
+    barrier = threading.Barrier(3)
+    outcomes = []
+
+    def respond():
+        barrier.wait()
+        try:
+            service.respond_interventions("waiting-race", {
+                "responses": [{"request_id": "approve", "response": "yes"}],
+            })
+            outcomes.append("ok")
+        except ApplicationError as error:
+            outcomes.append(error.code)
+
+    threads = [threading.Thread(target=respond) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+
+    assert sorted(outcomes) == ["intervention_already_answered", "ok"]
+    assert len(service.executor.calls) == 1
+
+
 def test_rerun_preserves_source_and_queue_validates(tmp_path):
     service, factory, _ = app(tmp_path)
     source = factory.create_run("done", args={"x": 1})
+    metadata = json.loads((source / "run.json").read_text())
+    metadata["execution_options"] = {
+        "backend": "codex",
+        "transport": "acp",
+        "append_prompt": "Read only",
+    }
+    metadata["single_agent"] = {
+        "agent_def": "reviewer", "prompt": "review", "params": {},
+    }
+    factory.write_json(source / "run.json", metadata)
     before = (source / "run.json").read_bytes()
     rerun = service.rerun("done")
     assert rerun["run_id"] != "done" and (source / "run.json").read_bytes() == before
+    assert service.executor.calls[-1][2] == {
+        "backend": "codex",
+        "transport": "acp",
+        "append_prompt": "Read only",
+        "single_agent": {
+            "agent_def": "reviewer", "prompt": "review", "params": {},
+        },
+    }
     queued = service.enqueue({"loop": "hello", "resources": {"repo": "/tmp/project"}})
     assert queued["loop"] == "hello"
     with pytest.raises(ApplicationError) as error:

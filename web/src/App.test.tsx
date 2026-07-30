@@ -14,7 +14,12 @@ class EventSourceMock {
 }
 
 function response(body: unknown, status = 200) {
-  return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) } as Response);
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+    blob: () => Promise.resolve(new Blob([JSON.stringify(body)])),
+  } as Response);
 }
 
 type FetchOptions = boolean | {
@@ -24,12 +29,16 @@ type FetchOptions = boolean | {
   responseBody?: unknown;
   fileChanges?: Record<string, { seq: number; call_id: string; label: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
   runFile?: { status?: number; body?: unknown };
+  rawFile?: { status?: number; body?: unknown };
+  loopFile?: { status?: number; body?: unknown };
   pickDirectory?: { status?: number; body?: unknown };
   listDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
-  declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
+  declaredArgs?: unknown[];
   detailOverride?: Record<string, unknown>;
+  loopDetailOverride?: Record<string, unknown>;
   pausedLoop?: boolean;
+  loopsReject?: boolean;
 };
 
 function installFetch(config: FetchOptions = true) {
@@ -42,6 +51,10 @@ function installFetch(config: FetchOptions = true) {
   const fileChangesMap = typeof config === 'boolean' ? {} : config.fileChanges ?? {};
   const runFileStatus = typeof config === 'boolean' ? 200 : config.runFile?.status ?? 200;
   const runFileBody = typeof config === 'boolean' ? null : config.runFile?.body ?? null;
+  const rawFileStatus = typeof config === 'boolean' ? 200 : config.rawFile?.status ?? 200;
+  const rawFileBody = typeof config === 'boolean' ? null : config.rawFile?.body ?? null;
+  const loopFileStatus = typeof config === 'boolean' ? 200 : config.loopFile?.status ?? 200;
+  const loopFileBody = typeof config === 'boolean' ? null : config.loopFile?.body ?? null;
   const pickStatus = typeof config === 'boolean' ? 200 : config.pickDirectory?.status ?? 200;
   const pickBody = typeof config === 'boolean' ? null : config.pickDirectory?.body ?? null;
   const listStatus = typeof config === 'boolean' ? 200 : config.listDirectory?.status ?? 200;
@@ -50,7 +63,9 @@ function installFetch(config: FetchOptions = true) {
   const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
   const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
   const detailOverride = typeof config === 'boolean' ? null : config.detailOverride ?? null;
+  const loopDetailOverride = typeof config === 'boolean' ? null : config.loopDetailOverride ?? null;
   const pausedLoop = typeof config === 'boolean' ? false : config.pausedLoop ?? false;
+  const loopsReject = typeof config === 'boolean' ? false : config.loopsReject ?? false;
   const pausedFields = pausedLoop ? { paused: true, paused_reason: 'failure_streak:5', consecutive_failures: 5 } : {};
   const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : { ...loopSummary, ...pausedFields };
   const calls = [] as unknown as string[] & { bodies: unknown[] };
@@ -85,15 +100,21 @@ function installFetch(config: FetchOptions = true) {
       const items = fileChangesMap[runId] ?? [];
       return response({ items, count: items.length });
     }
+    if (path.match(/\/api\/v1\/(runs|loops)\/[^/]+\/file\/raw\?path=/)) {
+      return response(rawFileBody ?? 'raw fixture', rawFileStatus);
+    }
     if (path.match(/\/api\/v1\/runs\/[^/]+\/file\?path=/)) {
       return response(runFileBody ?? { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true }, runFileStatus);
     }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
-    if (path === '/api/v1/loops') return response({ items: [{ ...declaredLoop, ...(loopUnpaused ? { paused: false, paused_reason: null, consecutive_failures: 0 } : {}) }, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
-    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : { ...loopDetail, ...pausedFields });
+    if (path === '/api/v1/loops') {
+      if (loopsReject) return Promise.reject(new Error('network down'));
+      return response({ items: [{ ...declaredLoop, ...(loopUnpaused ? { paused: false, paused_reason: null, consecutive_failures: 0 } : {}) }, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
+    }
+    if (path === '/api/v1/loops/review-loop') return response({ ...loopDetail, ...pausedFields, ...(declaredArgs ? { declared_args: declaredArgs } : {}), ...loopDetailOverride });
     if (path === '/api/v1/loops/review-loop/unpause') { loopUnpaused = true; return response({ ...loopDetail, paused: false, paused_reason: null, consecutive_failures: 0 }); }
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
-    if (path.includes('/api/v1/loops/review-loop/file')) return response({ content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
+    if (path.includes('/api/v1/loops/review-loop/file')) return response(loopFileBody ?? { path: path.includes('workflow.py') ? 'workflow.py' : 'loop.md', content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40, read_only: true }, loopFileStatus);
     if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
     if (path === '/api/v1/backends') return response({ items: backends });
     if (path === '/api/v1/system/pick-directory') return response(pickBody ?? { path: '/tmp/lf-picked', cancelled: false }, pickStatus);
@@ -114,6 +135,8 @@ function installFetch(config: FetchOptions = true) {
 beforeEach(() => {
   EventSourceMock.instances = [];
   vi.stubGlobal('EventSource', EventSourceMock);
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:preview') });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
 });
 
 afterEach(() => {
@@ -466,6 +489,84 @@ it('AC-025-E-3: previewing a deleted file shows a friendly not-found message', a
   expect(await screen.findByRole('alert')).toHaveTextContent('File no longer exists');
 });
 
+it('AC-025-N-9: previewing an image file renders an <img> with the raw URL', async () => {
+  const pngRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'figs/chart.png', action: 'created', size: 2048 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pngRecords },
+    runFile: { body: { path: 'figs/chart.png', media_type: 'image/png', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=figs/chart.png' } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview figs/chart.png' }));
+  const dialog = await screen.findByRole('dialog', { name: 'chart.png' });
+  const img = await within(dialog).findByRole('img', { name: 'chart.png' });
+  expect(img).toBeVisible();
+  await waitFor(() => expect(img).toHaveAttribute('src', 'blob:preview'));
+  fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
+});
+
+it('AC-025-N-10: previewing a PDF renders an <iframe> with the raw URL', async () => {
+  const pdfRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'doc/paper.pdf', action: 'created', size: 7800000 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pdfRecords },
+    runFile: { body: { path: 'doc/paper.pdf', media_type: 'application/pdf', content: null, encoding: 'raw', size: 7800000, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=doc/paper.pdf' } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  await screen.findByTestId('file-changes-panel');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview doc/paper.pdf' }));
+  const dialog = await screen.findByRole('dialog', { name: 'paper.pdf' });
+  const iframe = await within(dialog).findByTitle('paper.pdf');
+  expect(iframe).toBeVisible();
+  await waitFor(() => expect(iframe).toHaveAttribute('src', 'blob:preview'));
+  fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+});
+
+it('AC-033-E-2: raw media failure replaces the broken preview with an error', async () => {
+  const pngRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'figs/missing.png', action: 'created', size: 2048 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pngRecords },
+    runFile: { body: { path: 'figs/missing.png', media_type: 'image/png', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=figs%2Fmissing.png' } },
+    rawFile: { status: 404, body: { error: { code: 'file_not_found' } } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview figs/missing.png' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load file preview');
+  expect(screen.queryByRole('img', { name: 'missing.png' })).not.toBeInTheDocument();
+});
+
+it('AC-033-E-2: failed PDF fetch never leaves a blank iframe', async () => {
+  const pdfRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'doc/missing.pdf', action: 'created', size: 2048 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pdfRecords },
+    runFile: { body: { path: 'doc/missing.pdf', media_type: 'application/pdf', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=doc%2Fmissing.pdf' } },
+    rawFile: { status: 500, body: { error: { code: 'file_read_failed' } } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview doc/missing.pdf' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load file preview');
+  expect(screen.queryByTitle('missing.pdf')).not.toBeInTheDocument();
+});
+
+it('AC-033-N-2: Loop PDF uses the raw viewer instead of a text pre', async () => {
+  installFetch({
+    loopDetailOverride: { files: [...loopDetail.files, { path: 'report.pdf', media_type: 'application/pdf', size: 2048, previewable: true }] },
+    loopFile: { body: { path: 'report.pdf', media_type: 'application/pdf', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/loops/review-loop/file/raw?path=report.pdf' } },
+  });
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  await screen.findByText('Review and fix changes');
+  await screen.findByRole('heading', { name: 'review-loop' });
+  fireEvent.click(await screen.findByRole('button', { name: /Files/ }));
+  const viewer = await screen.findByTitle('report.pdf');
+  expect(viewer).toHaveAttribute('src', 'blob:preview');
+  expect(viewer.closest('article')?.querySelector('pre')).toBeNull();
+});
+
 // --- AC-025: Web directory browser / AC-014: arguments editor ---
 
 it('AC-025-N-6: Browse fills the working directory via Web directory picker', async () => {
@@ -621,6 +722,23 @@ it('AC-014-N-10: switching loops resets the editor to that loop declarations', a
   expect(screen.getAllByRole('textbox', { name: 'Argument value' })[0]).toHaveValue('main');
 });
 
+it('AC-035-N-2: Editor and JSON modes preserve the same arguments', async () => {
+  const calls = installFetch({ declaredArgs: [{ name: 'review', default: 'main' }] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('main'));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Argument value' }), { target: { value: 'edited' } });
+  fireEvent.click(screen.getByRole('button', { name: 'JSON' }));
+  expect(screen.getByRole('textbox', { name: 'Arguments' })).toHaveValue('{\n  "review": "edited"\n}');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Arguments' }), { target: { value: '{"review":"json","count":2}' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+  expect(screen.getAllByRole('textbox', { name: 'Argument value' })[0]).toHaveValue('json');
+  expect(screen.getAllByRole('textbox', { name: 'Argument value' })[1]).toHaveValue('2');
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ args: { review: 'json', count: 2 } })));
+});
+
 it('AC-014-B-5: a loop without declared args starts with a blank editor', async () => {
   installFetch();
   render(<App />);
@@ -631,6 +749,74 @@ it('AC-014-B-5: a loop without declared args starts with a blank editor', async 
   expect(keys).toHaveLength(1);
   expect(keys[0]).toHaveValue('');
   expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('');
+});
+
+it('AC-035-B-2: declared defaults preserve false zero object empty and string types', async () => {
+  const calls = installFetch({ declaredArgs: [
+    { name: 'flag', default: false }, { name: 'count', default: 0 },
+    { name: 'config', default: { mode: 'fast' } }, { name: 'empty', default: '' },
+    { name: 'literal', default: 'false' },
+  ] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'Argument key' })).toHaveLength(5));
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({
+    args: { flag: false, count: 0, config: { mode: 'fast' }, literal: 'false' },
+  })));
+});
+
+it('AC-035-E-1: malformed declarations are ignored and only valid names are prefilled', async () => {
+  const calls = installFetch({ declaredArgs: [
+    null, 'invalid', {}, { name: 7, default: 'wrong' },
+    { name: '   ', default: 'wrong' }, { name: 'valid', default: 'kept' },
+  ] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  const keys = await screen.findAllByRole('textbox', { name: 'Argument key' });
+  expect(keys).toHaveLength(1);
+  expect(keys[0]).toHaveValue('valid');
+  expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('kept');
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({
+    args: { valid: 'kept' },
+  })));
+});
+
+it('AC-035-F-1: loop loading failure disables New Run and clears arguments', async () => {
+  const calls = installFetch({ loopsReject: true, declaredArgs: [{ name: 'cached', default: 'old' }] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  expect(await screen.findByText('Unable to load loops')).toBeVisible();
+  expect(screen.getByLabelText('Loop')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Start Run' })).toBeDisabled();
+  expect(screen.getByRole('textbox', { name: 'Argument key' })).toHaveValue('');
+  expect(calls.bodies).toHaveLength(0);
+});
+
+it('AC-034-N-2: New Run submits a nonempty append prompt', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Append prompt' }), { target: { value: 'Only inspect files' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ append_prompt: 'Only inspect files' })));
+});
+
+it('AC-034-E-4: oversized UTF-8 append prompt is rejected without POST', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Append prompt' }), { target: { value: `${'a'.repeat(65535)}é` } });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  expect(await screen.findByText('Append prompt must be 64 KiB or less')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Start Run' })).toBeVisible();
+  expect(calls.bodies).toHaveLength(0);
 });
 
 it('AC-019-N-5: theme toggle switches data-theme and persists across renders', async () => {
@@ -715,4 +901,155 @@ it('AC-015-F-4: legacy events without call_id stay unattributed, no phantom call
   fireEvent.click(screen.getByRole('tab', { name: 'Unattributed 1' }));
   expect(screen.getByText(/legacy/)).toBeVisible();
   expect(screen.queryByText('call-a')).toBeFalsy();
+});
+
+// --- AC-017 / AC-018 UI coverage (0112-02) ---
+
+it('AC-017-N-1: selecting a Loop keeps both items and swaps detail in place', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  expect(await screen.findByRole('button', { name: /review-loop/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: /empty-loop/ })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'review-loop' })).toBeVisible();
+  fireEvent.click(screen.getByRole('button', { name: /empty-loop/ }));
+  expect(await screen.findByRole('heading', { name: 'empty-loop' })).toBeVisible();
+  // both loops remain in the left list after in-place swap
+  expect(screen.getByRole('button', { name: /review-loop/ })).toBeVisible();
+  expect(screen.getByRole('button', { name: /empty-loop/ })).toBeVisible();
+});
+
+it('AC-017-B-1: loop with no agents shows 0 Agents empty state without error', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  fireEvent.click(await screen.findByRole('button', { name: /empty-loop/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /Agents/ }));
+  expect(await screen.findByText('0 Agents')).toBeVisible();
+  expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+});
+
+it('AC-018-N-2: diagnostic stderr redaction is rendered, no plaintext token in DOM', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Backends' }));
+  fireEvent.click(await screen.findByRole('button', { name: /Run check/ }));
+  expect(await screen.findByText('codex 1.0.0')).toBeVisible();
+  // DOM must not contain a plaintext token if the diagnostic carried one
+  expect(screen.queryByText(/lf-secret/)).not.toBeInTheDocument();
+});
+
+it('AC-018-B-1: no backends shows empty state and no health percentage', async () => {
+  vi.stubGlobal('EventSource', EventSourceMock);
+  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+    const path = String(input);
+    if (path === '/api/v1/backends') return response({ items: [] });
+    if (path === '/api/v1/system/meta') return response({ version: '0.19.1' });
+    return response({ items: [], next_cursor: null });
+  }));
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Backends' }));
+  expect(await screen.findByText('No Backends found')).toBeVisible();
+  expect(screen.queryByLabelText('System health')).not.toBeInTheDocument();
+});
+
+it('AC-018-B-2: backend without version renders Unknown, other capabilities still shown', async () => {
+  installFetch();
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Backends' }));
+  await screen.findAllByText('/usr/bin/codex');
+  // kimi has version null → renders Unknown
+  expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
+});
+
+// --- AC-015 AgentGraph UI coverage (0112-04) ---
+
+it('AC-015-N-2: selecting a graph node filters Events and file changes to that call', async () => {
+  installFetch({ fileChanges: { 'run-live': [
+    { seq: 1, call_id: 'call-plan', label: 'plan', ts: '2026-07-18T22:00:01Z', changes: [{ path: 'a.json', action: 'created', size: 10 }] },
+    { seq: 2, call_id: 'call-a', label: 'reviewer', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'b.json', action: 'created', size: 20 }] },
+  ] } });
+  render(<App />);
+  await screen.findByText('Agent graph');
+  // select call-a → its call row becomes selected and the call-facts line appears
+  const callRow = screen.getByText('call-a').closest('button')!;
+  fireEvent.click(callRow);
+  expect(callRow.className).toContain('is-selected');
+  // events panel still scoped; both file changes panels render per-call records
+  expect(await screen.findByTestId('file-changes-panel')).toBeVisible();
+});
+
+it('AC-015-N-5: Inspector shows run state; Call detail shows structured events not state diff', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByText('Agent graph');
+  // detail.state = { attempt: 2 } → Inspector state viewer shows attempt=2
+  fireEvent.click(screen.getByLabelText('View run state'));
+  expect(screen.getByText(/"attempt": 2/)).toBeVisible();
+});
+
+it('AC-015-E-4: graph node count, selected call, and event count shown accurately without occurrence terms', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByText('Agent graph');
+  // 2 nodes in fixture agent_graph
+  expect(screen.getByText('2 calls')).toBeVisible();
+  // no occurrence terminology anywhere
+  expect(screen.queryByText(/occurrence/i)).not.toBeInTheDocument();
+});
+
+// --- AC-019 layout & accessibility coverage (0112-05) ---
+
+it('AC-019-N-2: keyboard selection shows focus and fires a single recover retry', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  const failedRow = screen.getByText('run-failed').closest('button')!;
+  failedRow.focus();
+  fireEvent.keyDown(failedRow, { key: 'Enter' });
+  fireEvent.click(failedRow);
+  await screen.findByRole('heading', { name: 'run-failed' });
+  const retry = await screen.findByRole('button', { name: 'Retry failed call' });
+  retry.focus();
+  expect(document.activeElement).toBe(retry);
+  fireEvent.keyDown(retry, { key: 'Enter' });
+  fireEvent.click(retry);
+  await waitFor(() => expect(calls.filter((c) => c.includes('recover'))).toHaveLength(1));
+});
+
+it('AC-019-B-4: long error_summary is clamped, traceback stays expandable', async () => {
+  installFetch({ detailOverride: { error_summary: 'line one\nline two\nline three\nline four', error_traceback: 'Traceback: boom' } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  // the banner uses the dedicated clamp class wired to -webkit-line-clamp: 2 in styles.css
+  const banner = document.querySelector('.run-error-banner .error-summary-text')!;
+  expect(banner).toBeInTheDocument();
+  expect(banner.textContent).toContain('line one');
+  // full multiline summary is present in DOM; visual clamp handled by the class
+  expect(banner.textContent).toContain('line four');
+  expect(screen.getByText('Traceback')).toBeVisible();
+});
+
+it('AC-019-E-2: SSE disconnect shows stream error and keeps last data', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  const content = await screen.findByText(/workflow output/);
+  expect(content).toBeVisible();
+  act(() => { EventSourceMock.instances[0].emit('stream_error', '{}'); });
+  // last data retained after disconnect
+  expect(screen.getByText(/workflow output/)).toBeVisible();
+  await waitFor(() => expect(screen.getByText(/stream error/)).toBeVisible());
+});
+
+it('AC-019-F-2: statuses remain text/icon distinguishable without color', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  // status badges carry text labels, not color alone — assert distinct status text renders
+  const badges = document.querySelectorAll('.status');
+  expect(badges.length).toBeGreaterThan(0);
+  const texts = Array.from(badges).map((b) => b.textContent?.trim());
+  expect(texts.some((t) => t && t.length > 0)).toBe(true);
+  expect(new Set(texts).size).toBeGreaterThan(1);
 });

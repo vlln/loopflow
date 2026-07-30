@@ -22,6 +22,7 @@ from loopflow.infrastructure.web_resources import (
     BackendRepository,
     DiagnosticStartFailed,
     FileNotPreviewable,
+    FileReadFailed,
     LoopRepository,
     PathForbidden,
     QueueRepository,
@@ -50,6 +51,7 @@ ERROR_STATUS = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "file_read_failed": 500,
     "intervention_not_found": 404,
     "atomic_write_failed": 500,
     "internal_error": 500,
@@ -112,6 +114,8 @@ def handler_for(
                 self._error(403, "path_forbidden", str(error))
             except FileNotPreviewable as error:
                 self._error(422, "file_not_previewable", str(error))
+            except FileReadFailed as error:
+                self._error(500, "file_read_failed", str(error))
             except FileNotFoundError as error:
                 self._error(404, "file_not_found", f"File '{error.args[0]}' was not found")
             except DiagnosticStartFailed as error:
@@ -176,7 +180,7 @@ def handler_for(
                     self._error(404, "file_not_found", "Resource was not found")
                 return
 
-            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events|file-changes|file))?", path)
+            match = re.fullmatch(r"/runs/([^/]+)(?:/(stop|recover|rerun|reconcile|events|legacy-events|file-changes|file(?:/raw)?))?", path)
             if match:
                 run_id, action = match.groups()
                 if method == "GET" and action is None:
@@ -202,6 +206,17 @@ def handler_for(
                     if relative is None:
                         raise ApplicationError("validation_failed", "path is required")
                     self._json(200, self.app.preview_run_file(run_id, relative))
+                elif method == "GET" and action == "file/raw":
+                    relative = _one(query, "path")
+                    if relative is None:
+                        raise ApplicationError("validation_failed", "path is required")
+                    content, media_type = self.app.serve_run_file_raw(run_id, relative)
+                    self.send_response(200)
+                    self.send_header("Content-Type", media_type)
+                    self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(content)
                 elif method == "GET" and action == "events":
                     self._events(
                         run_id,
@@ -221,10 +236,21 @@ def handler_for(
                     self._error(404, "file_not_found", "Resource was not found")
                 return
 
-            match = re.fullmatch(r"/loops/([^/]+)(?:/file)?", path)
+            match = re.fullmatch(r"/loops/([^/]+)(?:/file(?:/raw)?)?", path)
             if match and method == "GET":
                 name = match.group(1)
-                if path.endswith("/file"):
+                if path.endswith("/file/raw"):
+                    relative = _one(query, "path")
+                    if relative is None:
+                        raise ApplicationError("validation_failed", "path is required")
+                    content, media_type = self.app.serve_loop_file_raw(name, relative)
+                    self.send_response(200)
+                    self.send_header("Content-Type", media_type)
+                    self.send_header("Content-Length", str(len(content)))
+                    self.send_header("Cache-Control", "no-store")
+                    self.end_headers()
+                    self.wfile.write(content)
+                elif path.endswith("/file"):
                     relative = _one(query, "path")
                     if relative is None:
                         raise ApplicationError("validation_failed", "path is required")

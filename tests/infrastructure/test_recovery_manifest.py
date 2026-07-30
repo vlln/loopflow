@@ -3,10 +3,11 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 
-from tests.recovery_support.manifest import check_manifest, generate_manifest
+from tests.recovery_support.manifest import check_manifest, generate_manifest, read_manifest
 
 
 AC_PATH = Path("docs/ac/0011-recovery-intervention.md")
+MANIFEST_PATH = Path("tests/system/recovery_cases.json")
 
 
 def test_recovery_manifest_covers_every_frozen_scenario():
@@ -14,6 +15,10 @@ def test_recovery_manifest_covers_every_frozen_scenario():
 
     assert check_manifest(manifest, AC_PATH, allow_planned=True) == []
     assert len(manifest["cases"]) == len({case["ac_id"] for case in manifest["cases"]})
+
+
+def test_committed_recovery_manifest_matches_frozen_mapping():
+    assert check_manifest(read_manifest(MANIFEST_PATH), AC_PATH, allow_planned=True) == []
 
 
 def test_recovery_manifest_rejects_missing_and_duplicate_scenarios():
@@ -48,3 +53,10 @@ def test_recovery_manifest_rejects_wrong_error_status_and_planned_nodes():
     assert "AC-020-E-2: continue_not_supported must use HTTP 409" in errors
     planned = sum(case["test_node"].startswith("planned::") for case in manifest["cases"])
     assert sum("planned test node is not allowed" in error for error in errors) == planned
+
+
+def test_agent_intervention_failure_is_not_mapped_to_http_status():
+    manifest = generate_manifest(AC_PATH)
+    case = next(item for item in manifest["cases"] if item["ac_id"] == "AC-023-F-4")
+
+    assert case["expectations"] == [{"kind": "unit", "value": "matches-ac"}]

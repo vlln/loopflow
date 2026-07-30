@@ -201,6 +201,10 @@ class AcpSdkBackend(BaseBackend):
         self._auth_methods = self._transport.auth_methods
         self._initialized = True
 
+    def prepare_capabilities(self) -> Capabilities:
+        self._ensure_initialized()
+        return self.capabilities
+
     def _authenticate(self) -> None:
         """Try to authenticate. pi-acp typically doesn't require auth if already configured."""
         for method in self._auth_methods:

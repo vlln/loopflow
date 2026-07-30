@@ -38,6 +38,34 @@ def test_execute_workflow_writes_terminal_metadata_and_v2_phase(tmp_path, monkey
     assert "pid" not in metadata and event["version"] == 2
 
 
+def test_ac034_n1_execute_workflow_freezes_append_prompt(tmp_path, monkeypatch):
+    loops = tmp_path / "loops"
+    create_loop(loops)
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    run = tmp_path / "run"
+    run.mkdir()
+
+    execute_workflow(
+        "hello", {}, {"append_prompt": "Read only"}, "run-append", run
+    )
+
+    metadata = json.loads((run / "run.json").read_text())
+    assert metadata["execution_options"]["append_prompt"] == "Read only"
+
+
+def test_execute_workflow_freezes_transport_for_rerun(tmp_path, monkeypatch):
+    loops = tmp_path / "loops"
+    create_loop(loops)
+    monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
+    run = tmp_path / "run"
+    run.mkdir()
+
+    execute_workflow("hello", {}, {"transport": "acp"}, "run-acp", run)
+
+    metadata = json.loads((run / "run.json").read_text())
+    assert metadata["execution_options"]["transport"] == "acp"
+
+
 def test_execute_workflow_terminal_guard_does_not_overwrite_cancelled(tmp_path, monkeypatch):
     loops = tmp_path / "loops"
     loop = create_loop(loops)
@@ -103,7 +131,7 @@ def test_background_executor_uses_shared_target(tmp_path, monkeypatch):
     assert index == [{"working_directory": expected_workdir, "runs_directory": str(run_json.parent.parent), "run_id": run_id}]
 
 
-def test_recovery_fails_when_workflow_ends_before_target(tmp_path, monkeypatch):
+def test_recovery_fails_when_workflow_ends_before_all_continue_targets(tmp_path, monkeypatch):
     loops = tmp_path / "loops"
     create_loop(loops)
     monkeypatch.setenv("LOOPFLOW_LOOPS_DIR", str(loops))
@@ -116,18 +144,38 @@ def test_recovery_fails_when_workflow_ends_before_target(tmp_path, monkeypatch):
         "args": {},
         "counter": 3,
         "created": "old",
-        "failed_call_id": "0003",
+        "failed_call_id": "0001",
+        "failed_session_id": "sid-1",
+        "continue_targets": [
+            {"request_group_id": "g1", "call_id": "0001", "session_id": "sid-1"},
+            {"request_group_id": "g2", "call_id": "0002", "session_id": "sid-2"},
+        ],
         "execution_epoch": 1,
         "execution_options": {},
     }))
 
+    interventions = run / "interventions"
+    interventions.mkdir()
+    for group in ("g1", "g2"):
+        (interventions / f"{group}.json").write_text(json.dumps({
+            "request_id": group, "status": "answered", "response": "yes",
+        }))
+
     execute_workflow(
-        "hello", {}, {"recover": True, "recovery_mode": "retry"}, "same", run
+        "hello", {}, {"recover": True, "recovery_mode": "continue"}, "same", run
     )
 
     metadata = json.loads((run / "run.json").read_text())
     assert metadata["status"] == "failed"
     assert metadata["error_summary"] == "replay_diverged"
+    assert metadata["continue_targets"] == [
+        {"request_group_id": "g1", "call_id": "0001", "session_id": "sid-1"},
+        {"request_group_id": "g2", "call_id": "0002", "session_id": "sid-2"},
+    ]
+    assert all(
+        json.loads(path.read_text())["status"] == "answered"
+        for path in interventions.glob("*.json")
+    )
 
 
 def test_workflow_intervention_waits_and_replays_answer(tmp_path, monkeypatch):
@@ -268,7 +316,12 @@ def _wait_terminal(run_json, timeout=5.0):
     while time.monotonic() < deadline:
         status = json.loads(run_json.read_text()).get("status")
         if status != "running":
-            return status
+            # Terminal status is written before the child releases
+            # `.execution.lock` in its finally block; a run is only fully
+            # finished once the lock is gone, otherwise an immediate recover
+            # races into invalid_run_transition on slow/loaded machines.
+            if not (run_json.parent / ".execution.lock").exists():
+                return status
         time.sleep(0.01)
     return json.loads(run_json.read_text()).get("status")
 

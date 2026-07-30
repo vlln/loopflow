@@ -51,6 +51,7 @@ class RunContext:
                  counter: int = 0,
                  recovery_mode: str | None = None,
                  recovery_target_call_id: str | None = None,
+                 continue_targets: list[dict[str, Any]] | None = None,
                  execution_options: dict[str, Any] | None = None,
                  digest_workflow: bool = True) -> None:
         self.run_id = run_id or uuid.uuid4().hex[:8]
@@ -60,6 +61,16 @@ class RunContext:
         self.recovery_mode = recovery_mode
         self.recovery_target_call_id = recovery_target_call_id
         self.recovery_target_reached = False
+        raw_targets = list(continue_targets or [])
+        if not raw_targets and recovery_mode == "continue" and recovery_target_call_id:
+            raw_targets = [{"call_id": recovery_target_call_id, "session_id": None}]
+        self.continue_targets = {
+            str(item["call_id"]): dict(item)
+            for item in raw_targets
+            if isinstance(item, dict) and item.get("call_id")
+        }
+        self._reached_continue_targets: set[str] = set()
+        self._recovery_lock = threading.Lock()
         self.legacy_recovery = False
         self.failed_session_id: str | None = None
         self.failed_can_continue = False
@@ -77,6 +88,31 @@ class RunContext:
         # ADR-0055: single-agent runs exclude workflow.py from input digests
         self.digest_workflow = digest_workflow
         self.file_observer = None  # FileChangeObserver | None, set by execution.py
+
+    def continue_target_for(self, call_id: str) -> dict[str, Any] | None:
+        return self.continue_targets.get(call_id)
+
+    def continue_target_reached(self, call_id: str) -> bool:
+        with self._recovery_lock:
+            return call_id in self._reached_continue_targets
+
+    def mark_continue_target_reached(self, call_id: str) -> None:
+        with self._recovery_lock:
+            self._reached_continue_targets.add(call_id)
+            if call_id == self.recovery_target_call_id:
+                self.recovery_target_reached = True
+
+    def all_continue_targets_reached(self) -> bool:
+        with self._recovery_lock:
+            return set(self.continue_targets) <= self._reached_continue_targets
+
+    def remaining_continue_targets(self) -> list[dict[str, Any]]:
+        with self._recovery_lock:
+            return [
+                dict(target)
+                for call_id, target in self.continue_targets.items()
+                if call_id not in self._reached_continue_targets
+            ]
 
     def next_session(self) -> str:
         call_id = self.next_call_id()

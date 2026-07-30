@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator, ValidationError
 
 
 NULLABLE_STRING = {"type": ["string", "null"]}
@@ -80,6 +80,94 @@ LOOP_SUMMARY_SCHEMA = {
         "triggers": {"type": "array", "items": {"type": "object"}},
         "valid": {"type": "boolean"},
         "error_summary": NULLABLE_STRING,
+        "declared_phases": {"type": "array", "items": {"type": "object"}},
+        "declared_args": {
+            "type": "array",
+            "items": {"$ref": "#/$defs/declared_arg"},
+        },
+    },
+    "$defs": {
+        "declared_arg": {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["name"],
+            "properties": {
+                "name": {"type": "string", "pattern": ".*\\S.*"},
+                "default": {},
+                "description": {"type": "string"},
+                "required": {"type": "boolean"},
+            },
+        }
+    },
+}
+
+DECLARED_ARG_SCHEMA = LOOP_SUMMARY_SCHEMA["$defs"]["declared_arg"]
+
+FILE_PREVIEW_SCHEMA = {
+    "oneOf": [
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["path", "media_type", "content", "size", "read_only"],
+            "properties": {
+                "path": {"type": "string"},
+                "media_type": NULLABLE_STRING,
+                "content": {"type": "string"},
+                "size": {"type": "integer", "minimum": 0, "maximum": 1048576},
+                "read_only": {"const": True},
+            },
+        },
+        {
+            "type": "object",
+            "additionalProperties": False,
+            "required": [
+                "path",
+                "media_type",
+                "content",
+                "size",
+                "read_only",
+                "encoding",
+                "raw_url",
+            ],
+            "properties": {
+                "path": {"type": "string"},
+                "media_type": {
+                    "enum": [
+                        "image/png",
+                        "image/jpeg",
+                        "image/gif",
+                        "image/svg+xml",
+                        "image/webp",
+                        "image/bmp",
+                        "image/x-icon",
+                        "application/pdf",
+                    ]
+                },
+                "content": {"type": "null"},
+                "size": {"type": "integer", "minimum": 0, "maximum": 52428800},
+                "read_only": {"const": True},
+                "encoding": {"const": "raw"},
+                "raw_url": {"type": "string", "minLength": 1},
+            },
+        },
+    ]
+}
+
+RUN_CREATE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["loop"],
+    "properties": {
+        "loop": {"type": "string", "minLength": 1},
+        "args": {"type": "object"},
+        "backend": NULLABLE_STRING,
+        "model": NULLABLE_STRING,
+        "mock": {"enum": ["bash", "auto", None]},
+        "from_phase": NULLABLE_STRING,
+        "only_phase": NULLABLE_STRING,
+        "working_directory": NULLABLE_STRING,
+        "transport": {"enum": ["cli", "acp"]},
+        "append_prompt": {"type": "string"},
     },
 }
 
@@ -163,6 +251,93 @@ DIAGNOSTIC_SCHEMA = {
     },
 }
 
+INTERVENTION_V18_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": [
+        "request_id",
+        "source",
+        "key",
+        "prompt",
+        "schema",
+        "options",
+        "allow_custom",
+        "status",
+        "request_group_id",
+        "request_index",
+        "call_id",
+        "session_id",
+        "resume_mode",
+        "can_continue_session",
+        "created_at",
+        "responded_at",
+        "timeout_seconds",
+    ],
+    "properties": {
+        "request_id": {"type": "string"},
+        "source": {"enum": ["workflow", "agent"]},
+        "key": {"type": "string", "minLength": 1},
+        "prompt": {"type": "string", "minLength": 1},
+        "schema": {"type": ["object", "null"]},
+        "options": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": True,
+        },
+        "allow_custom": {"type": "boolean"},
+        "status": {"enum": ["pending", "answered", "closed"]},
+        "request_group_id": NULLABLE_STRING,
+        "request_index": {"type": "integer", "minimum": 0},
+        "call_id": NULLABLE_STRING,
+        "session_id": NULLABLE_STRING,
+        "resume_mode": {"enum": ["replay", "continue"]},
+        "can_continue_session": {"type": "boolean"},
+        "response": {},
+        "created_at": {"type": "string"},
+        "responded_at": NULLABLE_STRING,
+        "timeout_seconds": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "response_source": {"enum": ["human", "default", "timeout_default"]},
+    },
+    "allOf": [
+        {
+            "if": {"properties": {"status": {"const": "answered"}}},
+            "then": {"required": ["response", "response_source"]},
+            "else": {
+                "allOf": [
+                    {"not": {"required": ["response"]}},
+                    {"not": {"required": ["response_source"]}},
+                ]
+            },
+        },
+        {
+            "if": {"properties": {"source": {"const": "workflow"}}},
+            "then": {
+                "properties": {
+                    "request_group_id": {"type": "null"},
+                    "request_index": {"const": 0},
+                    "call_id": {"type": "null"},
+                    "session_id": {"type": "null"},
+                    "resume_mode": {"const": "replay"},
+                }
+            },
+        },
+        {
+            "if": {"properties": {"source": {"const": "agent"}}},
+            "then": {
+                "properties": {
+                    "request_group_id": {"type": "string", "minLength": 1},
+                    "call_id": {"type": "string", "minLength": 1},
+                    "session_id": {"type": "string", "minLength": 1},
+                    "resume_mode": {"const": "continue"},
+                    "can_continue_session": {"const": True},
+                    "timeout_seconds": {"type": "null"},
+                }
+            },
+        },
+    ],
+}
+
+# Kept for pre-v18 implementation tests until DEVELOP migrates the API read model.
 INTERVENTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -191,10 +366,9 @@ INTERVENTION_SCHEMA = {
         "call_id": NULLABLE_STRING,
         "resume_mode": {"enum": ["replay", "continue"]},
         "can_continue_session": {"type": "boolean"},
-        "response": {"type": "string"},
+        "response": {},
         "created_at": {"type": "string"},
         "responded_at": NULLABLE_STRING,
-        # ADR-0056 §3/§4: default/timeout declaration and answer provenance
         "default": {},
         "timeout_seconds": {"type": ["number", "null"]},
         "response_source": {"enum": ["human", "default", "timeout_default"]},
@@ -229,16 +403,22 @@ SCHEMAS = {
     "run_summary": RUN_SUMMARY_SCHEMA,
     "error": ERROR_SCHEMA,
     "loop_summary": LOOP_SUMMARY_SCHEMA,
+    "declared_arg": DECLARED_ARG_SCHEMA,
+    "file_preview": FILE_PREVIEW_SCHEMA,
+    "run_create": RUN_CREATE_SCHEMA,
     "queue_item": QUEUE_ITEM_SCHEMA,
     "backend": BACKEND_SCHEMA,
     "diagnostic": DIAGNOSTIC_SCHEMA,
     "intervention": INTERVENTION_SCHEMA,
+    "intervention_v18": INTERVENTION_V18_SCHEMA,
     "v2_event": V2_EVENT_SCHEMA,
 }
 
 
 def validate_contract(name: str, value: Any) -> None:
     Draft202012Validator(SCHEMAS[name]).validate(value)
+    if name == "run_create" and len(value.get("append_prompt", "").encode("utf-8")) > 65536:
+        raise ValidationError("append_prompt exceeds 65536 UTF-8 bytes")
 
 
 def contract_examples() -> dict[str, dict[str, Any]]:
@@ -268,6 +448,35 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "triggers": [],
             "valid": True,
             "error_summary": None,
+            "declared_phases": [],
+            "declared_args": [
+                {
+                    "name": "topic",
+                    "default": "rna",
+                    "description": "Research topic",
+                    "required": True,
+                }
+            ],
+        },
+        "declared_arg": {
+            "name": "count",
+            "default": 0,
+            "description": "Maximum results",
+            "required": False,
+        },
+        "file_preview": {
+            "path": "figure.png",
+            "media_type": "image/png",
+            "content": None,
+            "size": 1024,
+            "read_only": True,
+            "encoding": "raw",
+            "raw_url": "/api/v1/runs/run-1/file/raw?path=figure.png",
+        },
+        "run_create": {
+            "loop": "hello",
+            "args": {},
+            "append_prompt": "Read only",
         },
         "queue_item": {
             "task_id": "task-1",
@@ -307,7 +516,7 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "diagnosed_at": "2026-07-18T22:00:00Z",
         },
         "intervention": {
-            "request_id": "approve-1",
+            "request_id": "approve-legacy",
             "source": "workflow",
             "key": "approve",
             "prompt": "Approve?",
@@ -319,6 +528,25 @@ def contract_examples() -> dict[str, dict[str, Any]]:
             "can_continue_session": False,
             "created_at": "2026-07-18T22:00:00Z",
             "responded_at": None,
+        },
+        "intervention_v18": {
+            "request_id": "approve-1",
+            "source": "workflow",
+            "key": "approve",
+            "prompt": "Approve?",
+            "schema": {"type": "boolean"},
+            "options": ["true", "false"],
+            "allow_custom": False,
+            "status": "pending",
+            "request_group_id": None,
+            "request_index": 0,
+            "call_id": None,
+            "session_id": None,
+            "resume_mode": "replay",
+            "can_continue_session": False,
+            "created_at": "2026-07-18T22:00:00Z",
+            "responded_at": None,
+            "timeout_seconds": None,
         },
         "v2_event": {
             "version": 2,

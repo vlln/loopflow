@@ -2,11 +2,13 @@
 title: ADR-0009 — PhaseGraph 执行图与终端渲染
 description: 运行时 phase 转移图的数据结构（PhaseGraph）与终端渲染（TerminalGraphRenderer），Rich 自绘，无第三方图库依赖，图与渲染解耦
 type: adr
-status: accepted
+status: superseded
 created: 2026-07-08T10:00:00Z
 ---
 
 # 背景
+
+> 2026-07-29 修订：本 ADR 的 PhaseGraph、Phase 事件与终端 Phase 图决策已由 [ADR-0052](0052-remove-phase.md) 完整替代。现行模型以每次 Agent Call 的 `call_id` 为唯一节点，以 `label` 为显示名，并使用 AgentGraph 表达 sequential/fork/join 边；本 ADR 仅保留为历史决策记录。
 
 v0.1.0 中 `phase()` 仅打印一行 stderr 文本，不记录 phase 间转移关系，不绘制执行图。v0.2.0 需要将 phase 执行过程可视化：线性路径画直线，回边（循环）画虚线/曲线并标注迭代次数，条件分支画分叉。UI 是被动观察者，不参与控制流。
 

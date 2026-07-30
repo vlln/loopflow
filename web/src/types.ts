@@ -75,10 +75,12 @@ export interface FileChange {
 
 export interface RunFileContent {
   path: string;
-  media_type: string;
-  content: string;
+  media_type: string | null;
+  content: string | null;
   size: number;
   read_only: boolean;
+  encoding?: 'raw';
+  raw_url?: string;
 }
 
 export interface FileChangeRecord {

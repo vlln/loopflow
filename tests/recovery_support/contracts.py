@@ -116,83 +116,83 @@ INTERVENTION_SCHEMA = {
     "additionalProperties": False,
     "required": [
         "request_id",
-        "key",
-        "prompt",
-        "schema",
-        "status",
-        "call_id",
-        "resume_mode",
-        "can_continue_session",
-        "created_at",
-        "responded_at",
-    ],
-    "properties": {
-        "request_id": {"type": "string"},
-        "key": {"type": "string", "minLength": 1},
-        "prompt": {"type": "string", "minLength": 1},
-        "schema": {"type": ["object", "null"]},
-        "status": {"enum": ["pending", "answered", "closed"]},
-        "call_id": NULLABLE_STRING,
-        "resume_mode": {"enum": ["replay", "continue"]},
-        "can_continue_session": {"type": "boolean"},
-        "response": {},
-        "created_at": {"type": "string"},
-        "responded_at": NULLABLE_STRING,
-    },
-    "allOf": [
-        {
-            "if": {"properties": {"status": {"const": "answered"}}},
-            "then": {"required": ["response"]},
-            "else": {"not": {"required": ["response"]}},
-        }
-    ],
-}
-
-INTERVENTION_VNEXT_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "required": [
-        "request_id",
         "source",
         "key",
         "prompt",
+        "schema",
         "options",
         "allow_custom",
         "status",
+        "request_group_id",
+        "request_index",
         "call_id",
+        "session_id",
         "resume_mode",
         "can_continue_session",
         "created_at",
         "responded_at",
+        "timeout_seconds",
     ],
     "properties": {
         "request_id": {"type": "string"},
         "source": {"enum": ["workflow", "agent"]},
         "key": {"type": "string", "minLength": 1},
         "prompt": {"type": "string", "minLength": 1},
-        "options": {"type": "array", "items": {"type": "string"}, "uniqueItems": True},
+        "schema": {"type": ["object", "null"]},
+        "options": {
+            "type": "array",
+            "items": {"type": "string"},
+            "uniqueItems": True,
+        },
         "allow_custom": {"type": "boolean"},
         "status": {"enum": ["pending", "answered", "closed"]},
+        "request_group_id": NULLABLE_STRING,
+        "request_index": {"type": "integer", "minimum": 0},
         "call_id": NULLABLE_STRING,
+        "session_id": NULLABLE_STRING,
         "resume_mode": {"enum": ["replay", "continue"]},
         "can_continue_session": {"type": "boolean"},
-        "response": {"type": "string", "minLength": 1},
+        "response": {},
         "created_at": {"type": "string"},
         "responded_at": NULLABLE_STRING,
+        "timeout_seconds": {"type": ["number", "null"], "exclusiveMinimum": 0},
+        "response_source": {"enum": ["human", "default", "timeout_default"]},
     },
     "allOf": [
         {
             "if": {"properties": {"status": {"const": "answered"}}},
-            "then": {"required": ["response"]},
-            "else": {"not": {"required": ["response"]}},
+            "then": {"required": ["response", "response_source"]},
+            "else": {
+                "allOf": [
+                    {"not": {"required": ["response"]}},
+                    {"not": {"required": ["response_source"]}},
+                ]
+            },
         },
         {
             "if": {"properties": {"source": {"const": "workflow"}}},
-            "then": {"properties": {"resume_mode": {"const": "replay"}}},
+            "then": {
+                "properties": {
+                    "request_group_id": {"type": "null"},
+                    "request_index": {"const": 0},
+                    "call_id": {"type": "null"},
+                    "session_id": {"type": "null"},
+                    "resume_mode": {"const": "replay"},
+                }
+            },
         },
         {
             "if": {"properties": {"source": {"const": "agent"}}},
-            "then": {"properties": {"resume_mode": {"const": "continue"}}},
+            "then": {
+                "properties": {
+                    "request_group_id": {"type": "string", "minLength": 1},
+                    "call_id": {"type": "string", "minLength": 1},
+                    "session_id": {"type": "string", "minLength": 1},
+                    "resume_mode": {"const": "continue"},
+                    "can_continue_session": {"const": True},
+                    "timeout_seconds": {"type": "null"},
+                }
+            },
         },
     ],
 }
@@ -211,7 +211,7 @@ BATCH_INTERVENTION_RESPONSE_SCHEMA = {
                 "required": ["request_id", "response"],
                 "properties": {
                     "request_id": {"type": "string", "minLength": 1},
-                    "response": {"type": "string", "minLength": 1},
+                    "response": {},
                 },
             },
         },
@@ -241,7 +241,6 @@ SCHEMAS = {
     "run_summary_v13": RUN_SUMMARY_V13_SCHEMA,
     "agent_call_v13": AGENT_CALL_V13_SCHEMA,
     "intervention": INTERVENTION_SCHEMA,
-    "intervention_vnext": INTERVENTION_VNEXT_SCHEMA,
     "batch_intervention_response": BATCH_INTERVENTION_RESPONSE_SCHEMA,
     "backend_capabilities_v13": BACKEND_CAPABILITIES_V13_SCHEMA,
 }
@@ -284,34 +283,27 @@ def contract_examples() -> dict[str, dict[str, Any]]:
         },
         "intervention": {
             "request_id": "request-1",
+            "source": "workflow",
             "key": "approve",
             "prompt": "Approve?",
             "schema": {"type": "boolean"},
+            "options": [],
+            "allow_custom": True,
             "status": "pending",
+            "request_group_id": None,
+            "request_index": 0,
             "call_id": None,
+            "session_id": None,
             "resume_mode": "replay",
             "can_continue_session": False,
             "created_at": "2026-07-22T08:00:00Z",
             "responded_at": None,
-        },
-        "intervention_vnext": {
-            "request_id": "scope-1",
-            "source": "agent",
-            "key": "scope",
-            "prompt": "Expand search scope?",
-            "options": ["expand", "keep"],
-            "allow_custom": False,
-            "status": "pending",
-            "call_id": "0001",
-            "resume_mode": "continue",
-            "can_continue_session": True,
-            "created_at": "2026-07-22T08:00:00Z",
-            "responded_at": None,
+            "timeout_seconds": None,
         },
         "batch_intervention_response": {
             "responses": [
                 {"request_id": "scope-1", "response": "expand"},
-                {"request_id": "note-1", "response": "use official docs"},
+                {"request_id": "approval-1", "response": True},
             ]
         },
         "backend_capabilities_v13": {

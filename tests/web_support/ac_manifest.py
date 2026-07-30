@@ -17,6 +17,7 @@ HTTP_STATUS_BY_CODE = {
     "backend_not_found": 404,
     "invalid_run_transition": 409,
     "run_not_stale": 409,
+    "run_in_grace": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
     "process_gone": 410,
@@ -24,6 +25,7 @@ HTTP_STATUS_BY_CODE = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "file_read_failed": 500,
     "atomic_write_failed": 500,
     "internal_error": 500,
     "diagnostic_start_failed": 503,
@@ -57,6 +59,7 @@ def _targets() -> dict[str, list[str]]:
     )
     assign("AC-014-N-11", "GET /api/v1/system/meta", "ui:layout")
     assign("AC-014-B-6", "GET /api/v1/runs", "ui:runs")
+    assign("AC-014-B-7", "POST /api/v1/runs/{run_id}/reconcile", "ui:runs")
     assign(
         "AC-014-F-1",
         "POST /api/v1/runs/{run_id}/stop",
@@ -70,8 +73,31 @@ def _targets() -> dict[str, list[str]]:
         "AC-015-B-1 AC-015-B-2 AC-015-B-3 AC-015-B-4 AC-015-B-5 "
         "AC-015-E-2 AC-015-E-3 AC-015-E-4 AC-015-F-1 AC-015-F-2 AC-015-F-3 AC-015-F-4"
     ).split():
-        targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:phase"]
-    assign("AC-015-E-1", "GET /api/v1/runs/{run_id}/legacy-events", "ui:phase")
+        targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:agent-graph"]
+    assign(
+        "AC-015-N-2",
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-E-1",
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/legacy-events",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-B-3",
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-F-3",
+        "POST /api/v1/runs",
+        "GET /api/v1/loops",
+        "ui:agent-graph",
+    )
 
     for ac_id in (
         "AC-016-N-1 AC-016-N-2 AC-016-N-3 AC-016-N-4 "
@@ -83,13 +109,40 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-016-E-2", "ui:event-reducer")
 
     assign("AC-017-N-1 AC-017-F-2", "GET /api/v1/loops", "ui:loops")
-    assign("AC-017-N-2 AC-017-B-1", "GET /api/v1/loops/{loop_name}", "ui:loops")
+    assign("AC-017-B-1", "GET /api/v1/loops/{loop_name}", "ui:loops")
     assign(
-        "AC-017-B-2 AC-017-E-1 AC-017-E-2",
+        "AC-017-N-2",
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:loops",
+    )
+    assign(
+        "AC-017-N-3",
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "GET /api/v1/runs/{run_id}/file",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "ui:runs",
+    )
+    assign(
+        "AC-017-B-2",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:loops",
+    )
+    assign(
+        "AC-017-E-1 AC-017-E-2",
         "GET /api/v1/loops/{loop_name}/file",
         "ui:loops",
     )
     assign("AC-017-F-1", "GET /api/v1/loops/{loop_name}", "GET /api/v1/loops", "ui:loops")
+    assign(
+        "AC-017-F-3",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:runs",
+        "ui:loops",
+    )
 
     assign("AC-018-N-1 AC-018-B-1 AC-018-B-2", "GET /api/v1/backends", "ui:backends")
     assign(
@@ -108,6 +161,114 @@ def _targets() -> dict[str, list[str]]:
 
 TARGETS = _targets()
 
+# Only scenarios whose current tests cover the complete active AC semantics belong
+# here. Partial candidates remain planned so strict mode exposes the coverage gap.
+TEST_NODES = {
+    "AC-014-N-1": "tests/integration/test_web_api.py::test_ac014_n1_runs_list_all_statuses_default_latest",
+    "AC-014-N-2": "tests/integration/test_web_api.py::test_ac014_n2_failed_filter_in_place_switch",
+    "AC-014-N-4": "tests/integration/test_web_api.py::test_ac014_n4_start_run_returns_201_location_and_running",
+    "AC-014-N-7": "tests/integration/test_web_api.py::test_ac014_n7_rerun_creates_new_run_preserves_source",
+    "AC-014-N-8": "tests/integration/test_web_api.py::test_ac014_n8_loop_filter_and_text_search",
+    "AC-014-N-9": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
+    "AC-014-N-10": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
+    "AC-014-N-11": "tests/integration/test_web_api.py::test_ac014_n11_system_meta_returns_running_version",
+    "AC-014-B-1": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+    "AC-014-B-2": "tests/integration/test_web_api.py::test_ac014_b2_empty_runs_shows_empty_state",
+    "AC-014-B-3": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
+    "AC-014-B-4": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
+    "AC-014-B-5": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
+    "AC-014-B-6": "tests/integration/test_web_api.py::test_ac014_b6_working_directory_basename_in_summary",
+    "AC-014-B-7": "tests/integration/test_web_api.py::test_ac014_b7_reconcile_stale_since_cleans_failed",
+    "AC-014-E-1": "tests/integration/test_web_api.py::test_ac014_e1_unreadable_run_returned_as_summary",
+    "AC-014-E-2": "tests/integration/test_web_api.py::test_ac014_e2_stale_detection_records_stale_since_once",
+    "AC-014-F-2": "tests/integration/test_web_api.py::test_ac014_f2_reconcile_expired_stale_atomic_failed",
+    "AC-015-N-1": "tests/integration/test_web_api.py::test_ac015_n1_sequential_graph_structure",
+    "AC-015-N-2": "web/src/App.test.tsx::AC-015-N-2: selecting a graph node filters Events and file changes to that call",
+    "AC-015-N-3": "tests/integration/test_web_api.py::test_ac015_n3_fork_join_graph",
+    "AC-015-N-4": "tests/integration/test_web_api.py::test_ac015_n4_back_to_back_fork_join",
+    "AC-015-N-5": "web/src/App.test.tsx::AC-015-N-5: Inspector shows run state; Call detail shows structured events not state diff",
+    "AC-015-N-6": "tests/integration/test_web_api.py::test_ac015_n6_empty_agent_graph_no_declared_phases",
+    "AC-015-N-7": "tests/integration/test_web_api.py::test_ac015_n7_live_agent_start_marks_running_current",
+    "AC-015-N-8": "tests/integration/test_web_api.py::test_ac015_n8_same_label_distinct_nodes_not_merged",
+    "AC-015-N-9": "web/src/App.test.tsx::AC-015-N-9: call-list shows call_id as primary, session_id in tooltip",
+    "AC-015-B-1": "tests/integration/test_web_api.py::test_ac015_b1_run_without_agent_events_empty_graph",
+    "AC-015-B-2": "tests/integration/test_web_api.py::test_ac015_b2_hundred_sequential_calls_ordered",
+    "AC-015-B-3": "tests/integration/test_web_api.py::test_ac015_b3_no_declared_phases_in_loop_or_run",
+    "AC-015-B-4": "tests/integration/test_web_api.py::test_ac015_b4_single_done_node_no_edges",
+    "AC-015-B-5": "web/src/App.test.tsx::AC-015-B-5: call without session_id shows call_id and no empty row",
+    "AC-015-E-1": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
+    "AC-015-E-2": "tests/integration/test_web_api.py::test_ac015_e2_missing_call_id_goes_to_malformed",
+    "AC-015-E-3": "tests/integration/test_web_api.py::test_ac015_e3_empty_label_falls_back_to_call_id",
+    "AC-015-E-4": "web/src/App.test.tsx::AC-015-E-4: graph node count, selected call, and event count shown accurately without occurrence terms",
+    "AC-015-F-1": "tests/integration/test_web_api.py::test_ac015_f1_missing_events_jsonl_returns_empty",
+    "AC-015-F-2": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
+    "AC-015-F-3": "tests/integration/test_web_api.py::test_workflow_syntax_error_run_start_fails_without_placeholders",
+    "AC-015-F-4": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
+    "AC-016-N-3": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
+    "AC-016-N-2": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
+    "AC-016-N-1": "tests/integration/test_web_api.py::test_ac016_n1_sse_replay_then_live_push",
+    "AC-016-N-4": "tests/integration/test_web_api.py::test_sse_multi_topic_per_topic_cursor_reconnect",
+    "AC-016-B-1": "tests/integration/test_web_api.py::test_ac016_b1_sse_end_cursor_streams_end_without_replay",
+    "AC-016-B-2": "tests/integration/test_web_api.py::test_ac016_b2_sse_replay_latency_under_500ms",
+    "AC-016-E-1": "tests/integration/test_web_api.py::test_ac016_e1_sse_cursor_out_of_range_returns_410",
+    "AC-016-E-2": "web/src/eventReducer.test.ts::AC-016-E-2: applying the same event_id twice changes state only once",
+    "AC-016-F-1": "tests/integration/test_web_api.py::test_ac016_f1_sse_unknown_run_returns_404",
+    "AC-016-B-3": "tests/integration/test_web_api.py::test_sse_stream_end_waits_for_file_changes_terminal",
+    "AC-016-E-3": "tests/integration/test_web_api.py::test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+    "AC-016-F-2": "tests/integration/test_web_api.py::test_sse_reader_failure_after_headers_emits_stream_error",
+    "AC-016-F-3": "tests/integration/test_web_api.py::test_sse_file_changes_read_failure_emits_stream_error_and_closes",
+    "AC-017-E-1": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-017-E-2": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-017-N-1": "web/src/App.test.tsx::AC-017-N-1: selecting a Loop keeps both items and swaps detail in place",
+    "AC-017-N-2": "tests/integration/test_web_api.py::test_ac017_n2_loop_file_previews_text_and_binary",
+    "AC-017-N-3": "tests/integration/test_web_api.py::test_ac017_n3_run_file_changes_binary_preview",
+    "AC-017-B-1": "web/src/App.test.tsx::AC-017-B-1: loop with no agents shows 0 Agents empty state without error",
+    "AC-017-B-2": "tests/integration/test_web_api.py::test_ac017_b2_loop_preview_rejects_binary_oversized",
+    "AC-017-F-1": "tests/integration/test_web_api.py::test_ac017_f1_loop_deleted_returns_404",
+    "AC-017-F-2": "tests/integration/test_web_api.py::test_ac017_f2_invalid_yaml_marks_loop_invalid",
+    "AC-017-F-3": "tests/integration/test_web_api.py::test_ac017_f3_loop_raw_read_failure_no_partial_headers",
+    "AC-018-N-1": "tests/integration/test_web_api.py::test_ac018_n1_backends_list_real_fields",
+    "AC-018-N-2": "tests/integration/test_web_api.py::test_ac018_n2_stderr_token_redacted",
+    "AC-018-B-1": "tests/integration/test_web_api.py::test_ac018_b1_no_backends_empty_state",
+    "AC-018-B-2": "tests/integration/test_web_api.py::test_ac018_b2_unknown_version_renders_null",
+    "AC-018-E-1": "tests/integration/test_web_api.py::test_ac018_e1_diagnostic_timeout",
+    "AC-018-E-2": "tests/integration/test_web_api.py::test_ac018_e2_invalid_encoding_uses_replacement",
+    "AC-018-F-1": "tests/integration/test_web_api.py::test_ac018_f1_unknown_backend_404",
+    "AC-018-F-2": "tests/integration/test_web_api.py::test_ac018_f2_diagnostic_start_failed_503",
+    "AC-019-N-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-N-2": "web/src/App.test.tsx::AC-019-N-2: keyboard selection shows focus and fires a single recover retry",
+    "AC-019-N-3": "tests/integration/test_web_api.py::test_ac019_n3_default_binds_loopback_only",
+    "AC-019-N-4": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
+    "AC-019-N-5": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
+    "AC-019-B-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-B-2": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-B-3": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
+    "AC-019-B-4": "web/src/App.test.tsx::AC-019-B-4: long error_summary is clamped, traceback stays expandable",
+    "AC-019-E-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-E-2": "web/src/App.test.tsx::AC-019-E-2: SSE disconnect shows stream error and keeps last data",
+    "AC-019-F-1": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
+    "AC-019-F-2": "web/src/App.test.tsx::AC-019-F-2: statuses remain text/icon distinguishable without color",
+    "AC-019-F-3": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
+}
+
+
+def _test_node_exists(node: str) -> bool:
+    path_text, *selectors = node.split("::")
+    path = Path(path_text)
+    if not path.is_file() or not selectors:
+        return False
+    source = path.read_text(encoding="utf-8")
+    if path.suffix == ".py":
+        for selector in selectors[:-1]:
+            if not re.search(rf"^class\s+{re.escape(selector)}\b", source, re.M):
+                return False
+        return bool(re.search(
+            rf"^(?:\s*)def\s+{re.escape(selectors[-1])}\s*\(",
+            source,
+            re.M,
+        ))
+    return selectors[-1] in source
+
 PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-014-N-4": [{"kind": "http_status", "value": 201}],
     "AC-014-N-5": [{"kind": "http_status", "value": 200}],
@@ -117,6 +278,7 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-014-F-2": [{"kind": "http_status", "value": 200}],
+    "AC-014-B-7": [{"kind": "http_status", "value": 200}],
     "AC-015-E-1": [{"kind": "http_status", "value": 200}],
     "AC-015-F-1": [{"kind": "http_status", "value": 200}],
     "AC-016-N-1": [{"kind": "sse_event", "value": "run_event"}],
@@ -137,9 +299,12 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-017-B-2": [
         {"kind": "http_status", "value": 422, "code": "file_not_previewable"}
     ],
+    "AC-017-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-017-N-3": [{"kind": "http_status", "value": 200}],
     "AC-017-E-1": [{"kind": "http_status", "value": 403, "code": "path_forbidden"}],
     "AC-017-E-2": [{"kind": "http_status", "value": 403, "code": "path_forbidden"}],
     "AC-017-F-1": [{"kind": "http_status", "value": 404, "code": "loop_not_found"}],
+    "AC-017-F-3": [{"kind": "http_status", "value": 500, "code": "file_read_failed"}],
     "AC-018-N-2": [{"kind": "http_status", "value": 200}],
     "AC-018-E-1": [{"kind": "http_status", "value": 200}],
     "AC-018-E-2": [{"kind": "http_status", "value": 200}],
@@ -186,7 +351,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
         cases.append(
             {
                 **row,
-                "test_node": f"planned::{ac_id.lower()}",
+                "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
                 "expectations": expectations,
             }
@@ -227,8 +392,16 @@ def check_manifest(
         node = case.get("test_node")
         if not isinstance(node, str) or not node:
             errors.append(f"{ac_id}: test_node is required")
-        elif node.startswith("planned::") and not allow_planned:
-            errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        elif ac_id in TEST_NODES:
+            if node != TEST_NODES[ac_id]:
+                errors.append(f"{ac_id}: test_node does not match implemented mapping")
+            elif not _test_node_exists(node):
+                errors.append(f"{ac_id}: test_node does not exist")
+        elif node.startswith("planned::"):
+            if not allow_planned:
+                errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        else:
+            errors.append(f"{ac_id}: no implemented test_node mapping")
 
         expectations = case.get("expectations")
         if not isinstance(expectations, list) or not expectations:

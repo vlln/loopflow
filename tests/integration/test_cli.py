@@ -78,6 +78,41 @@ You are a helpful assistant.
 
 
 class TestCLIRun:
+    def test_ac034_n1_cli_persists_and_appends_to_every_workflow_agent(
+        self, env_dirs
+    ):
+        loops, runs = env_dirs
+        _create_test_loop(loops)
+        workflow = loops / "hello" / "workflow.py"
+        workflow.write_text(
+            "def run(agent, **kwargs):\n"
+            "    agent('first task')\n"
+            "    agent('second task')\n"
+        )
+        prompts = []
+
+        def mock_run(prompt):
+            prompts.append(prompt)
+            return "ok", 0
+
+        from loopflow.presentation.cli import main
+        with patch("loopflow.runtime._run_mock", side_effect=mock_run):
+            result = CliRunner().invoke(main, [
+                "run", "hello", "--mock", "bash",
+                "--append-prompt", "Read only",
+            ])
+
+        assert result.exit_code == 0, result.output
+        assert len(prompts) == 2
+        for prompt, task in zip(prompts, ("first task", "second task")):
+            assert prompt.startswith(task)
+            assert prompt.endswith(
+                "<run-append-prompt>\nRead only\n</run-append-prompt>"
+            )
+            assert prompt.count("<run-append-prompt>") == 1
+        metadata = json.loads(_only_run_json(runs).read_text())
+        assert metadata["execution_options"]["append_prompt"] == "Read only"
+
     def test_run_loop(self, env_dirs):
         loops, runs = env_dirs
         _create_test_loop(loops)
@@ -390,6 +425,82 @@ def _wait_terminal(run_json: Path, timeout: float = 15.0) -> dict:
 
 
 class TestSingleAgentRun:
+    def test_ac034_n3_single_agent_forwards_append_prompt(self, env_dirs):
+        loops, _ = env_dirs
+        _create_single_agent_loop(loops)
+
+        from loopflow.presentation.cli import main
+
+        with patch(
+            "loopflow.application.execution.execute_single_agent",
+            return_value=("done", "ok"),
+        ) as execute:
+            result = CliRunner().invoke(
+                main,
+                [
+                    "run",
+                    "hello",
+                    "--agent",
+                    "reader",
+                    "--prompt",
+                    "task",
+                    "--append-prompt",
+                    "constraint",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        assert execute.call_args.args[1]["prompt"] == "task"
+        assert execute.call_args.args[2]["append_prompt"] == "constraint"
+
+    def test_ac034_b2_e1_cli_validates_utf8_limit_before_run_creation(
+        self, env_dirs
+    ):
+        loops, runs = env_dirs
+        _create_single_agent_loop(loops)
+        from loopflow.presentation.cli import main
+
+        with patch(
+            "loopflow.application.execution.execute_single_agent",
+            return_value=("done", "ok"),
+        ) as execute:
+            accepted = CliRunner().invoke(
+                main,
+                [
+                    "run",
+                    "hello",
+                    "--agent",
+                    "reader",
+                    "--prompt",
+                    "task",
+                    "--append-prompt",
+                    "a" * 65536,
+                ],
+            )
+        assert accepted.exit_code == 0, accepted.output
+        assert execute.call_args.args[2]["append_prompt"] == "a" * 65536
+        run_dirs_before = list(runs.glob("lf_*/*"))
+
+        with patch("loopflow.application.execution.execute_single_agent") as execute:
+            rejected = CliRunner().invoke(
+                main,
+                [
+                    "run",
+                    "hello",
+                    "--agent",
+                    "reader",
+                    "--prompt",
+                    "task",
+                    "--append-prompt",
+                    "界" * 21846,
+                ],
+            )
+
+        assert rejected.exit_code != 0
+        assert "append_prompt exceeds 64 KiB" in rejected.output
+        execute.assert_not_called()
+        assert list(runs.glob("lf_*/*")) == run_dirs_before
+
     def test_ac032_n1_single_agent_run_done_and_workflow_digest_none(self, env_dirs):
         """AC-032-N-1: full Run semantics; workflow digest is None so editing
         workflow.py cannot diverge recovery."""
@@ -562,9 +673,12 @@ class TestSingleAgentRun:
         control = {
             "__loopflow": {
                 "status": "waiting_input",
-                "key": "approve",
-                "prompt": "Approve?",
-                "schema": None,
+                "requests": [{
+                    "key": "approve",
+                    "prompt": "Approve?",
+                    "options": ["yes", "no"],
+                    "allow_custom": False,
+                }],
             }
         }
         monkeypatch.setattr("loopflow.runtime._make_backend", lambda *a, **kw: backend)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import time
+import uuid
 from typing import Any, Callable
 
 from loopflow.domain import (
@@ -28,7 +29,15 @@ from loopflow.domain import (
 from loopflow.infrastructure.intervention import (
     InterventionIdentity,
     answered_for_call,
+    list_requests,
     request_or_answer,
+)
+from loopflow.domain.marshalling import (
+    AGENT_CONTROL_SCHEMA,
+    add_control_to_schema,
+    append_run_prompt,
+    build_intervention_prompt,
+    schema_mentions_reserved_control,
 )
 
 
@@ -212,8 +221,14 @@ class AgentRunner:
         """
         self._label = params.pop("label", None)
         self._agent_def_name = params.pop("agent_def", None)
-        # 1. Marshal capabilities
-        caps = self.backend.capabilities if self.backend else Capabilities()
+        # 1. Dynamic backends must discover capabilities before prompt/schema
+        # assembly so we never advertise an unsafe intervention path.
+        if self.backend is not None:
+            prepare = getattr(self.backend, "prepare_capabilities", None)
+            prepared = prepare() if callable(prepare) else None
+            caps = prepared if isinstance(prepared, Capabilities) else self.backend.capabilities
+        else:
+            caps = Capabilities()
         resolved, detected_schema, native_goal = marshal(
             self.ad, prompt,
             goal=goal,
@@ -224,6 +239,14 @@ class AgentRunner:
         # 2. Schema: agent output > explicit parameter
         if schema is None and detected_schema is not None:
             schema = detected_schema
+        if schema and schema_mentions_reserved_control(schema):
+            raise RuntimeError("validation_failed: '__loopflow' is reserved")
+        intervention_available = bool(
+            getattr(caps, "resume_session", False) is True
+            and getattr(caps, "durable_session_id", False) is True
+        )
+        if intervention_available:
+            resolved = f"{resolved}\n\n{build_intervention_prompt()}"
 
         # 3. Model: agent definition > explicit parameter
         if model is None and self.ad is not None and self.ad.model is not None:
@@ -248,11 +271,16 @@ class AgentRunner:
                 resolved = f"{skill_section}\n\n{resolved}"
 
         # 5. Schema hint injection (unless native goal handles it)
-        if schema and not native_goal:
+        if schema and not native_goal and not goal:
+            prompt_schema = (
+                add_control_to_schema(schema)
+                if intervention_available
+                else schema
+            )
             schema_hint = (
                 f"\n\n---\n"
                 f"Output format — you MUST respond with a single JSON object "
-                f"matching this schema:\n{json.dumps(schema, indent=2)}\n\n"
+                f"matching this schema:\n{json.dumps(prompt_schema, indent=2)}\n\n"
                 f"Do NOT wrap the JSON in markdown code blocks. "
                 f"Return ONLY the JSON object."
             )
@@ -272,6 +300,7 @@ class AgentRunner:
                 resolved, schema, goal, goal_max_iterations,
                 _goal_call, self._log,
                 schema_max_retries=max_retries,
+                control_schema=AGENT_CONTROL_SCHEMA if intervention_available else None,
             )
 
         # 7. Native goal: single call, wrap in AgentResult
@@ -338,6 +367,8 @@ class AgentRunner:
             agent_definition=getattr(self.ad, "body", None),
             execution_options=self.ctx.execution_options,
         )
+        resume_request_group_id: str | None = None
+        resume_continue_target = False
 
         # Resume: skip if already completed
         if self.ctx.resume and not resume_session_id:
@@ -345,11 +376,13 @@ class AgentRunner:
                 cache_path, call_id=call_id, input_digest=input_digest
             )
             target = self.ctx.recovery_target_call_id
-            target_continue = (
-                self.ctx.recovery_mode == "continue"
-                and target is not None
-                and target == call_id
-                and not self.ctx.recovery_target_reached
+            target_info = (
+                self.ctx.continue_target_for(call_id)
+                if self.ctx.recovery_mode == "continue"
+                else None
+            )
+            target_continue = bool(
+                target_info and not self.ctx.continue_target_reached(call_id)
             )
             if selection.outcome in {"hit", "legacy_hit"} and not target_continue:
                 self.ctx.legacy_recovery = selection.outcome == "legacy_hit"
@@ -361,7 +394,33 @@ class AgentRunner:
                         pass
                 else:
                     return cached, None
-            is_target = not self.ctx.recovery_target_reached
+            if self.ctx.recovery_mode == "continue" and self.ctx.continue_targets:
+                if target_info is None:
+                    raise ReplayDiverged(
+                        f"Recovery reached unexpected uncommitted call {call_id}"
+                    )
+                segment = selection.segment
+                caps = self.backend.capabilities if self.backend else Capabilities()
+                expected_session = target_info.get("session_id")
+                if (
+                    segment is None
+                    or not segment.session_id
+                    or (expected_session and segment.session_id != expected_session)
+                    or getattr(caps, "resume_session", False) is not True
+                    or getattr(caps, "durable_session_id", False) is not True
+                    or segment.legacy
+                ):
+                    raise RuntimeError("continue_not_supported")
+                resume_session_id = str(expected_session or segment.session_id)
+                group_id = target_info.get("request_group_id")
+                resume_request_group_id = str(group_id) if group_id else None
+                resume_continue_target = True
+                self.ctx.mark_recovery_ready()
+                target_continue = False
+                target_info = None
+                is_target = False
+            else:
+                is_target = not self.ctx.recovery_target_reached
             if is_target and target is not None and target != call_id:
                 raise ReplayDiverged(
                     f"Recovery expected target {target}, reached uncommitted {call_id}"
@@ -374,8 +433,8 @@ class AgentRunner:
                 if (
                     segment is None
                     or not segment.session_id
-                    or not getattr(caps, "resume_session", False)
-                    or not getattr(caps, "durable_session_id", False)
+                    or getattr(caps, "resume_session", False) is not True
+                    or getattr(caps, "durable_session_id", False) is not True
                     or segment.legacy
                 ):
                     raise RuntimeError("continue_not_supported")
@@ -385,10 +444,16 @@ class AgentRunner:
 
         backend_prompt = prompt
         if resume_session_id:
-            answered = answered_for_call(self.ctx.run_dir, call_id)
+            answered = answered_for_call(
+                self.ctx.run_dir,
+                call_id,
+                resume_request_group_id,
+            )
             if answered is not None:
-                payload = answered if "responses" in answered else answered.get("response")
-                backend_prompt = json.dumps(payload, ensure_ascii=False)
+                legacy = bool(answered.pop("_legacy", False))
+                if legacy:
+                    self.ctx.legacy_recovery = True
+                backend_prompt = json.dumps(answered, ensure_ascii=False)
 
         start_type = "agent_resume" if resume_session_id else "agent_start"
         append_cache_event(
@@ -445,7 +510,12 @@ class AgentRunner:
                 if self._mock_mode == "auto":
                     text, exit_code = self._mock_auto_fn(schema)
                 else:
-                    text, exit_code = self._mock_fn(prompt + retry_hint)
+                    text, exit_code = self._mock_fn(
+                        append_run_prompt(
+                            prompt + retry_hint,
+                            self.ctx.execution_options.get("append_prompt"),
+                        )
+                    )
                     if exit_code != 0:
                         text = ""
                 backend_sid = None
@@ -455,11 +525,25 @@ class AgentRunner:
                     backend_prompt, retry_hint, session, model, cwd, cache_path,
                     resume_session_id, attempt, call_id, input_digest,
                 )
+                if resume_continue_target:
+                    self.ctx.mark_continue_target_reached(call_id)
 
                 # Native goal: return goal summary text directly
                 if exit_code in _GOAL_EXIT_CODES:
                     self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
                     return text, backend_sid
+
+            # Framework control is an independent output branch and must be
+            # recognized before business/goal schema validation.
+            parsed = _maybe_json(text)
+            if isinstance(parsed, dict) and "__loopflow" in parsed:
+                _validate_control_result(parsed)
+                self._write_cache(
+                    cache_path, session, exit_code, text,
+                    call_id=call_id, input_digest=input_digest,
+                    status="failed", session_id=backend_sid,
+                )
+                self._handle_control_result(parsed, backend_sid, call_id)
 
             # Schema compliance check
             if schema:
@@ -527,7 +611,7 @@ class AgentRunner:
 
             # No schema → return text
             self._write_cache(cache_path, session, exit_code, text, call_id=call_id, input_digest=input_digest, session_id=backend_sid)
-            self._handle_control_result(_maybe_json(text), backend_sid, call_id)
+            self._handle_control_result(parsed, backend_sid, call_id)
             self._persist_state()
             return text, backend_sid
 
@@ -541,43 +625,54 @@ class AgentRunner:
     ) -> None:
         if not isinstance(result, dict):
             return
-        control = result.get("__loopflow")
-        if not isinstance(control, dict) or control.get("status") != "waiting_input":
+        if "__loopflow" not in result:
             return
+        requests = _validate_control_result(result)
         caps = self.backend.capabilities if self.backend else Capabilities()
         if not (
             backend_sid
-            and getattr(caps, "resume_session", False)
-            and getattr(caps, "durable_session_id", False)
+            and getattr(caps, "resume_session", False) is True
+            and getattr(caps, "durable_session_id", False) is True
         ):
-            raise RuntimeError("continue_not_supported")
-        requests = control.get("requests")
-        if requests is None:
-            requests = [{
-                "key": control.get("key"),
-                "prompt": control.get("prompt"),
-                "schema": control.get("schema"),
-            }]
-        if not isinstance(requests, list) or not requests:
-            raise RuntimeError("validation_failed")
+            raise RuntimeError(
+                "agent_intervention_not_supported: use workflow intervene() "
+                "or a backend with durable session resume"
+            )
+        existing = [
+            item for item in list_requests(self.ctx.run_dir)
+            if item.get("source") == "agent"
+            and item.get("call_id") == call_id
+            and item.get("session_id") == backend_sid
+        ]
+        pending_group = next(
+            (
+                str(item["request_group_id"])
+                for item in existing
+                if item.get("status") == "pending" and item.get("request_group_id")
+            ),
+            None,
+        )
+        group_ids = {
+            str(item["request_group_id"])
+            for item in existing
+            if item.get("request_group_id")
+        }
+        group_id = pending_group or uuid.uuid5(
+            uuid.NAMESPACE_URL,
+            json.dumps(
+                {
+                    "run_id": self.ctx.run_id,
+                    "call_id": call_id,
+                    "session_id": backend_sid,
+                    "occurrence": len(group_ids),
+                    "requests": requests,
+                },
+                sort_keys=True,
+            ),
+        ).hex
         first_pending = None
         from loopflow.infrastructure.intervention import InterventionPending
-        for item in requests:
-            if not isinstance(item, dict):
-                raise RuntimeError("validation_failed")
-            key = item.get("key")
-            prompt = item.get("prompt")
-            options = item.get("options", [])
-            allow_custom = item.get("allow_custom", True)
-            schema = item.get("schema")
-            if not isinstance(key, str) or not key or not isinstance(prompt, str) or not prompt:
-                raise RuntimeError("validation_failed")
-            if not isinstance(options, list) or any(not isinstance(option, str) for option in options):
-                raise RuntimeError("validation_failed")
-            if not isinstance(allow_custom, bool):
-                raise RuntimeError("validation_failed")
-            if schema is not None and not isinstance(schema, dict):
-                raise RuntimeError("validation_failed")
+        for index, item in enumerate(requests):
             try:
                 # Agent-side requests declare no default this iteration
                 # (ADR-0056 §5): unattended runs fail intervention_unattended
@@ -585,15 +680,17 @@ class AgentRunner:
                     self.ctx.run_dir,
                     self.ctx.run_id,
                     InterventionIdentity(
-                        key=key,
-                        prompt=prompt,
+                        key=item["key"],
+                        prompt=item["prompt"],
                         source="agent",
-                        options=tuple(options),
-                        allow_custom=allow_custom,
-                        schema=schema,
+                        options=tuple(item["options"]),
+                        allow_custom=item["allow_custom"],
+                        schema=None,
                         resume_mode="continue",
                         call_id=call_id,
                         session_id=backend_sid,
+                        request_group_id=group_id,
+                        request_index=index,
                     ),
                     unattended=bool(self.ctx.execution_options.get("unattended")),
                 )
@@ -646,8 +743,12 @@ class AgentRunner:
                     "backend": self._display_backend,
                 })
 
-            events = self._invoke(
+            user_prompt = append_run_prompt(
                 prompt + retry_hint,
+                self.ctx.execution_options.get("append_prompt"),
+            )
+            events = self._invoke(
+                user_prompt,
                 session,
                 model=model,
                 cwd=cwd,
@@ -728,3 +829,37 @@ def _maybe_json(text: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError:
         return None
+
+
+def _validate_control_result(result: dict[str, Any]) -> list[dict[str, Any]]:
+    if set(result) != {"__loopflow"}:
+        raise RuntimeError("validation_failed: control output has unknown fields")
+    control = result.get("__loopflow")
+    if not isinstance(control, dict) or set(control) != {"status", "requests"}:
+        raise RuntimeError("validation_failed: invalid __loopflow object")
+    if control.get("status") != "waiting_input":
+        raise RuntimeError("validation_failed: invalid __loopflow status")
+    requests = control.get("requests")
+    if not isinstance(requests, list) or not requests:
+        raise RuntimeError("validation_failed: requests must be a non-empty array")
+    validated: list[dict[str, Any]] = []
+    keys: set[str] = set()
+    required = {"key", "prompt", "options", "allow_custom"}
+    for item in requests:
+        if not isinstance(item, dict) or set(item) != required:
+            raise RuntimeError("validation_failed: invalid request fields")
+        key = item.get("key")
+        prompt = item.get("prompt")
+        options = item.get("options")
+        allow_custom = item.get("allow_custom")
+        if not isinstance(key, str) or not key or key in keys:
+            raise RuntimeError("validation_failed: request keys must be unique non-empty strings")
+        if not isinstance(prompt, str) or not prompt:
+            raise RuntimeError("validation_failed: prompt must be a non-empty string")
+        if not isinstance(options, list) or any(not isinstance(option, str) for option in options):
+            raise RuntimeError("validation_failed: options must be a string array")
+        if not isinstance(allow_custom, bool):
+            raise RuntimeError("validation_failed: allow_custom must be boolean")
+        keys.add(key)
+        validated.append(dict(item))
+    return validated
