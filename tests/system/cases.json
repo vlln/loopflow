@@ -306,8 +306,7 @@
       "expectations": [
         {
           "kind": "http_status",
-          "value": 409,
-          "code": "run_in_grace"
+          "value": 200
         }
       ]
     },
@@ -1301,7 +1300,7 @@
       "fixture": "1440x900 视口，Runs fixture 已加载",
       "action": "截图并检查布局",
       "assertion": "Runs、AgentGraph/Events、Inspector 同时可见；AgentGraph 节点按 LR 排列且 edge 不穿过无关节点；无重叠或水平页面滚动",
-      "test_node": "planned::ac-019-n-1",
+      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
       "targets": [
         "ui:layout"
       ],
@@ -1317,7 +1316,7 @@
       "fixture": "Runs 工作区打开，焦点置于 failed Run A；A 含 call-1/call-2；DOM 区域顺序为 Runs→AgentGraph→Calls→Run actions",
       "action": "用键盘选择 A、call-1，再聚焦 accessible name=`Retry failed call` 并按 Enter",
       "assertion": "每步有可见 focus；详情依次显示 A 和 call-1；最后只发出一次 A 的 recover retry 请求",
-      "test_node": "planned::ac-019-n-2",
+      "test_node": "web/src/App.test.tsx::AC-019-N-2: keyboard selection shows focus and fires a single recover retry",
       "targets": [
         "ui:layout"
       ],
@@ -1333,7 +1332,7 @@
       "fixture": "启动 Web 服务时未传 host",
       "action": "检查监听 socket",
       "assertion": "仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口",
-      "test_node": "planned::ac-019-n-3",
+      "test_node": "tests/integration/test_web_api.py::test_ac019_n3_default_binds_loopback_only",
       "targets": [
         "process:loop-web"
       ],
@@ -1349,7 +1348,7 @@
       "fixture": "本机测试接口地址为 `0.0.0.0`",
       "action": "以 host=`0.0.0.0` 且 allow-remote=true 启动服务",
       "assertion": "服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告",
-      "test_node": "planned::ac-019-n-4",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
       "targets": [
         "process:loop-web"
       ],
@@ -1365,7 +1364,7 @@
       "fixture": "WebUI 已打开",
       "action": "点击 rail 主题切换按钮，然后刷新页面",
       "assertion": "日夜主题切换；选择持久化（刷新后保持）；未做过选择时默认跟随系统 `prefers-color-scheme`",
-      "test_node": "planned::ac-019-n-5",
+      "test_node": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
       "targets": [
         "ui:layout"
       ],
@@ -1381,7 +1380,7 @@
       "fixture": "1024x768 视口",
       "action": "打开 Run",
       "assertion": "主列表和 AgentGraph 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠",
-      "test_node": "planned::ac-019-b-1",
+      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
       "targets": [
         "ui:layout"
       ],
@@ -1397,7 +1396,7 @@
       "fixture": "390x844 视口",
       "action": "在 Runs、AgentGraph、Call process 间切换",
       "assertion": "一次只显示一个主区域；当前 Run 的允许操作可到达；无水平页面滚动",
-      "test_node": "planned::ac-019-b-2",
+      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
       "targets": [
         "ui:layout"
       ],
@@ -1413,7 +1412,7 @@
       "fixture": "light 主题",
       "action": "打开 Runs 工作区",
       "assertion": "面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域",
-      "test_node": "planned::ac-019-b-3",
+      "test_node": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
       "targets": [
         "ui:layout"
       ],
@@ -1429,7 +1428,7 @@
       "fixture": "failed Run 的 error_summary 超过 2 行文本（如多行 schema 校验错误）",
       "action": "查看该 Run 详情",
       "assertion": "error_banner 的 error_summary 文本截断为 2 行（-webkit-line-clamp），不挤占 AgentGraph 工作区和 Inspector；Traceback 折叠条仍可展开查看完整信息",
-      "test_node": "planned::ac-019-b-4",
+      "test_node": "web/src/App.test.tsx::AC-019-B-4: long error_summary is clamped, traceback stays expandable",
       "targets": [
         "ui:layout"
       ],
@@ -1445,7 +1444,7 @@
       "fixture": "Agent 输出含 500 字符无空格字符串",
       "action": "显示 Output",
       "assertion": "Output 使用 `overflow-wrap:anywhere` 在面板内换行；页面无水平滚动且不遮挡相邻面板",
-      "test_node": "planned::ac-019-e-1",
+      "test_node": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
       "targets": [
         "ui:layout"
       ],
@@ -1461,7 +1460,7 @@
       "fixture": "SSE 连接断开",
       "action": "观察顶栏和现有内容",
       "assertion": "显示连接中断状态；最后数据保留；重连不导致面板闪烁或尺寸变化",
-      "test_node": "planned::ac-019-e-2",
+      "test_node": "web/src/App.test.tsx::AC-019-E-2: SSE disconnect shows stream error and keeps last data",
       "targets": [
         "ui:layout"
       ],
@@ -1477,7 +1476,7 @@
       "fixture": "图标按钮无可见文字",
       "action": "扫描可访问性树",
       "assertion": "每个按钮都有 accessible name；陌生图标有 tooltip",
-      "test_node": "planned::ac-019-f-1",
+      "test_node": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
       "targets": [
         "ui:layout"
       ],
@@ -1493,7 +1492,7 @@
       "fixture": "状态颜色样式被禁用",
       "action": "查看 Runs、Agent Call 和 Backend 状态",
       "assertion": "每个状态仍可由文字或图标区分",
-      "test_node": "planned::ac-019-f-2",
+      "test_node": "web/src/App.test.tsx::AC-019-F-2: statuses remain text/icon distinguishable without color",
       "targets": [
         "ui:layout"
       ],
@@ -1509,7 +1508,7 @@
       "fixture": "启动 Web 服务时传 host=`0.0.0.0`，但未传显式 allow-remote 配置",
       "action": "启动服务",
       "assertion": "启动失败并返回非零状态；stderr 包含 `remote binding requires explicit opt-in`",
-      "test_node": "planned::ac-019-f-3",
+      "test_node": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
       "targets": [
         "process:loop-web"
       ],

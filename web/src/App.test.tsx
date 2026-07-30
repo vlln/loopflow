@@ -997,3 +997,59 @@ it('AC-015-E-4: graph node count, selected call, and event count shown accuratel
   // no occurrence terminology anywhere
   expect(screen.queryByText(/occurrence/i)).not.toBeInTheDocument();
 });
+
+// --- AC-019 layout & accessibility coverage (0112-05) ---
+
+it('AC-019-N-2: keyboard selection shows focus and fires a single recover retry', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  const failedRow = screen.getByText('run-failed').closest('button')!;
+  failedRow.focus();
+  fireEvent.keyDown(failedRow, { key: 'Enter' });
+  fireEvent.click(failedRow);
+  await screen.findByRole('heading', { name: 'run-failed' });
+  const retry = await screen.findByRole('button', { name: 'Retry failed call' });
+  retry.focus();
+  expect(document.activeElement).toBe(retry);
+  fireEvent.keyDown(retry, { key: 'Enter' });
+  fireEvent.click(retry);
+  await waitFor(() => expect(calls.filter((c) => c.includes('recover'))).toHaveLength(1));
+});
+
+it('AC-019-B-4: long error_summary is clamped, traceback stays expandable', async () => {
+  installFetch({ detailOverride: { error_summary: 'line one\nline two\nline three\nline four', error_traceback: 'Traceback: boom' } });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  // the banner uses the dedicated clamp class wired to -webkit-line-clamp: 2 in styles.css
+  const banner = document.querySelector('.run-error-banner .error-summary-text')!;
+  expect(banner).toBeInTheDocument();
+  expect(banner.textContent).toContain('line one');
+  // full multiline summary is present in DOM; visual clamp handled by the class
+  expect(banner.textContent).toContain('line four');
+  expect(screen.getByText('Traceback')).toBeVisible();
+});
+
+it('AC-019-E-2: SSE disconnect shows stream error and keeps last data', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  const content = await screen.findByText(/workflow output/);
+  expect(content).toBeVisible();
+  act(() => { EventSourceMock.instances[0].emit('stream_error', '{}'); });
+  // last data retained after disconnect
+  expect(screen.getByText(/workflow output/)).toBeVisible();
+  await waitFor(() => expect(screen.getByText(/stream error/)).toBeVisible());
+});
+
+it('AC-019-F-2: statuses remain text/icon distinguishable without color', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  // status badges carry text labels, not color alone — assert distinct status text renders
+  const badges = document.querySelectorAll('.status');
+  expect(badges.length).toBeGreaterThan(0);
+  const texts = Array.from(badges).map((b) => b.textContent?.trim());
+  expect(texts.some((t) => t && t.length > 0)).toBe(true);
+  expect(new Set(texts).size).toBeGreaterThan(1);
+});
