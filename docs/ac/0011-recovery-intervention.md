@@ -259,9 +259,11 @@ created: 2026-07-22T06:35:57Z
 
 ---
 
-# AC-029: stale 失联宽限期
+# AC-029: stale 失联记录与调和
 
-验证 stale 宽限期与调和语义的正确性。对应 Spec v15 BR-052、ADR-0046。
+验证 stale 失联记录（stale_since）与调和语义的正确性。对应 Spec v15 BR-052、ADR-0046。
+
+> 2026-07-30：对齐 ADR-0046 2026-07-27 修订——宽限期不再阻塞 reconcile。进程探活确认死亡即直接清理为 failed；`stale_since` 仅记录宽限期起点供 UI 呈现剩余时间，`run_in_grace` 不再触发。原 AC-029-B-1 的 409 语义已废弃。
 
 ## 正常场景
 
@@ -274,7 +276,7 @@ created: 2026-07-22T06:35:57Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-029-B-1 | run 处于 stale 且 stale_since 距今不足 24h（宽限期内） | `POST /api/v1/runs/{id}/reconcile` | 返回 409，错误码 run_in_grace；run.json 未被修改 | 自动化 |
+| AC-029-B-1 | run 处于 stale 且 stale_since 距今不足 24h | `POST /api/v1/runs/{id}/reconcile` | 进程已确认死亡即按既有 reconcile 流程清理：status=failed、写 error_summary、清除 pid 字段与 stale_since（ADR-0046 2026-07-27 修订：宽限期不阻塞 reconcile，stale_since 仅供 UI 呈现剩余时间）；run.json 原子替换 | 自动化 |
 | AC-029-B-2 | run 处于 stale 且 stale_since 距今超过 24h | `POST /api/v1/runs/{id}/reconcile` | 按既有 reconcile 流程：status=failed、写 error_summary、清除 pid 字段与 stale_since | 自动化 |
 
 ## 异常场景
