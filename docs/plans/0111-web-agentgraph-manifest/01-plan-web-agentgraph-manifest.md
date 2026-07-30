@@ -2,7 +2,7 @@
 title: Web AgentGraph manifest 对齐
 description: 将 Web strict manifest 增量对齐 Spec v19 和冻结后的 AC-0010/0012
 type: plan
-status: pending
+status: done
 created: 2026-07-29T00:00:00Z
 ---
 
@@ -27,9 +27,9 @@ created: 2026-07-29T00:00:00Z
 
 # Checkpoint
 
-- [ ] 89 个场景均有 frozen targets/expectations
-- [ ] TEST_NODES 经当前 oracle 逐项复核
-- [ ] committed manifest 与 generator 一致
-- [ ] allow-planned 通过，strict 仅拒绝 planned
-- [ ] 增量 infrastructure tests 通过
-- [ ] 独立 subagent 最终审查 PASS
+- [x] 89 个场景均有 frozen targets/expectations
+- [x] TEST_NODES 经当前 oracle 逐项复核
+- [x] committed manifest 与 generator 一致
+- [x] allow-planned 通过，strict 仅拒绝 planned
+- [x] 增量 infrastructure tests 通过
+- [x] 独立 subagent 最终审查 PASS

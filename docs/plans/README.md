@@ -70,7 +70,7 @@
 | [0108](0108-0.27.0-system-test/) | 0.27.0 系统测试 | pending | 2026-07-29 |
 | [0109](0109-web-manifest-strict/) | Web manifest strict 基建修复 | done | 2026-07-29 |
 | [0110](0110-web-contract-alignment/) | Web AgentGraph 契约对齐 | done | 2026-07-29 |
-| [0111](0111-web-agentgraph-manifest/) | Web AgentGraph manifest 增量基建 | pending | 2026-07-29 |
+| [0111](0111-web-agentgraph-manifest/) | Web AgentGraph manifest 增量基建 | done | 2026-07-29 |
 
 ## 状态说明
 

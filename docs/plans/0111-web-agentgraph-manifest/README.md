@@ -2,7 +2,7 @@
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [Web AgentGraph manifest 对齐](01-plan-web-agentgraph-manifest.md) | 待完成后创建 | pending |
+| 01 | [Web AgentGraph manifest 对齐](01-plan-web-agentgraph-manifest.md) | [Report](01-report-web-agentgraph-manifest.md) | done |
 
 ## 分支
 
