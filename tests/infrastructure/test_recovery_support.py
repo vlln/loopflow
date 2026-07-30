@@ -214,27 +214,52 @@ def test_v13_contract_examples_and_negative_shapes():
     with pytest.raises(ValidationError):
         validate_contract("backend_capabilities_v13", invalid_capabilities)
 
-    vnext = dict(examples["intervention_vnext"])
-    validate_contract("intervention_vnext", vnext)
+    normalized = dict(examples["intervention"])
+    validate_contract("intervention", normalized)
 
-    old_shape = dict(examples["intervention"])
+    old_shape = dict(normalized)
+    old_shape.pop("request_group_id")
     with pytest.raises(ValidationError):
-        validate_contract("intervention_vnext", old_shape)
+        validate_contract("intervention", old_shape)
 
-    invalid_vnext = dict(vnext)
-    invalid_vnext["schema"] = {"type": "boolean"}
-    with pytest.raises(ValidationError):
-        validate_contract("intervention_vnext", invalid_vnext)
+    agent_request = dict(normalized)
+    agent_request.update(
+        {
+            "source": "agent",
+            "request_group_id": "group-1",
+            "call_id": "0001",
+            "session_id": "session-1",
+            "resume_mode": "continue",
+            "can_continue_session": True,
+        }
+    )
+    validate_contract("intervention", agent_request)
 
-    invalid_vnext = dict(vnext)
-    invalid_vnext["response"] = True
-    invalid_vnext["status"] = "answered"
-    invalid_vnext["responded_at"] = "2026-07-22T08:01:00Z"
+    invalid_agent = dict(agent_request)
+    invalid_agent["session_id"] = None
     with pytest.raises(ValidationError):
-        validate_contract("intervention_vnext", invalid_vnext)
+        validate_contract("intervention", invalid_agent)
+
+    answered = dict(normalized)
+    answered.update(
+        {
+            "status": "answered",
+            "response": True,
+            "response_source": "human",
+            "responded_at": "2026-07-22T08:01:00Z",
+        }
+    )
+    validate_contract("intervention", answered)
+    answered.pop("response_source")
+    with pytest.raises(ValidationError):
+        validate_contract("intervention", answered)
 
     validate_contract("batch_intervention_response", examples["batch_intervention_response"])
-    invalid_batch = {"responses": [{"request_id": "scope-1", "response": ""}]}
+    validate_contract(
+        "batch_intervention_response",
+        {"responses": [{"request_id": "workflow-1", "response": {"approved": True}}]},
+    )
+    invalid_batch = {"responses": [{"request_id": "scope-1"}]}
     with pytest.raises(ValidationError):
         validate_contract("batch_intervention_response", invalid_batch)
 

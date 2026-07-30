@@ -9,7 +9,10 @@ from loopflow.infrastructure.web_resources import (
     FileNotPreviewable,
     LoopRepository,
     PathForbidden,
+    PREVIEW_LIMIT,
     QueueRepository,
+    RAW_LIMIT,
+    _extract_declared_args,
 )
 
 
@@ -53,6 +56,66 @@ def test_loop_detail_includes_agent_files_and_recent_related_runs(tmp_path):
     assert any(item["path"] == "loop.md" and item["previewable"] for item in detail["files"])
 
 
+def test_ac035_declared_args_preserve_default_presence():
+    result = _extract_declared_args({
+        "args": [
+            {"name": "missing"},
+            {"name": "null", "default": None},
+            {"name": "zero", "default": 0},
+        ]
+    })
+
+    assert "default" not in result[0]
+    assert result[1]["default"] is None
+    assert result[2]["default"] == 0
+
+
+def test_ac035_declared_args_skip_non_json_yaml_defaults(tmp_path):
+    repository = LoopRepository(tmp_path)
+    loop = make_loop(tmp_path, "dated")
+    (loop / "loop.md").write_text(
+        "---\nname: dated\nargs:\n"
+        "  - name: released\n    default: 2026-07-29\n"
+        "  - name: valid\n    default: 0\n---\n"
+    )
+
+    assert repository.summary(loop)["declared_args"] == [{
+        "name": "valid", "default": 0, "description": "", "required": False,
+    }]
+
+
+def test_ac035_loop_md_top_level_args_and_legacy_workflow_fallback(tmp_path):
+    repository = LoopRepository(tmp_path)
+    declared = make_loop(tmp_path, "declared")
+    (declared / "loop.md").write_text(
+        "---\nname: declared\ndescription: Demo\nargs:\n  - name: topic\n    default: rna\n---\n"
+    )
+    (declared / "workflow.py").write_text(
+        "meta = {'args': [{'name': 'wrong', 'default': 1}]}\ndef run(): pass\n"
+    )
+    invalid = make_loop(tmp_path, "invalid")
+    (invalid / "loop.md").write_text(
+        "---\nname: invalid\ndescription: Demo\nargs: nope\n---\n"
+    )
+    (invalid / "workflow.py").write_text(
+        "meta = {'args': [{'name': 'wrong', 'default': 1}]}\ndef run(): pass\n"
+    )
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / "workflow.py").write_text(
+        "meta = {'description': 'Legacy', 'args': [{'name': 'count', 'default': 2}]}\n"
+        "def run(): pass\n"
+    )
+
+    assert repository.summary(declared)["declared_args"] == [
+        {"name": "topic", "default": "rna", "description": "", "required": False}
+    ]
+    assert repository.summary(invalid)["declared_args"] == []
+    assert repository.summary(legacy)["declared_args"] == [
+        {"name": "count", "default": 2, "description": "", "required": False}
+    ]
+
+
 def test_loop_preview_rejects_traversal_symlink_binary_and_large(tmp_path):
     loop = make_loop(tmp_path)
     outside = tmp_path / "secret.txt"
@@ -73,14 +136,28 @@ def test_loop_preview_rejects_traversal_symlink_binary_and_large(tmp_path):
     assert repository.preview(loop, "workflow.py")["read_only"] is True
 
 
-def test_loop_preview_binary_image_and_pdf(tmp_path):
+def test_ac033_loop_preview_binary_image_and_pdf_use_fixed_media_types(tmp_path, monkeypatch):
     loop = make_loop(tmp_path)
-    (loop / "chart.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
-    (loop / "doc.pdf").write_bytes(b"%PDF-1.4\n" + b"\x00" * 100)
-    (loop / "fig.svg").write_text("<svg xmlns='http://www.w3.org/2000/svg'/>")
+    expected_types = {
+        "chart.png": "image/png",
+        "photo.jpg": "image/jpeg",
+        "photo.jpeg": "image/jpeg",
+        "animation.gif": "image/gif",
+        "figure.svg": "image/svg+xml",
+        "image.webp": "image/webp",
+        "bitmap.bmp": "image/bmp",
+        "favicon.ico": "image/x-icon",
+        "report.pdf": "application/pdf",
+    }
+    for name in expected_types:
+        (loop / name).write_bytes(b"fixture")
+    monkeypatch.setattr(
+        "loopflow.infrastructure.web_resources.mimetypes.guess_type",
+        lambda _name: ("application/x-platform-dependent", None),
+    )
     repository = LoopRepository(tmp_path)
 
-    for name, expected_type in [("chart.png", "image/png"), ("doc.pdf", "application/pdf"), ("fig.svg", "image/svg+xml")]:
+    for name, expected_type in expected_types.items():
         result = repository.preview(loop, name)
         assert result["encoding"] == "raw"
         assert result["content"] is None
@@ -89,16 +166,42 @@ def test_loop_preview_binary_image_and_pdf(tmp_path):
 
     raw_bytes, raw_type = repository.serve_raw(loop, "chart.png")
     assert raw_type == "image/png"
-    assert raw_bytes.startswith(b"\x89PNG")
+    assert raw_bytes == b"fixture"
 
 
-def test_loop_preview_binary_rejects_oversized(tmp_path):
+def test_ac033_loop_preview_binary_rejects_oversized(tmp_path):
     loop = make_loop(tmp_path)
     (loop / "huge.png").write_bytes(b"\x89PNG" + b"\x00" * (50 * 1024 * 1024 + 1))
     repository = LoopRepository(tmp_path)
 
     with pytest.raises(FileNotPreviewable, match="binary preview limit"):
         repository.preview(loop, "huge.png")
+    with pytest.raises(FileNotPreviewable, match="binary preview limit"):
+        repository.serve_raw(loop, "huge.png")
+
+
+def test_ac033_loop_preview_accepts_exact_text_and_raw_limits(tmp_path):
+    loop = make_loop(tmp_path)
+    (loop / "exact.txt").write_bytes(b"x" * PREVIEW_LIMIT)
+    exact_raw = loop / "exact.png"
+    with exact_raw.open("wb") as stream:
+        stream.seek(RAW_LIMIT - 1)
+        stream.write(b"x")
+    repository = LoopRepository(tmp_path)
+
+    assert repository.preview(loop, "exact.txt")["size"] == PREVIEW_LIMIT
+    raw, media_type = repository.serve_raw(loop, "exact.png")
+    assert len(raw) == RAW_LIMIT
+    assert media_type == "image/png"
+
+
+def test_ac033_loop_raw_rejects_non_whitelisted_extension(tmp_path):
+    loop = make_loop(tmp_path)
+    (loop / "payload.bin").write_bytes(b"binary")
+    repository = LoopRepository(tmp_path)
+
+    with pytest.raises(FileNotPreviewable, match="file type"):
+        repository.serve_raw(loop, "payload.bin")
 
 
 def test_loop_file_summary_marks_binary_previewable(tmp_path):

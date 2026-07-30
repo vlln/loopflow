@@ -1,6 +1,6 @@
 ---
 title: loopflow AC-0010 — 本地 WebUI 控制台
-description: 验收 Runs 主从工作台、Phase occurrence、Loops 文件预览、Backend 诊断、SSE 恢复和本地安全边界。
+description: 验收 Runs 主从工作台、AgentGraph 与 Call 过程、Loops 文件预览、Backend 诊断、SSE 恢复和本地安全边界。
 type: ac
 status: active
 created: 2026-07-18T21:00:00Z
@@ -25,7 +25,7 @@ created: 2026-07-18T21:00:00Z
 | AC-014-N-7 | done Run A | 对 A 执行 Rerun | API 返回 201 和新 Run B；B.run_id != A.run_id，B.loop/args 与 A 相同，A 文件不变 | 自动化 |
 | AC-014-N-8 | fixture 含 Loop 名和 run_id 可区分的 Runs | 分别应用 Loop 筛选和文本搜索 | 每次结果只包含匹配项；清除筛选后恢复完整列表 | 自动化 |
 | AC-014-N-9 | WebUI New Run 对话框 | 用 Arguments 键值编辑器添加 `name=review`、`count=2`、`debug=true` 并启动 | POST body args 为 `{"name":"review","count":2,"debug":true}`（值智能类型解析：数字/布尔不包字符串） | 自动化 |
-| AC-014-N-10 | Loop 声明 `meta.args`（`review` 默认 `main`，`count` 无默认） | 打开 New Run 对话框并选择该 Loop | 键值编辑器预填 `review=main` 与空值 `count` 行；直接启动时 POST body args 含 `{"review":"main"}`（空值行忽略） | 自动化 |
+| AC-014-N-10 | Loop 的 loop.md 顶层声明 args（review 默认 main，count 无默认） | 打开 New Run 对话框并选择该 Loop | 键值编辑器预填 review=main 与空 count 行；直接启动时 POST args 只含 review=main | 自动化 |
 | AC-014-N-11 | server 运行中 | `GET /api/v1/system/meta` 并观察 WebUI rail | 端点返回 200 `{"version": "..."}`（与 `loopflow.__version__` 一致）；rail 显示该版本而非硬编码值 | 自动化 |
 
 ## 边界场景
@@ -36,118 +36,73 @@ created: 2026-07-18T21:00:00Z
 | AC-014-B-2 | Runs 目录为空 | 打开 Runs | 左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用 | 自动化 |
 | AC-014-B-3 | Arguments 键值编辑器含空 key 行 | 启动 Run | 空 key 行被忽略；args 仅含有效条目；无任何条目时 args 为 `{}` | 自动化 |
 | AC-014-B-4 | Arguments 切换到 JSON 高级模式 | 输入非法 JSON 并启动 | 显示 JSON 校验错误，不发送请求 | 自动化 |
-| AC-014-B-5 | Loop 无 `meta.args` 声明 | 打开 New Run 对话框 | 键值编辑器为空白起始（无预填行），行为与声明前一致 | 自动化 |
+| AC-014-B-5 | loop.md 存在但无 args，workflow.py legacy meta.args 有值 | 打开 New Run 对话框 | loop.md 权威：编辑器为空白，不读取 workflow.py 声明 | 自动化 |
 | AC-014-B-6 | Run 的 working_directory 为 `/home/user/bio-reproducer` | 查看 Runs 左栏该 run item | 次要标识行显示 `bio-reproducer`（working_directory 的 basename），不显示 run_id UUID；hover 显示完整路径 | 自动化 |
+| AC-014-B-7 | Run 已记录 stale_since 且仍在 24h 宽限期，进程仍不存在 | 请求 reconcile | 返回 409 run_in_grace；run.json 除允许的首次 stale_since 记录外不改为 failed | 自动化 |
 
 ## 异常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-014-E-1 | 一个 run.json 是非法 JSON，另一个合法 | 查询 Runs | 合法 Run 正常返回；非法条目作为 status=unreadable 的摘要返回并包含 parse_error；请求不返回 500 | 自动化 |
-| AC-014-E-2 | Run status=running，但进程不存在 | 选择该 Run | UI 显示 stale；Stop 禁用；显示 Reconcile；读取操作不修改 run.json | 自动化 |
+| AC-014-E-2 | Run status=running、进程不存在且 stale_since 缺失 | 首次选择该 Run，再刷新详情 | 首次读取原子记录 stale_since 并显示 stale；后续读取不重复改写；Stop 禁用且显示 Reconcile | 自动化 |
 
 ## 失败场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-014-F-1 | Run 为 done | 请求 stop 或 resume | API 返回 409；run.json 字节内容不变 | 自动化 |
-| AC-014-F-2 | Run 为 stale，reconcile 二次校验仍为 stale | 请求 reconcile | API 返回更新后 status=failed 的 Run；run.json 原子替换且 pid/process_started_at 已清除 | 自动化 |
+| AC-014-F-2 | Run 为 stale，stale_since 已超过 24h，reconcile 二次校验仍 stale | 请求 reconcile | 返回 status=failed；run.json 原子替换且 pid/process_started_at/stale_since 已清除 | 自动化 |
 
 ---
 
-# AC-015: Phase 与 Agent 运行过程
+# AC-015: AgentGraph 与 Agent Call 运行过程
 
-验证聚合 Phase 图、Phase occurrence 和 Agent Call 关联。
+> 2026-07-29：ADR-0052 删除 Phase 抽象。本节保留既有场景编号以维持追踪关系，但 oracle 已统一为 call_id 唯一节点、AgentGraph 和 Call 关联；不恢复 phase occurrence 或 declared phases。
+
+验证 Agent 实例图、Call 选择和结构化事件关联。
 
 ## 正常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-015-N-1 | v2 事件包含 `Review(p1) → Fix(p2) → Review(p3)` | 打开 Run | 图有 Review、Fix 两个聚合节点和 Fix→Review 回边；Review 显示 2 个 occurrence | 自动化 |
-| AC-015-N-2 | p1 关联 call-1，p3 关联 call-3 | 依次选择 p1、p3 | Calls/Events 分别只显示 call-1、call-3；右侧过程同步切换 | 自动化 |
-| AC-015-N-3 | 一个 Phase 内两个并行 Call 的事件均有 call_id | 选择该 occurrence | 两个 Call 分开显示；各自消息、工具调用、重试和 done 不串线 | 自动化 |
-| AC-015-N-4 | 事件形成 `Plan→Implement` 和 `Plan→Review` 两个分支，当前 phase_id 属于 Review | 打开 Run | 聚合图同时显示两条分支；Review 路径标记 current，另一条路径降低权重但仍可选择 | 自动化 + 截图 |
-| AC-015-N-5 | state.json 为 `{"attempt":2}`，选中 Review occurrence | 打开 Run Inspector 和 Phase 详情 | Run Inspector 显示 attempt=2；Phase 详情只有 Calls/Events，不出现 Phase State 或伪造 state diff | 自动化 |
+| AC-015-N-1 | v2 事件包含顺序 call-1(planner) → call-2(fixer) → call-3(reviewer) | 打开 Run | AgentGraph 有 3 个 call_id 节点、2 条 sequential edge、current=call-3；dagre rankdir=LR，edge 从左侧节点指向右侧节点 | 自动化 + 截图 |
+| AC-015-N-2 | call-1 与 call-3 各有消息、工具调用和文件变化 | 依次选择两个图节点 | Events 与文件变化分别只高亮对应 call_id；右侧 Call 过程同步切换 | 自动化 |
+| AC-015-N-3 | 结构化事件表达 call-a 后 parallel(call-b, call-c) 再 call-d | 打开 Run 并选择 b、c | b/c 是不同节点且各自事件不串线；图含 a→b/a→c fork edge 和 b→d/c→d join edge | 自动化 |
+| AC-015-N-4 | 两组连续 parallel 产生 back-to-back fork/join，当前 call 为最后一组子节点 | 打开 Run | 所有 fork/join edge 均可见；current 只标记当前 call_id，未完成图也不出现孤立子节点 | 自动化 + 截图 |
+| AC-015-N-5 | state.json 为 `{"attempt":2}`，选中 call-2 | 打开 Run Inspector 和 Call 详情 | Inspector 显示 attempt=2；Call 详情只显示结构化事件，不伪造 Call state diff | 自动化 |
+| AC-015-N-6 | 新 Run 尚未产生 agent_start，Loop legacy meta.phases 非空 | 查询 RunDetail 并打开页面 | 响应含 agent_graph={nodes:[],edges:[],current:null}，不含 graph/occurrences/declared_phases；UI 不预造节点 | 自动化 |
+| AC-015-N-7 | Run 随后产生 call-1 的 agent_start(label=采集) | 保持页面打开或重新加载 | 图新增唯一 call-1 节点并标记 running/current，不存在声明占位节点 | 自动化 |
+| AC-015-N-8 | 两次顺序 Agent Call 的 label 都是 review，call_id 分别为 call-1/call-2 | 打开 Run | 图显示两个独立节点和 call-1→call-2 edge；不按同 label 合并或显示 occurrence | 自动化 + 截图 |
+| AC-015-N-9 | Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id | 打开 Run，查看 Calls 列表 | call-list 主显 call_id；session_id 仅在 tooltip 显示，不作为独立行重复显示 | 自动化 |
 
 ## 边界场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-015-B-1 | Run 没有 phase 事件 | 打开 Run | Phase 区显示空状态；原始 Events 仍可查看；页面不崩溃 | 自动化 |
-| AC-015-B-2 | Phase 有 100 次 occurrence | 选择聚合节点并切换第 1、100 次 | occurrence 可选择且顺序稳定；右侧关联结果正确 | 自动化 |
+| AC-015-B-1 | Run 没有 Agent 事件 | 打开 Run | AgentGraph 显示空状态；其他原始 Events 仍可查看；页面不崩溃 | 自动化 |
+| AC-015-B-2 | Run 有 100 个顺序 Call | 选择第 1、100 个节点 | 全部节点可到达且顺序稳定；详情分别只显示目标 call_id 的事件 | 自动化 |
+| AC-015-B-3 | Loop legacy meta.phases 非空，但 workflow 未调用 Agent 后 done | 查询 Loop/Run 并打开 Run | Loop/Run 响应不含 declared_phases；AgentGraph 为空；原始日志仍可见 | 自动化 |
+| AC-015-B-4 | workflow 只完成一个 Agent Call | 打开 Run | 图只有一个 done 节点、无 edge；页面无 Phase filter、is-in-phase 样式或 PhaseGraph 控件 | 自动化 |
+| AC-015-B-5 | Call 有 call_id 但 session_id 缺失 | 查看 Calls 列表 | 列表显示 call_id；tooltip 不显示 session 或显示 no session；不渲染空白行或报错 | 自动化 |
 
 ## 异常场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-015-E-1 | legacy 并行事件缺少 call_id，无法唯一关联 | 打开 Run | 原始时间线可见；歧义事件标记 unattributed；不归入任一虚构 Call | 自动化 |
-| AC-015-E-2 | v2 Agent 事件缺少 required phase_id | 打开 Run | 该事件进入 malformed 集合且不进入 unattributed；其余合法事件继续构图 | 自动化 |
+| AC-015-E-2 | v2 Agent 事件缺少 required call_id，另有一个合法 call-1 事件 | 查询 RunDetail 并打开 Run | `malformed == [{"reason":"missing_call_id","raw":<原坏事件>}]` 且 `malformed_count == len(malformed) == 1`；该 raw 事件不在合法 events、Call、AgentGraph 或 unattributed 中；合法 call-1 仍进入 AgentGraph | 自动化 |
+| AC-015-E-3 | agent_start 的 label 为空或缺失，但 call_id=call-1 | 打开 Run | 节点仍以 call-1 存在并使用 call_id 作为可见 fallback label；页面不崩溃 | 自动化 |
+| AC-015-E-4 | AgentGraph 有 5 个节点，当前选择第 3 个；EventTimeline 含 12 个事件 | 查看图、Call 详情和 EventTimeline | 图节点数、选中 call_id 和事件数分别准确显示，不混用 occurrence 术语 | 自动化 |
 
 ## 失败场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-015-F-1 | events.jsonl 不存在 | 打开 Run | API 返回 Run 摘要和空事件集合；UI 显示无执行记录，不返回 500 | 自动化 |
+| AC-015-F-1 | events.jsonl 不存在 | 打开 Run | API 返回 Run 摘要、空 AgentGraph 和空事件集合；UI 显示无执行记录，不返回 500 | 自动化 |
 | AC-015-F-2 | events.jsonl 最后一行仅写入一半 | 运行期间读取事件 | 完整行全部返回；半行暂不返回且后续补全后只返回一次 | 自动化 |
-
-> 2026-07-26 追加（BL-021）：call/occurrence 显示简化。call-list 主显 call_id（逻辑编号），session 降 tooltip；节点显示 "×N"、详情显示 "第 N 次执行"、EventTimeline 显示 "N 个事件"。消除 call_id 重复（session 含 call_id 又单独显示）+ occurrence/events 措辞区分。新增 N-9、B-5、E-4、F-4。
-
-### 正常场景（追加）
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-N-9 | Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id | 打开 Run，查看 Calls 列表 | call-list 主显 call_id（如 "call-1"）；session_id 降为 tooltip（hover 显示完整 session 值）；session_id 不作为独立行或列重复显示 | 自动化 |
-
-### 边界场景（追加）
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-B-5 | Call 有 call_id 但 session_id 缺失（如 mock backend 不产生 session） | 查看 Calls 列表 | 列表显示 call_id；tooltip 不显示 session 或显示 "no session"；不渲染空白行或报错 | 自动化 |
-
-### 异常场景（追加）
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-E-4 | Phase 有 5 次 occurrence，当前选中第 3 次；EventTimeline 含 12 个事件 | 查看聚合节点、occurrence 详情和 EventTimeline | 聚合节点显示 "×5"；occurrence 详情显示 "第 3 次执行"；EventTimeline 标题显示 "12 个事件"；三处数字各自独立、不混淆 | 自动化 |
-
-### 失败场景（追加）
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-F-4 | legacy 事件缺少 call_id，无法关联到 Call | 查看 Calls 列表和原始 EventTimeline | 无法关联的事件不出现在任何 Call 详情中；原始 EventTimeline 仍可见（标记 unattributed）；call-list 不显示虚构 Call；页面不崩溃 | 自动化 |
-
----
-
-## Declared Phases 预显示（BR-042）
-
-> 2026-07-23 追加。验证 WebUI 中 `meta.phases` 声明的预显示和合并语义，详见 [ADR-0040](../adr/0040-declared-phases-predisplay.md)。
-
-## 正常场景
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-N-6 | Loop 含 `meta.phases = [{"title":"采集","detail":"从数据源拉取"},{"title":"处理","detail":"清洗转换"}]` | 在 WebUI 启动该 Loop 的 Run | Run 创建后 phase graph 立即显示采集、处理两个占位节点（pending 状态，低对比度/虚线边框），不等 SSE 事件 | 自动化 |
-| AC-015-N-7 | 同 AC-015-N-6，runtime 已产生 phase("采集") 事件 | （重新）加载 Run 详情，观察 phase graph | 采集占位节点替换为实际节点（active 状态，正常对比度）；处理保持占位 | 自动化 |
-| AC-015-N-8 | declared ["采集","处理"], runtime 出现 phase("归档") | （重新）加载 Run 详情，观察 phase graph | 归档作为 undeclared 节点出现，带 undeclared 视觉标记（is-undeclared 类，accent 边框色）；采集、处理按实际状态显示 | 自动化 + 截图 |
-
-## 边界场景
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-B-3 | Loop 无 `meta.phases` 声明 | 在 WebUI 启动 Run | phase graph 从空白开始，按 SSE 事件涌现（现有行为不变） | 自动化 |
-| AC-015-B-4 | declared ["采集","归档"], runtime 只执行采集后 done | 打开完成的 Run | 采集为 done 节点（✓），归档保持 pending 占位，不报错 | 自动化 |
-
-## 异常场景
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-E-3 | workflow.py 含 `meta.phases = [{"title":""}]`（title 为空） | 在 WebUI 启动 Run | 跳过无效声明，不渲染该占位节点，不报错 | 自动化 |
-
-## 失败场景
-
-| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
-|------|----------|----------|----------|----------|
-| AC-015-F-3 | workflow.py 语法错误（loop.md 正常；declared phases 来自 loop.md frontmatter，不受影响） | 在 WebUI 启动 Run | API 返回错误（run 进程启动失败，500 internal_error），不创建 Run、不渲染占位节点；Loop 详情与 declared phases 不受影响，服务不崩溃 | 自动化 |
+| AC-015-F-3 | workflow.py 语法错误 | 在 WebUI 启动 Run | API 返回 500 internal_error；不创建 Run、不渲染 Agent 节点；Loop 查询与服务继续可用 | 自动化 |
+| AC-015-F-4 | legacy 事件缺少 call_id，无法关联到 Call | 查看 Calls 列表和原始 EventTimeline | 事件不出现在任何 Call 详情；原始时间线标记 unattributed；不显示虚构 Call；页面不崩溃 | 自动化 |
 
 ---
 
@@ -201,14 +156,15 @@ created: 2026-07-18T21:00:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-017-N-1 | 有两个合法 Loop | 打开 Loops 并选择第二项 | 左栏保留两个 Loop；右侧原地显示第二个 Loop 的 Overview | 自动化 |
-| AC-017-N-2 | Loop 含 loop.md、workflow.py、agents/reviewer.md | 依次打开 Overview、Workflow、Agents | Markdown 被渲染；Python 只读展示；Agent 列表和定义可查看 | 自动化 |
+| AC-017-N-2 | Loop 含 loop.md、workflow.py、agents/reviewer.md、chart.png、report.pdf | 打开文本和二进制文件 | Markdown 被渲染、Python 只读、Agent 定义可查看；图片用 img、PDF 用 iframe/raw viewer；raw bytes 不转码，chart.png 返回 `Content-Type: image/png`，report.pdf 返回 `Content-Type: application/pdf` | 自动化 |
+| AC-017-N-3 | Run file changes 含 chart.png 和 report.pdf | 依次选择两文件 | preview 返回 encoding=raw/raw_url；图片和 PDF 在 Run 文件面板可见且不作为文本解码 | 自动化 |
 
 ## 边界场景
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-017-B-1 | agents 目录为空 | 打开 Agents | 显示 0 Agents 空状态，不显示错误 |
-| AC-017-B-2 | 文件为二进制或超过预览上限 | 请求预览 | 返回 422 和不可预览原因，不把内容作为文本返回 | 自动化 |
+| AC-017-B-1 | agents 目录为空 | 打开 Agents | 显示 0 Agents 空状态，不显示错误 | 自动化 |
+| AC-017-B-2 | 文件是非白名单二进制，或文本超过 1 MiB，或白名单 raw 超过 50 MiB | 请求预览 | 返回 422 file_not_previewable，不返回 content 或部分 bytes | 自动化 |
 
 ## 异常场景
 
@@ -223,6 +179,7 @@ created: 2026-07-18T21:00:00Z
 |------|----------|----------|----------|----------|
 | AC-017-F-1 | Loop 在列表加载后被删除 | 请求详情 | 返回 404；左栏刷新后移除该项；其他 Loop 保持可用 | 自动化 |
 | AC-017-F-2 | loop.md YAML 非法 | 查询 Loops | 该 Loop 标记 invalid 并提供解析错误摘要；服务不退出 | 自动化 |
+| AC-017-F-3 | raw 文件通过路径/大小校验，但完整读取抛 OSError | 请求 Run 或 Loop raw URL | 返回 500 file_read_failed；不得先发送 200 headers 或部分 bytes；UI 显示可读失败态 | 自动化 |
 
 ---
 
@@ -241,7 +198,7 @@ created: 2026-07-18T21:00:00Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-018-B-1 | 未发现任何 Backend | 打开 Backends | 显示空状态和诊断入口，不显示健康百分比 |
+| AC-018-B-1 | 未发现任何 Backend | 打开 Backends | 显示空状态和诊断入口，不显示健康百分比 | 自动化 |
 | AC-018-B-2 | Backend 无法报告版本 | 查询 Backends | API version 为 null，UI 显示 `Unknown`；其他能力仍显示 | 自动化 |
 
 ## 异常场景
@@ -268,8 +225,8 @@ created: 2026-07-18T21:00:00Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-019-N-1 | 1440x900 视口，Runs fixture 已加载 | 截图并检查布局 | Runs 列表、Phase 工作区和 Inspector 同时可见；无元素重叠或水平页面滚动 | 自动化 + 截图 |
-| AC-019-N-2 | Runs 工作区打开，焦点置于左栏第一个 failed Run A；A 含 Phase p1 和 Call c1；fixture DOM 的区域顺序为 Runs→Phase→Calls→Run actions | 按 Enter 选择 A；按 Tab 1 次进入 Phase 并按 ArrowRight 选择 p1；按 Tab 1 次进入 Calls 并按 ArrowDown 选择 c1；按 Tab 1 次聚焦 accessible name=`Resume run` 的按钮并按 Enter | 每步有可见 focus；详情依次显示 A、p1、c1；最后只发出一次 A 的 resume 请求 | 自动化 |
+| AC-019-N-1 | 1440x900 视口，Runs fixture 已加载 | 截图并检查布局 | Runs、AgentGraph/Events、Inspector 同时可见；AgentGraph 节点按 LR 排列且 edge 不穿过无关节点；无重叠或水平页面滚动 | 自动化 + 截图 |
+| AC-019-N-2 | Runs 工作区打开，焦点置于 failed Run A；A 含 call-1/call-2；DOM 区域顺序为 Runs→AgentGraph→Calls→Run actions | 用键盘选择 A、call-1，再聚焦 accessible name=`Retry failed call` 并按 Enter | 每步有可见 focus；详情依次显示 A 和 call-1；最后只发出一次 A 的 recover retry 请求 | 自动化 |
 | AC-019-N-3 | 启动 Web 服务时未传 host | 检查监听 socket | 仅监听 `127.0.0.1`，不监听 `0.0.0.0` 或外部接口 | 自动化 |
 | AC-019-N-4 | 本机测试接口地址为 `0.0.0.0` | 以 host=`0.0.0.0` 且 allow-remote=true 启动服务 | 服务启动成功并监听 `0.0.0.0`；stderr 输出远程暴露警告 | 自动化 |
 | AC-019-N-5 | WebUI 已打开 | 点击 rail 主题切换按钮，然后刷新页面 | 日夜主题切换；选择持久化（刷新后保持）；未做过选择时默认跟随系统 `prefers-color-scheme` | 自动化 |
@@ -278,10 +235,10 @@ created: 2026-07-18T21:00:00Z
 
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
-| AC-019-B-1 | 1024x768 视口 | 打开 Run | 主列表和 Phase 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠 | 自动化 + 截图 |
-| AC-019-B-2 | 390x844 视口 | 在 Runs、Phase、Process 间切换 | 一次只显示一个主区域；Stop/Resume 可到达；无水平页面滚动 | 自动化 + 截图 |
+| AC-019-B-1 | 1024x768 视口 | 打开 Run | 主列表和 AgentGraph 工作区可用；Inspector 收入可打开/关闭的抽屉；文本不重叠 | 自动化 + 截图 |
+| AC-019-B-2 | 390x844 视口 | 在 Runs、AgentGraph、Call process 间切换 | 一次只显示一个主区域；当前 Run 的允许操作可到达；无水平页面滚动 | 自动化 + 截图 |
 | AC-019-B-3 | light 主题 | 打开 Runs 工作区 | 面板背景与前景文字为不同色；status 徽章文字与图标可辨；无白底白字或黑底黑字区域 | 自动化 + 截图 |
-| AC-019-B-4 | failed Run 的 error_summary 超过 2 行文本（如多行 schema 校验错误） | 查看该 Run 详情 | error_banner 的 error_summary 文本截断为 2 行（-webkit-line-clamp），不挤占 Phase 工作区和 Inspector；Traceback 折叠条仍可展开查看完整信息 | 自动化 + 截图 |
+| AC-019-B-4 | failed Run 的 error_summary 超过 2 行文本（如多行 schema 校验错误） | 查看该 Run 详情 | error_banner 的 error_summary 文本截断为 2 行（-webkit-line-clamp），不挤占 AgentGraph 工作区和 Inspector；Traceback 折叠条仍可展开查看完整信息 | 自动化 + 截图 |
 
 ## 异常场景
 
@@ -295,5 +252,5 @@ created: 2026-07-18T21:00:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-019-F-1 | 图标按钮无可见文字 | 扫描可访问性树 | 每个按钮都有 accessible name；陌生图标有 tooltip | 自动化 |
-| AC-019-F-2 | 状态颜色样式被禁用 | 查看 Runs、Phase 和 Backend 状态 | 每个状态仍可由文字或图标区分 | 自动化 |
+| AC-019-F-2 | 状态颜色样式被禁用 | 查看 Runs、Agent Call 和 Backend 状态 | 每个状态仍可由文字或图标区分 | 自动化 |
 | AC-019-F-3 | 启动 Web 服务时传 host=`0.0.0.0`，但未传显式 allow-remote 配置 | 启动服务 | 启动失败并返回非零状态；stderr 包含 `remote binding requires explicit opt-in` | 自动化 |

@@ -25,6 +25,9 @@ async function installApi(page: Page) {
       return json({ items, next_cursor: null });
     }
     if (path === '/api/v1/runs/run-live') return json({ ...detail, events: [...detail.events, { version: 2, event_id: 4, type: 'message', call_id: 'call-a', payload: { text: longOutput } }] });
+    if (path === '/api/v1/runs/run-live/file-changes') return json({ items: [{ seq: 1, call_id: 'call-a', label: 'reviewer', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'figs/chart.png', action: 'created', size: 68 }] }], count: 1 });
+    if (path === '/api/v1/runs/run-live/file') return json({ path: 'figs/chart.png', media_type: 'image/png', content: null, encoding: 'raw', size: 68, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=figs%2Fchart.png' });
+    if (path === '/api/v1/runs/run-live/file/raw') return route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64') });
     if (path === '/api/v1/runs/run-failed') return json({ ...detail, ...runs[2], allowed_actions: ['recover_retry', 'recover_continue'] });
     if (/\/api\/v1\/runs\/[^/]+\/(stop|recover|rerun|reconcile)$/.test(path)) return json({ ...runs[0], status: 'running', allowed_actions: ['stop'] });
     if (path === '/api/v1/loops') return json({ items: [loopSummary], next_cursor: null });
@@ -135,6 +138,27 @@ test('light theme keeps panels and status badges legible', async ({ page }, test
     expect(style.background).not.toBe(style.text);
   }
   await page.screenshot({ path: testInfo.outputPath('runs-light.png'), fullPage: true });
+});
+
+test('AC-033-N-3: image preview stays in viewport without shifting file tree', async ({ page }, testInfo) => {
+  if (testInfo.project.name === 'chromium-390') {
+    await page.getByRole('listitem').filter({ hasText: 'run-live' }).first().click();
+  }
+  if (testInfo.project.name !== 'chromium-1440') {
+    await page.getByRole('button', { name: 'Open file changes panel' }).click();
+  }
+  const tree = page.getByTestId('file-changes-panel');
+  const before = await tree.boundingBox();
+  await page.getByRole('button', { name: 'Preview figs/chart.png' }).click();
+  const image = page.getByRole('img', { name: 'chart.png' });
+  await expect(image).toBeVisible();
+  const imageBox = await image.boundingBox();
+  const viewport = page.viewportSize();
+  expect(imageBox!.x).toBeGreaterThanOrEqual(0);
+  expect(imageBox!.y).toBeGreaterThanOrEqual(0);
+  expect(imageBox!.x + imageBox!.width).toBeLessThanOrEqual(viewport!.width);
+  expect(imageBox!.y + imageBox!.height).toBeLessThanOrEqual(viewport!.height);
+  expect(await tree.boundingBox()).toEqual(before);
 });
 
 test('navigates Loops and Backends responsively', async ({ page }, testInfo) => {

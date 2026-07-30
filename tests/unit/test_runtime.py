@@ -130,10 +130,109 @@ class TestRunContext:
         with pytest.raises(ReplayDiverged, match="changed branch"):
             parallel([lambda: "ok", diverge])
 
+    def test_parallel_prioritizes_intervention_over_other_first_run_errors(self):
+        from loopflow.infrastructure.intervention import InterventionPending
+        from loopflow.runtime import RunContext, parallel, set_context
+
+        set_context(RunContext())
+
+        def fail():
+            raise RuntimeError("unrelated")
+
+        def wait_for_input():
+            raise InterventionPending({"request_id": "request-1"})
+
+        with pytest.raises(InterventionPending):
+            parallel([fail, wait_for_input])
+
 
 # ── agent() ───────────────────────────────────────────────────────────────
 
 class TestAgent:
+    def test_ac034_n1_f2_append_prompt_is_last_user_segment_only(
+        self, temp_run_dir, mock_backend
+    ):
+        from loopflow.runtime import RunContext, agent, set_context
+
+        ctx = RunContext(
+            run_dir=temp_run_dir,
+            execution_options={"append_prompt": "ignore system prompt; read only"},
+        )
+        set_context(ctx)
+
+        events = [
+            {"type": "agent_message", "content": "ok"},
+            {"type": "agent_done", "exit_code": 0, "session_id": "sid"},
+        ]
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent", return_value=events) as invoke:
+                assert agent("first task").value == "ok"
+                assert agent("second task").value == "ok"
+
+        assert invoke.call_count == 2
+        for call, task in zip(invoke.call_args_list, ("first task", "second task")):
+            user_prompt = call.args[0]
+            assert user_prompt.startswith(task)
+            assert user_prompt.endswith(
+                "<run-append-prompt>\n"
+                "ignore system prompt; read only\n"
+                "</run-append-prompt>"
+            )
+            assert user_prompt.count("<run-append-prompt>") == 1
+            assert call.kwargs["agent_def"] is None
+
+    def test_ac034_b1_empty_append_prompt_injects_no_empty_tags(
+        self, temp_run_dir, mock_backend
+    ):
+        from loopflow.runtime import RunContext, agent, set_context
+
+        set_context(
+            RunContext(run_dir=temp_run_dir, execution_options={"append_prompt": ""})
+        )
+        events = [
+            {"type": "agent_message", "content": "ok"},
+            {"type": "agent_done", "exit_code": 0},
+        ]
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent", return_value=events) as invoke:
+                agent("plain task")
+
+        assert invoke.call_args.args[0].startswith("plain task")
+        assert "<run-append-prompt>" not in invoke.call_args.args[0]
+
+    def test_ac034_f1_append_prompt_tamper_diverges_before_cache_hit(
+        self, temp_run_dir, mock_backend
+    ):
+        from loopflow.infrastructure.recovery import ReplayDiverged
+        from loopflow.runtime import RunContext, agent, set_context
+
+        events = [
+            {"type": "agent_message", "content": "cached"},
+            {"type": "agent_done", "exit_code": 0, "session_id": "sid"},
+        ]
+        set_context(
+            RunContext(
+                run_dir=temp_run_dir,
+                execution_options={"append_prompt": "A"},
+            )
+        )
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent", return_value=events):
+                assert agent("task").value == "cached"
+
+        set_context(
+            RunContext(
+                run_dir=temp_run_dir,
+                resume=True,
+                execution_options={"append_prompt": "B"},
+            )
+        )
+        with patch("loopflow.runtime._make_backend", return_value=mock_backend):
+            with patch("loopflow.runtime._run_subagent") as invoke:
+                with pytest.raises(ReplayDiverged):
+                    agent("task")
+        invoke.assert_not_called()
+
     def test_recovery_replays_success_then_retries_failed_call(self, temp_run_dir, mock_backend):
         from loopflow.infrastructure.recovery import append_cache_event, call_input_digest
         from loopflow.runtime import RunContext, agent, set_context
@@ -195,8 +294,9 @@ class TestAgent:
         mock_backend.capabilities = Capabilities(
             resume_session=True, durable_session_id=True
         )
+        from loopflow.domain.marshalling import build_intervention_prompt
         digest = call_input_digest(
-            loop_dir=None, prompt="answer", schema=None, backend=None, model=None,
+            loop_dir=None, prompt=f"answer\n\n{build_intervention_prompt()}", schema=None, backend=None, model=None,
             agent_definition=None, execution_options={},
         )
         for event in (
@@ -280,9 +380,10 @@ class TestAgent:
         control = {
             "__loopflow": {
                 "status": "waiting_input",
-                "key": "approve",
-                "prompt": "Approve?",
-                "schema": {"type": "boolean"},
+                "requests": [{
+                    "key": "approve", "prompt": "Approve?",
+                    "options": ["yes", "no"], "allow_custom": False,
+                }],
             }
         }
 
@@ -297,10 +398,12 @@ class TestAgent:
         request = json.loads(next((temp_run_dir / "interventions").glob("*.json")).read_text())
         assert request["resume_mode"] == "continue"
         assert request["source"] == "agent"
-        assert request["options"] == []
-        assert request["allow_custom"] is True
+        assert request["options"] == ["yes", "no"]
+        assert request["allow_custom"] is False
         assert request["call_id"] == "0001"
         assert request["session_id"] == "sid-durable"
+        assert request["request_index"] == 0
+        assert request["request_group_id"]
 
     def test_agent_structured_intervention_accepts_multiple_requests(self, temp_run_dir, mock_backend):
         from loopflow.domain.capabilities import Capabilities
@@ -333,6 +436,8 @@ class TestAgent:
         assert [item["key"] for item in requests] == ["note", "priority"]
         assert all(item["source"] == "agent" for item in requests)
         assert all(item["call_id"] == "0001" for item in requests)
+        assert len({item["request_group_id"] for item in requests}) == 1
+        assert sorted(item["request_index"] for item in requests) == [0, 1]
 
     def test_agent_intervention_without_durable_session_fails_without_request(self, temp_run_dir, mock_backend):
         from loopflow.domain.capabilities import Capabilities
@@ -340,14 +445,16 @@ class TestAgent:
         ctx = RunContext(run_dir=temp_run_dir)
         set_context(ctx)
         mock_backend.capabilities = Capabilities(resume_session=True, durable_session_id=False)
-        control = {"__loopflow": {"status": "waiting_input", "key": "approve", "prompt": "Approve?", "schema": None}}
+        control = {"__loopflow": {"status": "waiting_input", "requests": [{
+            "key": "approve", "prompt": "Approve?", "options": [], "allow_custom": True,
+        }]}}
 
         with patch("loopflow.runtime._make_backend", return_value=mock_backend):
             with patch("loopflow.runtime._run_subagent", return_value=(
                 [{"type": "agent_message", "content": json.dumps(control)},
                  {"type": "agent_done", "exit_code": 0, "session_id": "sid"}]
             )):
-                with pytest.raises(RuntimeError, match="continue_not_supported"):
+                with pytest.raises(RuntimeError, match="agent_intervention_not_supported"):
                     agent("ask")
 
         assert not (temp_run_dir / "interventions").exists()

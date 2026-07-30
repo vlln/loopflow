@@ -108,6 +108,8 @@ Merge 策略：squash merge（保持 develop 历史线性）。
 | `python3 scripts/check-ac-manifest.py` | DEVELOP/SYSTEM_TEST 严格检查真实测试节点 |
 | `python3 scripts/check-ac-manifest.py --profile recovery --allow-planned` | TEST_INFRA 检查恢复/停止/介入的 32 个计划场景 |
 | `python3 scripts/check-ac-manifest.py --profile recovery` | DEVELOP/SYSTEM_TEST 严格检查恢复场景真实测试节点 |
+| `python3 scripts/check-ac-manifest.py --profile iteration027 --allow-planned` | TEST_INFRA 检查 0.27.0 增量契约的计划场景 |
+| `python3 scripts/check-ac-manifest.py --profile iteration027` | DEVELOP/SYSTEM_TEST 严格检查 0.27.0 增量场景真实测试节点 |
 | `python3 scripts/check-ac-manifest.py --profile scheduling --allow-planned` | TEST_INFRA 检查调度的 32 个场景（含 AC-027/028 计划场景） |
 | `python3 scripts/check-ac-manifest.py --profile scheduling` | DEVELOP/SYSTEM_TEST 严格检查调度场景真实测试节点 |
 | `./scripts/verify-coverage.sh` | 已知 2 分支覆盖率准确性自证 |

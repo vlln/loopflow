@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +90,24 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-023-F-1", "unit:agent-control-output")
     assign("AC-023-F-2", "unit:session-intervention")
     assign("AC-023-F-3", "POST /api/v1/runs/{run_id}/interventions/responses")
+    assign("AC-023-N-6", "unit:agent-intervention-prompt")
+    assign("AC-023-N-7", "unit:agent-control-schema")
+    assign("AC-023-N-8", "unit:intervention-group-resume")
+    assign(
+        "AC-023-N-9",
+        "unit:parallel-intervention-resume",
+        "POST /api/v1/runs/{run_id}/interventions/responses",
+    )
+    assign("AC-023-B-4", "unit:agent-control-output")
+    assign("AC-023-B-5", "unit:goal-control-schema")
+    assign("AC-023-B-6", "unit:legacy-intervention-normalization")
+    assign("AC-023-E-6", "unit:agent-intervention-preflight")
+    assign("AC-023-E-7", "unit:agent-control-schema")
+    assign("AC-023-E-8", "POST /api/v1/runs/{run_id}/interventions/responses")
+    assign("AC-023-E-9", "unit:agent-control-schema")
+    assign("AC-023-E-10", "unit:agent-control-schema", "unit:session-intervention")
+    assign("AC-023-F-4", "unit:agent-intervention-capability-gate")
+    assign("AC-023-F-5", "unit:intervention-replay-target")
 
     assign(
         "AC-026-N-1 AC-026-N-2 AC-026-N-3 AC-026-N-4 AC-026-N-5 AC-026-B-1 AC-026-B-2 AC-026-B-3 AC-026-E-1 AC-026-E-2 AC-026-E-3",
@@ -168,6 +187,20 @@ TEST_NODES = {
     "AC-023-F-1": "tests/unit/test_runtime.py::TestAgent::test_agent_natural_language_question_is_plain_output",
     "AC-023-F-2": "tests/unit/test_runtime.py::TestAgent::test_agent_intervention_without_durable_session_fails_without_request",
     "AC-023-F-3": "tests/integration/test_web_api.py::test_batch_intervention_endpoint_is_all_or_nothing",
+    "AC-023-N-6": "tests/unit/test_agent_intervention.py::test_agent_intervention_prompt_is_capability_gated",
+    "AC-023-N-7": "tests/unit/test_agent_intervention.py::test_control_branch_bypasses_required_business_schema",
+    "AC-023-N-8": "tests/unit/test_agent_intervention.py::test_answer_envelope_preserves_group_order_and_hides_internal_fields",
+    "AC-023-N-9": "tests/unit/test_agent_intervention.py::test_parallel_agent_groups_batch_and_resume_their_own_sessions",
+    "AC-023-B-4": "tests/unit/test_agent_intervention.py::test_agent_intervention_prompt_is_capability_gated",
+    "AC-023-B-5": "tests/unit/test_agent_intervention.py::test_goal_mode_control_branch_is_prioritized_over_goal_schema",
+    "AC-023-B-6": "tests/unit/test_agent_intervention.py::test_legacy_agent_requests_derive_stable_group_without_rewrite",
+    "AC-023-E-6": "tests/unit/test_agent_intervention.py::test_reserved_business_field_fails_before_backend_call",
+    "AC-023-E-7": "tests/unit/test_agent_intervention.py::test_invalid_control_is_rejected_before_any_request_is_written",
+    "AC-023-E-8": "tests/unit/test_web_application.py::test_batch_must_exactly_cover_current_pending_requests",
+    "AC-023-E-9": "tests/unit/test_agent_intervention.py::test_invalid_control_is_rejected_before_any_request_is_written",
+    "AC-023-E-10": "tests/unit/test_agent_intervention.py::test_invalid_control_is_rejected_before_any_request_is_written",
+    "AC-023-F-4": "tests/unit/test_agent_intervention.py::test_unsupported_backend_does_not_advertise_or_persist_control",
+    "AC-023-F-5": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_all_continue_targets",
     "AC-026-N-1": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n1_transient_retries_then_succeeds",
     "AC-026-N-2": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n2_structured_quota_beats_transient_stderr",
     "AC-026-N-3": "tests/unit/test_failure_classification.py::TestFailureClassificationScenarios::test_ac026_n3_run_json_matches_agent_done_category",
@@ -263,6 +296,9 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-023-F-3": [{"kind": "http_status", "value": 200}],
+    "AC-023-E-8": [
+        {"kind": "http_status", "value": 422, "code": "validation_failed"}
+    ],
     "AC-029-N-1": [{"kind": "http_status", "value": 200}],
     "AC-029-N-2": [{"kind": "http_status", "value": 200}],
     "AC-029-B-1": [{"kind": "http_status", "value": 409, "code": "run_in_grace"}],
@@ -293,7 +329,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
                 **row,
                 "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
-                "expectations": expectations,
+                "expectations": deepcopy(expectations),
             }
         )
     return {"version": 1, "profile": "recovery", "source": str(ac_path), "cases": cases}

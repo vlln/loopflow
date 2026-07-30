@@ -6,7 +6,11 @@ import json as json_mod
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
-from loopflow.domain.marshalling import add_goal_to_schema, build_goal_steering
+from loopflow.domain.marshalling import (
+    add_control_to_schema,
+    add_goal_to_schema,
+    build_goal_steering,
+)
 
 # Callable type: (prompt, session, resume_session_id) -> (result, backend_session_id)
 CallFn = Callable[[str, str, str | None], tuple[dict | str, str | None]]
@@ -34,6 +38,7 @@ def run_goal_loop(
     call_fn: CallFn,
     emit_log: Callable[[str], None] | None = None,
     schema_max_retries: int = 3,
+    control_schema: dict | None = None,
 ) -> AgentResult:
     """Run goal loop: iterate until complete or blocked.
 
@@ -45,6 +50,7 @@ def run_goal_loop(
     """
 
     goal_schema = add_goal_to_schema(schema)
+    output_schema = add_control_to_schema(goal_schema) if control_schema else goal_schema
 
     session = "goal_1"
     resume_session_id: str | None = None
@@ -65,7 +71,7 @@ def run_goal_loop(
         schema_hint = (
             f"\n\n---\nOutput format — you MUST respond with a single "
             f"JSON object matching this schema:\n"
-            f"{json_mod.dumps(goal_schema, indent=2)}\n\n"
+            f"{json_mod.dumps(output_schema, indent=2)}\n\n"
             f"Do NOT wrap the JSON in markdown code blocks. "
             f"Return ONLY the JSON object."
         )

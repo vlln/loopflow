@@ -32,6 +32,10 @@ class InterventionValidationError(ValueError):
     pass
 
 
+class InterventionPersistenceError(OSError):
+    pass
+
+
 class InterventionUnattended(RuntimeError):
     """Unattended run hit an intervention request without a default (ADR-0056 §4)."""
 
@@ -47,6 +51,8 @@ class InterventionIdentity:
     schema: dict[str, Any] | None = None
     call_id: str | None = None
     session_id: str | None = None
+    request_group_id: str | None = None
+    request_index: int = 0
     default: Any = None
     timeout_seconds: float | None = None
 
@@ -65,35 +71,41 @@ def list_requests(run_dir: Path) -> list[dict[str, Any]]:
     root = run_dir / "interventions"
     if not root.is_dir():
         return []
-    items = []
+    items: list[dict[str, Any]] = []
     for path in sorted(root.glob("*.json")):
         try:
             value = read_json(path)
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(value, dict):
-            items.append(_summary(value))
-    return items
+            items.append(value)
+    return [_summary(item) for item in _normalize_group_fields(items)]
 
 
-def answered_for_call(run_dir: Path, call_id: str) -> dict[str, Any] | None:
-    answers = [
+def answered_for_call(
+    run_dir: Path,
+    call_id: str,
+    request_group_id: str | None = None,
+) -> dict[str, Any] | None:
+    answers = _normalize_group_fields([
         read_request(run_dir, str(item["request_id"]))
         for item in list_requests(run_dir)
         if item.get("call_id") == call_id and item.get("status") == "answered"
-    ]
-    if len(answers) == 1:
-        return answers[0]
+        and (
+            request_group_id is None
+            or item.get("request_group_id") == request_group_id
+        )
+    ])
     if answers:
         return {
-            "responses": [
-                {
-                    "key": item.get("key"),
-                    "prompt": item.get("prompt"),
-                    "response": item.get("response"),
-                }
-                for item in answers
-            ]
+            "__loopflow": {
+                "status": "input_received",
+                "responses": [
+                    {"key": item.get("key"), "response": item.get("response")}
+                    for item in sorted(answers, key=lambda item: int(item["request_index"]))
+                ],
+            },
+            "_legacy": any(item.get("_legacy_group") for item in answers),
         }
     return None
 
@@ -192,6 +204,8 @@ def _new_request(
         "resume_mode": identity.resume_mode,
         "call_id": identity.call_id,
         "session_id": identity.session_id,
+        "request_group_id": identity.request_group_id,
+        "request_index": identity.request_index,
         "default": identity.default,
         "timeout_seconds": identity.timeout_seconds,
         "params_digest": params_digest,
@@ -261,7 +275,45 @@ def answer_request(run_dir: Path, run_id: str, request_id: str, response: Any) -
     return answer_requests(run_dir, run_id, [{"request_id": request_id, "response": response}])[0]
 
 
-def answer_requests(run_dir: Path, run_id: str, responses: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def restore_requests(
+    run_dir: Path,
+    originals: dict[str, dict[str, Any]],
+) -> None:
+    failures: list[str] = []
+    for request_id, original in originals.items():
+        try:
+            atomic_write_json(request_path(run_dir, request_id), original)
+        except OSError as error:
+            failures.append(f"{request_id}: {error}")
+    if failures:
+        raise InterventionPersistenceError(
+            "intervention rollback failed: " + "; ".join(failures)
+        )
+
+
+def emit_answer_events(
+    run_dir: Path,
+    run_id: str,
+    answered_items: list[dict[str, Any]],
+) -> None:
+    for answered in answered_items:
+        request_id = str(answered["request_id"])
+        EventWriter().append(
+            run_dir,
+            "intervention_responded",
+            run_id=run_id,
+            call_id=answered.get("call_id"),
+            payload={"request_id": request_id},
+        )
+
+
+def answer_requests(
+    run_dir: Path,
+    run_id: str,
+    responses: list[dict[str, Any]],
+    *,
+    emit_events: bool = True,
+) -> list[dict[str, Any]]:
     if not responses:
         raise InterventionValidationError("responses must be a non-empty array")
     seen: set[str] = set()
@@ -289,24 +341,29 @@ def answer_requests(run_dir: Path, run_id: str, responses: list[dict[str, Any]])
 
     answered_items: list[dict[str, Any]] = []
     answered_at = now_iso()
-    for request_id, request, response, source in prepared:
-        answered = dict(request)
-        answered.update({
-            "status": "answered",
-            "response": response,
-            "response_source": source,
-            "responded_at": answered_at,
-            "updated_at": now_iso(),
-        })
-        atomic_write_json(request_path(run_dir, request_id), answered)
-        EventWriter().append(
-            run_dir,
-            "intervention_responded",
-            run_id=run_id,
-            call_id=answered.get("call_id"),
-            payload={"request_id": request_id},
-        )
-        answered_items.append(answered)
+    originals = {request_id: request for request_id, request, _, _ in prepared}
+    persisted: dict[str, dict[str, Any]] = {}
+    try:
+        for request_id, request, response, source in prepared:
+            answered = dict(request)
+            answered.update({
+                "status": "answered",
+                "response": response,
+                "response_source": source,
+                "responded_at": answered_at,
+                "updated_at": now_iso(),
+            })
+            atomic_write_json(request_path(run_dir, request_id), answered)
+            persisted[request_id] = originals[request_id]
+            answered_items.append(answered)
+    except OSError as error:
+        try:
+            restore_requests(run_dir, persisted)
+        except InterventionPersistenceError as rollback_error:
+            raise rollback_error from error
+        raise
+    if emit_events:
+        emit_answer_events(run_dir, run_id, answered_items)
     return answered_items
 
 
@@ -362,14 +419,19 @@ def _summary(request: dict[str, Any]) -> dict[str, Any]:
         "source": request.get("source", "workflow" if request.get("resume_mode") == "replay" else "agent"),
         "key": request.get("key"),
         "prompt": request.get("prompt"),
+        "schema": request.get("schema"),
         "options": _effective_options(request),
         "allow_custom": _effective_allow_custom(request),
         "status": request.get("status"),
         "resume_mode": request.get("resume_mode"),
         "call_id": request.get("call_id"),
+        "session_id": request.get("session_id"),
+        "request_group_id": request.get("request_group_id"),
+        "request_index": request.get("request_index", 0),
         "can_continue_session": can_continue_session,
         "created_at": request.get("created_at"),
         "responded_at": request.get("responded_at"),
+        "timeout_seconds": request.get("timeout_seconds"),
     }
     # ADR-0056 §3/§4: expose default/timeout for WebUI countdowns and the
     # answer provenance; legacy records simply lack the new fields
@@ -382,6 +444,31 @@ def _summary(request: dict[str, Any]) -> dict[str, Any]:
     if request.get("status") == "answered" and "response" in request:
         summary["response"] = _response_to_string(request.get("response"))
     return summary
+
+
+def _normalize_group_fields(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add vNext group fields to the read model without rewriting legacy files."""
+    normalized = [dict(item) for item in requests]
+    legacy_groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+    for item in normalized:
+        source = item.get(
+            "source", "workflow" if item.get("resume_mode") == "replay" else "agent"
+        )
+        item["source"] = source
+        if source == "workflow":
+            item.setdefault("request_group_id", None)
+            item.setdefault("request_index", 0)
+        elif "request_group_id" not in item or "request_index" not in item:
+            legacy_groups.setdefault((item.get("call_id"), item.get("session_id")), []).append(item)
+    for (call_id, session_id), group in legacy_groups.items():
+        group_id = stable_digest({"call_id": call_id, "session_id": session_id})
+        for index, item in enumerate(
+            sorted(group, key=lambda value: (str(value.get("created_at") or ""), str(value.get("request_id") or "")))
+        ):
+            item["request_group_id"] = group_id
+            item["request_index"] = index
+            item["_legacy_group"] = True
+    return normalized
 
 
 def _options_from_schema(schema: Any) -> list[str]:
@@ -431,10 +518,11 @@ def _response_to_string(value: Any) -> str:
 
 def _request_id_for_identity(identity: InterventionIdentity) -> str:
     if identity.source == "agent" and identity.call_id:
-        slug_key = f"{identity.call_id}-{identity.key}"
+        slug_key = f"{identity.call_id}-{identity.request_group_id or 'legacy'}-{identity.key}"
         digest_key: Any = {
             "source": identity.source,
             "call_id": identity.call_id,
+            "request_group_id": identity.request_group_id,
             "key": identity.key,
         }
         slug = re.sub(r"[^a-zA-Z0-9_.-]+", "-", slug_key).strip("-")[:40] or "request"

@@ -10,6 +10,7 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import quote
 
 from loopflow import __version__
 from loopflow.infrastructure import loop_state
@@ -77,7 +78,10 @@ class WebApplication:
         return self.runs.read_detail(self._run_dir(run_id))
 
     def create_run(self, body: dict[str, Any]) -> dict[str, Any]:
-        _fields(body, {"loop", "args", "backend", "model", "mock", "working_directory"})
+        _fields(body, {
+            "loop", "args", "backend", "model", "mock", "working_directory",
+            "append_prompt",
+        })
         loop = body.get("loop")
         if not isinstance(loop, str) or not loop:
             raise ApplicationError("validation_failed", "loop must be a non-empty string")
@@ -236,10 +240,13 @@ class WebApplication:
             raise ApplicationError("invalid_run_transition", f"Run '{run_id}' cannot be rerun")
         if self.executor is None:
             raise ApplicationError("invalid_run_transition", "Run execution is unavailable")
+        options = dict(metadata.get("execution_options") or {})
+        if metadata.get("single_agent") is not None:
+            options["single_agent"] = metadata["single_agent"]
         new_id = self.executor.start(
             metadata["loop"],
             metadata.get("args", {}),
-            {},
+            options,
             working_directory=metadata.get("working_directory"),
         )
         return self.runs.read_summary(self._run_dir(new_id))
@@ -281,7 +288,7 @@ class WebApplication:
             raise ApplicationError("loop_not_found", f"Loop '{name}' was not found")
         result = self.loops.preview(loop_dir, relative)
         if result.get("encoding") == "raw":
-            result["raw_url"] = f"/api/v1/loops/{name}/file/raw?path={relative}"
+            result["raw_url"] = f"/api/v1/loops/{quote(name, safe='')}/file/raw?path={quote(relative, safe='/')}"
         return result
 
     def serve_loop_file_raw(self, name: str, relative: str) -> tuple[bytes, str]:
@@ -303,7 +310,7 @@ class WebApplication:
             raise ApplicationError("file_not_found", f"Working directory for run '{run_id}' is not available on this server")
         result = self.loops.preview(root, relative)
         if result.get("encoding") == "raw":
-            result["raw_url"] = f"/api/v1/runs/{run_id}/file/raw?path={relative}"
+            result["raw_url"] = f"/api/v1/runs/{quote(run_id, safe='')}/file/raw?path={quote(relative, safe='/')}"
         return result
 
     def serve_run_file_raw(self, run_id: str, relative: str) -> tuple[bytes, str]:
@@ -533,8 +540,13 @@ class WebApplication:
         metadata.pop("process_group_id", None)
 
     def _execution_options(self, body: dict[str, Any], resume: bool = False) -> dict[str, Any]:
+        from loopflow.domain.marshalling import normalize_append_prompt
+
         # working_directory is validated and consumed by create_run itself
-        allowed = {"backend", "model", "mock"} if resume else {"backend", "model", "mock", "loop", "args", "working_directory"}
+        allowed = {"backend", "model", "mock"} if resume else {
+            "backend", "model", "mock", "loop", "args", "working_directory",
+            "append_prompt",
+        }
         _fields(body, allowed)
         backend = body.get("backend")
         if backend is not None and (not isinstance(backend, str) or self.allowed_backends and backend not in self.allowed_backends):
@@ -545,7 +557,21 @@ class WebApplication:
         mock = body.get("mock")
         if mock not in (None, "bash", "auto"):
             raise ApplicationError("validation_failed", "mock must be bash, auto, or null")
-        return {key: body.get(key) for key in ("backend", "model", "mock") if key in body}
+        options = {
+            key: body.get(key)
+            for key in ("backend", "model", "mock")
+            if key in body
+        }
+        if "append_prompt" in body:
+            try:
+                append_prompt = normalize_append_prompt(body.get("append_prompt"))
+            except ValueError as error:
+                raise ApplicationError(
+                    "validation_failed", str(error), {"field": "append_prompt"}
+                ) from error
+            if append_prompt is not None:
+                options["append_prompt"] = append_prompt
+        return options
 
 
 def _fields(body: dict[str, Any], allowed: set[str]) -> None:

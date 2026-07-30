@@ -14,7 +14,12 @@ class EventSourceMock {
 }
 
 function response(body: unknown, status = 200) {
-  return Promise.resolve({ ok: status >= 200 && status < 300, status, json: () => Promise.resolve(body) } as Response);
+  return Promise.resolve({
+    ok: status >= 200 && status < 300,
+    status,
+    json: () => Promise.resolve(body),
+    blob: () => Promise.resolve(new Blob([JSON.stringify(body)])),
+  } as Response);
 }
 
 type FetchOptions = boolean | {
@@ -24,12 +29,16 @@ type FetchOptions = boolean | {
   responseBody?: unknown;
   fileChanges?: Record<string, { seq: number; call_id: string; label: string; ts: string; changes: { path: string; action: string; size?: number; prev_size?: number }[] }[]>;
   runFile?: { status?: number; body?: unknown };
+  rawFile?: { status?: number; body?: unknown };
+  loopFile?: { status?: number; body?: unknown };
   pickDirectory?: { status?: number; body?: unknown };
   listDirectory?: { status?: number; body?: unknown };
   systemMeta?: { status?: number; body?: unknown };
-  declaredArgs?: { name: string; default?: unknown; description?: string; required?: boolean }[];
+  declaredArgs?: unknown[];
   detailOverride?: Record<string, unknown>;
+  loopDetailOverride?: Record<string, unknown>;
   pausedLoop?: boolean;
+  loopsReject?: boolean;
 };
 
 function installFetch(config: FetchOptions = true) {
@@ -42,6 +51,10 @@ function installFetch(config: FetchOptions = true) {
   const fileChangesMap = typeof config === 'boolean' ? {} : config.fileChanges ?? {};
   const runFileStatus = typeof config === 'boolean' ? 200 : config.runFile?.status ?? 200;
   const runFileBody = typeof config === 'boolean' ? null : config.runFile?.body ?? null;
+  const rawFileStatus = typeof config === 'boolean' ? 200 : config.rawFile?.status ?? 200;
+  const rawFileBody = typeof config === 'boolean' ? null : config.rawFile?.body ?? null;
+  const loopFileStatus = typeof config === 'boolean' ? 200 : config.loopFile?.status ?? 200;
+  const loopFileBody = typeof config === 'boolean' ? null : config.loopFile?.body ?? null;
   const pickStatus = typeof config === 'boolean' ? 200 : config.pickDirectory?.status ?? 200;
   const pickBody = typeof config === 'boolean' ? null : config.pickDirectory?.body ?? null;
   const listStatus = typeof config === 'boolean' ? 200 : config.listDirectory?.status ?? 200;
@@ -50,7 +63,9 @@ function installFetch(config: FetchOptions = true) {
   const metaBody = typeof config === 'boolean' ? null : config.systemMeta?.body ?? null;
   const declaredArgs = typeof config === 'boolean' ? undefined : config.declaredArgs;
   const detailOverride = typeof config === 'boolean' ? null : config.detailOverride ?? null;
+  const loopDetailOverride = typeof config === 'boolean' ? null : config.loopDetailOverride ?? null;
   const pausedLoop = typeof config === 'boolean' ? false : config.pausedLoop ?? false;
+  const loopsReject = typeof config === 'boolean' ? false : config.loopsReject ?? false;
   const pausedFields = pausedLoop ? { paused: true, paused_reason: 'failure_streak:5', consecutive_failures: 5 } : {};
   const declaredLoop = declaredArgs ? { ...loopSummary, declared_args: declaredArgs } : { ...loopSummary, ...pausedFields };
   const calls = [] as unknown as string[] & { bodies: unknown[] };
@@ -85,15 +100,21 @@ function installFetch(config: FetchOptions = true) {
       const items = fileChangesMap[runId] ?? [];
       return response({ items, count: items.length });
     }
+    if (path.match(/\/api\/v1\/(runs|loops)\/[^/]+\/file\/raw\?path=/)) {
+      return response(rawFileBody ?? 'raw fixture', rawFileStatus);
+    }
     if (path.match(/\/api\/v1\/runs\/[^/]+\/file\?path=/)) {
       return response(runFileBody ?? { path: 'data/raw.json', media_type: 'application/json', content: '{"ok": true}', size: 12, read_only: true }, runFileStatus);
     }
     if (path.includes('/api/v1/runs/run-live/')) return response({ ...runs[0], status: 'cancelled', allowed_actions: ['rerun'] });
-    if (path === '/api/v1/loops') return response({ items: [{ ...declaredLoop, ...(loopUnpaused ? { paused: false, paused_reason: null, consecutive_failures: 0 } : {}) }, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
-    if (path === '/api/v1/loops/review-loop') return response(declaredArgs ? { ...loopDetail, declared_args: declaredArgs } : { ...loopDetail, ...pausedFields });
+    if (path === '/api/v1/loops') {
+      if (loopsReject) return Promise.reject(new Error('network down'));
+      return response({ items: [{ ...declaredLoop, ...(loopUnpaused ? { paused: false, paused_reason: null, consecutive_failures: 0 } : {}) }, { ...loopSummary, name: 'empty-loop', description: 'No agent files', agent_count: 0 }], next_cursor: null });
+    }
+    if (path === '/api/v1/loops/review-loop') return response({ ...loopDetail, ...pausedFields, ...(declaredArgs ? { declared_args: declaredArgs } : {}), ...loopDetailOverride });
     if (path === '/api/v1/loops/review-loop/unpause') { loopUnpaused = true; return response({ ...loopDetail, paused: false, paused_reason: null, consecutive_failures: 0 }); }
     if (path === '/api/v1/loops/empty-loop') return response(emptyLoop);
-    if (path.includes('/api/v1/loops/review-loop/file')) return response({ content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40 });
+    if (path.includes('/api/v1/loops/review-loop/file')) return response(loopFileBody ?? { path: path.includes('workflow.py') ? 'workflow.py' : 'loop.md', content: path.includes('workflow.py') ? 'def run():\n    pass' : '# Review Loop\n\nOperational workflow.', media_type: 'text/plain', size: 40, read_only: true }, loopFileStatus);
     if (path.includes('/api/v1/loops/empty-loop/file')) return response({ content: '# Empty Loop', media_type: 'text/plain', size: 12 });
     if (path === '/api/v1/backends') return response({ items: backends });
     if (path === '/api/v1/system/pick-directory') return response(pickBody ?? { path: '/tmp/lf-picked', cancelled: false }, pickStatus);
@@ -114,6 +135,8 @@ function installFetch(config: FetchOptions = true) {
 beforeEach(() => {
   EventSourceMock.instances = [];
   vi.stubGlobal('EventSource', EventSourceMock);
+  Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:preview') });
+  Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
 });
 
 afterEach(() => {
@@ -477,10 +500,11 @@ it('AC-025-N-9: previewing an image file renders an <img> with the raw URL', asy
   await screen.findByTestId('file-changes-panel');
   fireEvent.click(screen.getByRole('button', { name: 'Preview figs/chart.png' }));
   const dialog = await screen.findByRole('dialog', { name: 'chart.png' });
-  const img = within(dialog).getByRole('img', { name: 'chart.png' });
+  const img = await within(dialog).findByRole('img', { name: 'chart.png' });
   expect(img).toBeVisible();
-  expect(img).toHaveAttribute('src', '/api/v1/runs/run-live/file/raw?path=figs/chart.png');
+  await waitFor(() => expect(img).toHaveAttribute('src', 'blob:preview'));
   fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+  expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:preview');
 });
 
 it('AC-025-N-10: previewing a PDF renders an <iframe> with the raw URL', async () => {
@@ -494,10 +518,53 @@ it('AC-025-N-10: previewing a PDF renders an <iframe> with the raw URL', async (
   await screen.findByTestId('file-changes-panel');
   fireEvent.click(screen.getByRole('button', { name: 'Preview doc/paper.pdf' }));
   const dialog = await screen.findByRole('dialog', { name: 'paper.pdf' });
-  const iframe = within(dialog).getByTitle('paper.pdf');
+  const iframe = await within(dialog).findByTitle('paper.pdf');
   expect(iframe).toBeVisible();
-  expect(iframe).toHaveAttribute('src', '/api/v1/runs/run-live/file/raw?path=doc/paper.pdf');
+  await waitFor(() => expect(iframe).toHaveAttribute('src', 'blob:preview'));
   fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+});
+
+it('AC-033-E-2: raw media failure replaces the broken preview with an error', async () => {
+  const pngRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'figs/missing.png', action: 'created', size: 2048 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pngRecords },
+    runFile: { body: { path: 'figs/missing.png', media_type: 'image/png', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=figs%2Fmissing.png' } },
+    rawFile: { status: 404, body: { error: { code: 'file_not_found' } } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview figs/missing.png' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load file preview');
+  expect(screen.queryByRole('img', { name: 'missing.png' })).not.toBeInTheDocument();
+});
+
+it('AC-033-E-2: failed PDF fetch never leaves a blank iframe', async () => {
+  const pdfRecords = [{ seq: 1, call_id: 'call-a', label: 'reader', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'doc/missing.pdf', action: 'created', size: 2048 }] }];
+  installFetch({
+    fileChanges: { 'run-live': pdfRecords },
+    runFile: { body: { path: 'doc/missing.pdf', media_type: 'application/pdf', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/runs/run-live/file/raw?path=doc%2Fmissing.pdf' } },
+    rawFile: { status: 500, body: { error: { code: 'file_read_failed' } } },
+  });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview doc/missing.pdf' }));
+  expect(await screen.findByRole('alert')).toHaveTextContent('Unable to load file preview');
+  expect(screen.queryByTitle('missing.pdf')).not.toBeInTheDocument();
+});
+
+it('AC-033-N-2: Loop PDF uses the raw viewer instead of a text pre', async () => {
+  installFetch({
+    loopDetailOverride: { files: [...loopDetail.files, { path: 'report.pdf', media_type: 'application/pdf', size: 2048, previewable: true }] },
+    loopFile: { body: { path: 'report.pdf', media_type: 'application/pdf', content: null, encoding: 'raw', size: 2048, read_only: true, raw_url: '/api/v1/loops/review-loop/file/raw?path=report.pdf' } },
+  });
+  render(<App />);
+  fireEvent.click(screen.getByRole('button', { name: 'Loops' }));
+  await screen.findByText('Review and fix changes');
+  await screen.findByRole('heading', { name: 'review-loop' });
+  fireEvent.click(await screen.findByRole('button', { name: /Files/ }));
+  const viewer = await screen.findByTitle('report.pdf');
+  expect(viewer).toHaveAttribute('src', 'blob:preview');
+  expect(viewer.closest('article')?.querySelector('pre')).toBeNull();
 });
 
 // --- AC-025: Web directory browser / AC-014: arguments editor ---
@@ -655,6 +722,23 @@ it('AC-014-N-10: switching loops resets the editor to that loop declarations', a
   expect(screen.getAllByRole('textbox', { name: 'Argument value' })[0]).toHaveValue('main');
 });
 
+it('AC-035-N-2: Editor and JSON modes preserve the same arguments', async () => {
+  const calls = installFetch({ declaredArgs: [{ name: 'review', default: 'main' }] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('main'));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Argument value' }), { target: { value: 'edited' } });
+  fireEvent.click(screen.getByRole('button', { name: 'JSON' }));
+  expect(screen.getByRole('textbox', { name: 'Arguments' })).toHaveValue('{\n  "review": "edited"\n}');
+  fireEvent.change(screen.getByRole('textbox', { name: 'Arguments' }), { target: { value: '{"review":"json","count":2}' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Editor' }));
+  expect(screen.getAllByRole('textbox', { name: 'Argument value' })[0]).toHaveValue('json');
+  expect(screen.getAllByRole('textbox', { name: 'Argument value' })[1]).toHaveValue('2');
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ args: { review: 'json', count: 2 } })));
+});
+
 it('AC-014-B-5: a loop without declared args starts with a blank editor', async () => {
   installFetch();
   render(<App />);
@@ -665,6 +749,74 @@ it('AC-014-B-5: a loop without declared args starts with a blank editor', async 
   expect(keys).toHaveLength(1);
   expect(keys[0]).toHaveValue('');
   expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('');
+});
+
+it('AC-035-B-2: declared defaults preserve false zero object empty and string types', async () => {
+  const calls = installFetch({ declaredArgs: [
+    { name: 'flag', default: false }, { name: 'count', default: 0 },
+    { name: 'config', default: { mode: 'fast' } }, { name: 'empty', default: '' },
+    { name: 'literal', default: 'false' },
+  ] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  await waitFor(() => expect(screen.getAllByRole('textbox', { name: 'Argument key' })).toHaveLength(5));
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({
+    args: { flag: false, count: 0, config: { mode: 'fast' }, literal: 'false' },
+  })));
+});
+
+it('AC-035-E-1: malformed declarations are ignored and only valid names are prefilled', async () => {
+  const calls = installFetch({ declaredArgs: [
+    null, 'invalid', {}, { name: 7, default: 'wrong' },
+    { name: '   ', default: 'wrong' }, { name: 'valid', default: 'kept' },
+  ] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  const keys = await screen.findAllByRole('textbox', { name: 'Argument key' });
+  expect(keys).toHaveLength(1);
+  expect(keys[0]).toHaveValue('valid');
+  expect(screen.getByRole('textbox', { name: 'Argument value' })).toHaveValue('kept');
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({
+    args: { valid: 'kept' },
+  })));
+});
+
+it('AC-035-F-1: loop loading failure disables New Run and clears arguments', async () => {
+  const calls = installFetch({ loopsReject: true, declaredArgs: [{ name: 'cached', default: 'old' }] });
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  expect(await screen.findByText('Unable to load loops')).toBeVisible();
+  expect(screen.getByLabelText('Loop')).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Start Run' })).toBeDisabled();
+  expect(screen.getByRole('textbox', { name: 'Argument key' })).toHaveValue('');
+  expect(calls.bodies).toHaveLength(0);
+});
+
+it('AC-034-N-2: New Run submits a nonempty append prompt', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Append prompt' }), { target: { value: 'Only inspect files' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  await waitFor(() => expect(calls.bodies).toContainEqual(expect.objectContaining({ append_prompt: 'Only inspect files' })));
+});
+
+it('AC-034-E-4: oversized UTF-8 append prompt is rejected without POST', async () => {
+  const calls = installFetch();
+  render(<App />);
+  await screen.findByRole('heading', { name: 'run-live' });
+  fireEvent.click(screen.getByRole('button', { name: /New/ }));
+  fireEvent.change(await screen.findByRole('textbox', { name: 'Append prompt' }), { target: { value: `${'a'.repeat(65535)}é` } });
+  fireEvent.click(screen.getByRole('button', { name: 'Start Run' }));
+  expect(await screen.findByText('Append prompt must be 64 KiB or less')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Start Run' })).toBeVisible();
+  expect(calls.bodies).toHaveLength(0);
 });
 
 it('AC-019-N-5: theme toggle switches data-theme and persists across renders', async () => {

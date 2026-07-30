@@ -31,6 +31,11 @@ def set_mock(mode: str | None = "bash") -> None:
     _mock_mode = mode
 
 
+def get_mock_mode() -> str | None:
+    """Return the process-wide mock mode currently used by agent calls."""
+    return _mock_mode
+
+
 def _run_mock(prompt: str) -> tuple[str, int]:
     """Run prompt as shell command, return (stdout, exit_code)."""
     try:
@@ -182,7 +187,8 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
                   agent_def=None,
                   cache_path: Path | None = None,
                   resume_session_id: str | None = None,
-                  call_id: str | None = None) -> list[dict]:
+                  call_id: str | None = None,
+                  backend_instance=None) -> list[dict]:
     """Run a subagent session and return JSONL events."""
     output_parts: list[str] = []
 
@@ -202,7 +208,8 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         _append_cache(cache_path, event)
         _write_event(event)
 
-    instance = _make_backend(
+    owns_instance = backend_instance is None
+    instance = backend_instance or _make_backend(
         backend,
         text_handler=text_handler,
         thought_handler=thought_handler,
@@ -210,6 +217,19 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
         cwd=cwd,
         transport=getattr(_ctx, "execution_options", {}) and _ctx.execution_options.get("transport"),
     )
+    if not owns_instance:
+        targets = [instance]
+        for name in ("_selected", "_cli", "_acp"):
+            selected = getattr(instance, name, None)
+            if selected is not None:
+                targets.append(selected)
+        for target in targets:
+            if hasattr(target, "_text_handler"):
+                target._text_handler = text_handler
+            if hasattr(target, "_thought_handler"):
+                target._thought_handler = thought_handler
+            if hasattr(target, "_session_handler"):
+                target._session_handler = session_handler
     try:
         _emit_log(f"Calling agent via {backend or 'auto'}...")
 
@@ -266,4 +286,5 @@ def _run_subagent(prompt: str, session: str, backend: str | None = None,
             },
         ]
     finally:
-        instance.close()
+        if owns_instance:
+            instance.close()

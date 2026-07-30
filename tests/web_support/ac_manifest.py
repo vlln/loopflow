@@ -17,6 +17,7 @@ HTTP_STATUS_BY_CODE = {
     "backend_not_found": 404,
     "invalid_run_transition": 409,
     "run_not_stale": 409,
+    "run_in_grace": 409,
     "process_alive": 409,
     "legacy_events_not_streamable": 409,
     "process_gone": 410,
@@ -24,6 +25,7 @@ HTTP_STATUS_BY_CODE = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "file_read_failed": 500,
     "atomic_write_failed": 500,
     "internal_error": 500,
     "diagnostic_start_failed": 503,
@@ -57,6 +59,7 @@ def _targets() -> dict[str, list[str]]:
     )
     assign("AC-014-N-11", "GET /api/v1/system/meta", "ui:layout")
     assign("AC-014-B-6", "GET /api/v1/runs", "ui:runs")
+    assign("AC-014-B-7", "POST /api/v1/runs/{run_id}/reconcile", "ui:runs")
     assign(
         "AC-014-F-1",
         "POST /api/v1/runs/{run_id}/stop",
@@ -70,8 +73,31 @@ def _targets() -> dict[str, list[str]]:
         "AC-015-B-1 AC-015-B-2 AC-015-B-3 AC-015-B-4 AC-015-B-5 "
         "AC-015-E-2 AC-015-E-3 AC-015-E-4 AC-015-F-1 AC-015-F-2 AC-015-F-3 AC-015-F-4"
     ).split():
-        targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:phase"]
-    assign("AC-015-E-1", "GET /api/v1/runs/{run_id}/legacy-events", "ui:phase")
+        targets[ac_id] = ["GET /api/v1/runs/{run_id}", "ui:agent-graph"]
+    assign(
+        "AC-015-N-2",
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-E-1",
+        "GET /api/v1/runs/{run_id}",
+        "GET /api/v1/runs/{run_id}/legacy-events",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-B-3",
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/runs/{run_id}",
+        "ui:agent-graph",
+    )
+    assign(
+        "AC-015-F-3",
+        "POST /api/v1/runs",
+        "GET /api/v1/loops",
+        "ui:agent-graph",
+    )
 
     for ac_id in (
         "AC-016-N-1 AC-016-N-2 AC-016-N-3 AC-016-N-4 "
@@ -83,13 +109,40 @@ def _targets() -> dict[str, list[str]]:
     assign("AC-016-E-2", "ui:event-reducer")
 
     assign("AC-017-N-1 AC-017-F-2", "GET /api/v1/loops", "ui:loops")
-    assign("AC-017-N-2 AC-017-B-1", "GET /api/v1/loops/{loop_name}", "ui:loops")
+    assign("AC-017-B-1", "GET /api/v1/loops/{loop_name}", "ui:loops")
     assign(
-        "AC-017-B-2 AC-017-E-1 AC-017-E-2",
+        "AC-017-N-2",
+        "GET /api/v1/loops/{loop_name}",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:loops",
+    )
+    assign(
+        "AC-017-N-3",
+        "GET /api/v1/runs/{run_id}/file-changes",
+        "GET /api/v1/runs/{run_id}/file",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "ui:runs",
+    )
+    assign(
+        "AC-017-B-2",
+        "GET /api/v1/loops/{loop_name}/file",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:loops",
+    )
+    assign(
+        "AC-017-E-1 AC-017-E-2",
         "GET /api/v1/loops/{loop_name}/file",
         "ui:loops",
     )
     assign("AC-017-F-1", "GET /api/v1/loops/{loop_name}", "GET /api/v1/loops", "ui:loops")
+    assign(
+        "AC-017-F-3",
+        "GET /api/v1/runs/{run_id}/file/raw",
+        "GET /api/v1/loops/{loop_name}/file/raw",
+        "ui:runs",
+        "ui:loops",
+    )
 
     assign("AC-018-N-1 AC-018-B-1 AC-018-B-2", "GET /api/v1/backends", "ui:backends")
     assign(
@@ -108,6 +161,43 @@ def _targets() -> dict[str, list[str]]:
 
 TARGETS = _targets()
 
+# Only scenarios whose current tests cover the complete active AC semantics belong
+# here. Partial candidates remain planned so strict mode exposes the coverage gap.
+TEST_NODES = {
+    "AC-014-N-9": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
+    "AC-014-B-1": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+    "AC-014-B-3": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
+    "AC-014-B-4": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
+    "AC-015-F-2": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
+    "AC-016-N-3": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
+    "AC-016-N-2": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
+    "AC-016-N-4": "tests/integration/test_web_api.py::test_sse_multi_topic_per_topic_cursor_reconnect",
+    "AC-016-B-3": "tests/integration/test_web_api.py::test_sse_stream_end_waits_for_file_changes_terminal",
+    "AC-016-E-3": "tests/integration/test_web_api.py::test_sse_file_changes_cursor_out_of_range_does_not_affect_run_event",
+    "AC-016-F-2": "tests/integration/test_web_api.py::test_sse_reader_failure_after_headers_emits_stream_error",
+    "AC-016-F-3": "tests/integration/test_web_api.py::test_sse_file_changes_read_failure_emits_stream_error_and_closes",
+    "AC-017-E-1": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+    "AC-017-E-2": "tests/integration/test_web_api.py::test_loop_preview_security_backend_and_static",
+}
+
+
+def _test_node_exists(node: str) -> bool:
+    path_text, *selectors = node.split("::")
+    path = Path(path_text)
+    if not path.is_file() or not selectors:
+        return False
+    source = path.read_text(encoding="utf-8")
+    if path.suffix == ".py":
+        for selector in selectors[:-1]:
+            if not re.search(rf"^class\s+{re.escape(selector)}\b", source, re.M):
+                return False
+        return bool(re.search(
+            rf"^(?:\s*)def\s+{re.escape(selectors[-1])}\s*\(",
+            source,
+            re.M,
+        ))
+    return selectors[-1] in source
+
 PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-014-N-4": [{"kind": "http_status", "value": 201}],
     "AC-014-N-5": [{"kind": "http_status", "value": 200}],
@@ -117,6 +207,9 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-014-F-2": [{"kind": "http_status", "value": 200}],
+    "AC-014-B-7": [
+        {"kind": "http_status", "value": 409, "code": "run_in_grace"}
+    ],
     "AC-015-E-1": [{"kind": "http_status", "value": 200}],
     "AC-015-F-1": [{"kind": "http_status", "value": 200}],
     "AC-016-N-1": [{"kind": "sse_event", "value": "run_event"}],
@@ -137,9 +230,12 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     "AC-017-B-2": [
         {"kind": "http_status", "value": 422, "code": "file_not_previewable"}
     ],
+    "AC-017-N-2": [{"kind": "http_status", "value": 200}],
+    "AC-017-N-3": [{"kind": "http_status", "value": 200}],
     "AC-017-E-1": [{"kind": "http_status", "value": 403, "code": "path_forbidden"}],
     "AC-017-E-2": [{"kind": "http_status", "value": 403, "code": "path_forbidden"}],
     "AC-017-F-1": [{"kind": "http_status", "value": 404, "code": "loop_not_found"}],
+    "AC-017-F-3": [{"kind": "http_status", "value": 500, "code": "file_read_failed"}],
     "AC-018-N-2": [{"kind": "http_status", "value": 200}],
     "AC-018-E-1": [{"kind": "http_status", "value": 200}],
     "AC-018-E-2": [{"kind": "http_status", "value": 200}],
@@ -186,7 +282,7 @@ def generate_manifest(ac_path: Path) -> dict[str, Any]:
         cases.append(
             {
                 **row,
-                "test_node": f"planned::{ac_id.lower()}",
+                "test_node": TEST_NODES.get(ac_id, f"planned::{ac_id.lower()}"),
                 "targets": TARGETS[ac_id],
                 "expectations": expectations,
             }
@@ -227,8 +323,16 @@ def check_manifest(
         node = case.get("test_node")
         if not isinstance(node, str) or not node:
             errors.append(f"{ac_id}: test_node is required")
-        elif node.startswith("planned::") and not allow_planned:
-            errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        elif ac_id in TEST_NODES:
+            if node != TEST_NODES[ac_id]:
+                errors.append(f"{ac_id}: test_node does not match implemented mapping")
+            elif not _test_node_exists(node):
+                errors.append(f"{ac_id}: test_node does not exist")
+        elif node.startswith("planned::"):
+            if not allow_planned:
+                errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
+        else:
+            errors.append(f"{ac_id}: no implemented test_node mapping")
 
         expectations = case.get("expectations")
         if not isinstance(expectations, list) or not expectations:

@@ -114,7 +114,7 @@ created: 2026-07-22T06:35:57Z
 |------|----------|----------|----------|----------|
 | AC-022-E-1 | request schema 要求 boolean | 提交字符串 `"yes"` | 返回 422 validation_failed；request 保持未回答；不启动恢复 worker | 自动化 |
 | AC-022-E-2 | response 已提交 | 再次提交相同或不同值 | 返回 409 intervention_already_answered；原 response 不变；不重复启动恢复 | 自动化 |
-| AC-022-E-3 | Agent 返回结构化 intervention，但没有 durable session_id | 处理 Agent 结果 | Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request | 自动化 |
+| AC-022-E-3 | Agent 返回结构化 intervention，但没有 durable session_id | 处理 Agent 结果 | Call/Run 以 agent_intervention_not_supported 失败，错误提示改用 workflow intervene 或可续接 backend；不创建 pending request | 自动化 |
 | AC-022-E-4 | Run A 存在但 request R 不存在 | 对 R 提交 response | 返回 404 intervention_not_found；Run/request 集合不变；不启动恢复 worker | 自动化 |
 | AC-022-E-5 | Run A 当前不是 waiting_input/cancelled，但存在 pending request R | 对 R 提交 response | 返回 409 invalid_run_transition；R 保持 pending 且 response 不落盘；不启动恢复 worker | 自动化 |
 
@@ -164,8 +164,44 @@ created: 2026-07-22T06:35:57Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-023-F-1 | Agent 返回自然语言问题但无结构化 requests | Agent 正常返回 | loopflow 不创建 intervention；结果按普通 Agent 输出处理 | 自动化 |
-| AC-023-F-2 | Agent requests 需要 continue，但 durable session_id 未落盘 | 处理 Agent 结果 | Call/Run 以 continue_not_supported 失败；不创建无法继续的 pending request | 自动化 |
+| AC-023-F-2 | Agent requests 需要 continue，但 durable session_id 未落盘 | 处理 Agent 结果 | Call/Run 以 agent_intervention_not_supported 失败；不创建无法继续的 pending request | 自动化 |
 | AC-023-F-3 | batch respond 持久化成功后恢复 worker 失败 | 提交 batch | responses 保持 answered；后续失败按普通 Run execution failure 表达，不创建 intervention 特殊状态 | 自动化 |
+
+> 2026-07-29 追加（BL-046 / Spec v18 BR-062~064）：正式化 Agent 可发现控制协议、业务 schema 联合类型、capability preflight、请求分组和并行多 session 恢复。
+
+### 正常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-N-6 | backend 在 prompt 组装前声明 resume_session=true、durable_session_id=true | 捕获实际发送给 Agent 的首轮 prompt，并让 Agent 返回纯文本 `completed` | prompt 含最小 loopflow intervention 说明、waiting_input JSON 示例和“仅缺少必要人类输入时使用”的约束；调用结果严格等于 `completed`，不创建 pending request | 自动化 |
+| AC-023-N-7 | Agent 定义有 required 业务 output schema，backend 支持续接 | Agent 返回只含合法 `__loopflow` waiting_input 的对象 | 控制对象通过有效联合 schema，不要求伪造业务字段；创建 pending requests，控制对象不返回 workflow | 自动化 |
+| AC-023-N-8 | 一个 Agent 控制对象含两个有序 requests，回答 batch 全部合法 | 回答并恢复 | 两个文件共享 request_group_id，request_index 为 0/1；原 session 收到一个 input_received 信封，responses 按 0/1 排列且只含 key/response | 自动化 |
+| AC-023-N-9 | parallel 中两个 Agent session 分别产生一个 request | 一次 batch 回答 Run 当前全部 pending requests | 所有回答全有或全无持久化；一次 workflow 重放中按 call_id/session_id 恢复两个 continue targets，每个 session 只收到自己的回答；全部目标到达后 Run 可完成 | 自动化 |
+
+### 边界场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-B-4 | Agent 无业务 output schema但 backend 支持续接 | Agent 返回普通文本，随后另一调用返回 waiting_input JSON | 普通文本原样返回；只有完整合法控制对象触发 waiting_input | 自动化 |
+| AC-023-B-5 | Agent 使用非 native goal 模式且支持续接 | 分别返回正常 complete `__goal` 结果和 waiting_input 控制对象 | 正常分支仍要求并剥离 `__goal`；控制分支独立通过并优先进入 waiting_input | 自动化 |
+| AC-023-B-6 | 读取旧 Agent request，缺 request_group_id/request_index | 回答后恢复 | 以 call_id/session_id 派生组，按 created_at/request_id 稳定排序；恢复标记 unverified，不改写旧请求文件 | 自动化 |
+
+### 异常场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-E-6 | 业务 output schema 声明保留字段 `__loopflow` | 启动 Agent 调用 | 在调用 backend 前返回 validation_failed，说明字段保留；不创建 session/request | 自动化 |
+| AC-023-E-7 | waiting_input requests 中两个 item 使用相同 key | 处理 Agent 输出 | 返回 validation_failed；不创建任何 pending request，既有缓存不被标记为业务成功 | 自动化 |
+| AC-023-E-8 | Run 有两个 pending requests | 参数化提交两组 batch：仅覆盖一个 request；覆盖两个但第一个 request_id 重复 | 两组均返回 422 validation_failed；两个 request 均保持 pending；不启动恢复 worker | 自动化 |
+| AC-023-E-9 | Agent request 含 default 或 timeout 字段 | 处理 Agent 输出（分别参数化 default、timeout、两者同时存在） | 每组均返回 validation_failed；不创建 pending request | 自动化 |
+| AC-023-E-10 | requests 不是非空数组，或 item/key/prompt/options/allow_custom 类型非法 | 对各非法类型参数化处理 Agent 输出 | 每组均返回 validation_failed；不创建 pending request；不调用 resume | 自动化 |
+
+### 失败场景（追加）
+
+| 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
+|------|----------|----------|----------|----------|
+| AC-023-F-4 | dynamic ACP transport 的 initialize 声明 loadSession=false | 执行 Agent 调用并检查 prompt；再注入手工 waiting_input 输出 | prompt 不宣告 Agent intervention；手工控制输出以 agent_intervention_not_supported 失败且不创建 request | 自动化（mock ACP） |
+| AC-023-F-5 | 两个 continue targets 中 workflow 重放只到达一个就提前结束 | 回答后恢复 | Run failed，error_summary=replay_diverged；不得标记 done；已回答文件保持 answered | 自动化 |
 
 ---
 

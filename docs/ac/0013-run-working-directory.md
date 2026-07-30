@@ -72,7 +72,7 @@ created: 2026-07-24T05:30:00Z
 | AC-025-B-2 | `/B` 为已存在目录 | `POST /api/v1/runs`，body 含 `working_directory: "B"`（相对路径） | 返回 422 `validation_failed`，details 指明 `not_absolute` | 自动化 |
 | AC-025-B-3 | run 以 `working_directory: "/B"` 创建并失败 | 对该 run 执行 recover | recover 沿用 `/B` 执行；recover 请求体中的 `working_directory` 字段被拒绝或忽略，不覆盖原值 | 自动化 |
 | AC-025-B-4 | run 的 working_directory 为 `/B` | `GET /api/v1/runs/{run_id}/file?path=../A/secret.txt`（resolve 后越出 `/B`） | 返回 403 `path_forbidden`；不返回文件内容 | 自动化 |
-| AC-025-B-5 | run 的 working_directory 为 `/B`，`/B/blob.bin` 为二进制文件或超过 1 MiB | `GET /api/v1/runs/{run_id}/file?path=blob.bin` | 返回 422 `file_not_previewable`；不返回文件内容 | 自动化 |
+| AC-025-B-5 | run 的 working_directory 为 `/B`，`/B/blob.bin` 是不在允许预览扩展名中的二进制文件 | `GET /api/v1/runs/{run_id}/file?path=blob.bin` | 返回 422 `file_not_previewable`；不返回文件内容 | 自动化 |
 | AC-025-B-6 | server 运行于 macOS，用户在系统目录选择器中点击取消 | `POST /api/v1/system/pick-directory` | 返回 200 `{"path": null, "cancelled": true}`；WebUI 不改变输入框内容 | 自动化 |
 | AC-025-B-7 | server 运行于非 macOS 平台 | `GET /api/v1/system/list-directory`（不传 path） | 返回 200，含 server cwd 的子目录列表；WebUI Browse 按钮始终可用，打开 Web 目录浏览器模态框（ADR-0053） | 自动化 |
 | AC-025-B-10 | `/nonexistent` 不存在 | `GET /api/v1/system/list-directory?path=/nonexistent` | 返回 404 `file_not_found` | 自动化 |
@@ -97,6 +97,7 @@ created: 2026-07-24T05:30:00Z
 | 编号 | 前置条件 | 操作步骤 | 预期结果 | 验证方式 |
 |------|----------|----------|----------|----------|
 | AC-025-B-12 | 旧 run（ADR-0054 前创建），`run.json` 的 `working_directory` 为 server cwd `/A` | 对该 run 执行 recover | recover 沿用 `/A`（从 `run.json` 读取），不创建 `run_dir/work` | 自动化 |
+| AC-025-B-13 | run 的 working_directory 为 `/B`，`/B/large.txt` 是超过 1 MiB 的 UTF-8 文本 | `GET /api/v1/runs/{run_id}/file?path=large.txt` | 返回 422 `file_not_previewable`；不返回 content/raw_url | 自动化 |
 
 ### 异常场景（追加 2）
 

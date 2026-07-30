@@ -140,20 +140,31 @@ def web(host: str, port: int, allow_remote: bool) -> None:
 @click.option("--unattended", is_flag=True, default=False,
               help="Never wait for input: interventions use their declared "
                    "default, or the run fails intervention_unattended (ADR-0056)")
-def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, prompt_file, params, unattended):
+@click.option("--append-prompt", default=None,
+              help="Append an untrusted instruction to every Agent user prompt")
+def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, prompt_file, params, unattended, append_prompt):
     """Run a loop."""
+    from loopflow.domain.marshalling import normalize_append_prompt
+    from loopflow.infrastructure.backends.manager import get_mock_mode
     from loopflow.infrastructure.discovery import load_loop
     from loopflow.runtime import RunContext, set_context, set_mock, agent, parallel, pipeline, log, workflow, intervene
+
+    try:
+        append_prompt = normalize_append_prompt(append_prompt)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
 
     if agent_name is not None:
         _run_single_agent(
             name, agent_name, prompt, prompt_file, params,
             wf_args, mock, backend, transport, work_dir, unattended,
+            append_prompt,
         )
         return
 
     if mock:
         set_mock(mock)
+    effective_mock = mock or get_mock_mode()
 
     args_dict = {}
     if wf_args:
@@ -192,7 +203,7 @@ def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, p
         "counter": 0,
         "execution_epoch": 1,
         "execution_options": {
-            "mock": mock,
+            "mock": effective_mock,
             "backend": backend,
             "transport": transport,
         },
@@ -200,6 +211,8 @@ def run(name, wf_args, mock, backend, transport, work_dir, agent_name, prompt, p
     if unattended:
         # Frozen into execution_options so recovery inherits it (ADR-0056 §4)
         run_meta["execution_options"]["unattended"] = True
+    if append_prompt is not None:
+        run_meta["execution_options"]["append_prompt"] = append_prompt
     _write_run(run_dir / "run.json", run_meta)
 
     ctx = RunContext(
@@ -384,7 +397,7 @@ def _wait_for_terminal(run_dir: Path, timeout: float = 600.0) -> dict:
     return metadata
 
 
-def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mock, backend, transport, work_dir, unattended=False):
+def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mock, backend, transport, work_dir, unattended=False, append_prompt=None):
     """Run a single agent_def as a full Run (ADR-0055).
 
     Validates everything before any Run is created: agent_def exists, prompt
@@ -393,6 +406,7 @@ def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mo
     """
     from loopflow.domain.agent_def import _input_to_params, render_template, resolve_params
     from loopflow.infrastructure.discovery import _load_loop_meta, _loops_dir
+    from loopflow.infrastructure.backends.manager import get_mock_mode
     from loopflow.infrastructure.repository import parse_agent
     from loopflow.runtime import set_mock
 
@@ -438,6 +452,7 @@ def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mo
 
     if mock:
         set_mock(mock)
+    effective_mock = mock or get_mock_mode()
 
     meta = _load_loop_meta(loop_dir)
     _check_environment(meta, loop_dir)
@@ -454,9 +469,15 @@ def _run_single_agent(name, agent_name, prompt, prompt_file, params, wf_args, mo
         os.chdir(target)
 
     single_agent = {"agent_def": agent_name, "prompt": prompt_text, "params": param_dict}
-    options = {"mock": mock, "backend": backend, "transport": transport}
+    options = {
+        "mock": effective_mock,
+        "backend": backend,
+        "transport": transport,
+    }
     if unattended:
         options["unattended"] = True
+    if append_prompt is not None:
+        options["append_prompt"] = append_prompt
 
     print(f"[loopflow] Running: {name} --agent {agent_name} ({run_id})", file=sys.stderr)
     from loopflow.application.execution import execute_single_agent

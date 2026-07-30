@@ -22,6 +22,7 @@ from loopflow.infrastructure.web_resources import (
     BackendRepository,
     DiagnosticStartFailed,
     FileNotPreviewable,
+    FileReadFailed,
     LoopRepository,
     PathForbidden,
     QueueRepository,
@@ -50,6 +51,7 @@ ERROR_STATUS = {
     "request_too_large": 413,
     "validation_failed": 422,
     "file_not_previewable": 422,
+    "file_read_failed": 500,
     "intervention_not_found": 404,
     "atomic_write_failed": 500,
     "internal_error": 500,
@@ -112,6 +114,8 @@ def handler_for(
                 self._error(403, "path_forbidden", str(error))
             except FileNotPreviewable as error:
                 self._error(422, "file_not_previewable", str(error))
+            except FileReadFailed as error:
+                self._error(500, "file_read_failed", str(error))
             except FileNotFoundError as error:
                 self._error(404, "file_not_found", f"File '{error.args[0]}' was not found")
             except DiagnosticStartFailed as error:

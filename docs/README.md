@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` complete (v0.26.0) |
-| **设计评估** | 0.26.0：BL-047 单 agent 运行入口（ADR-0055）、BL-044 CLI 内联应答 + loopflow respond、BL-045 intervene default/timeout + `--unattended`（ADR-0056）。549 Python + 41 前端 + 13 Playwright 全绿；严格 manifest：recovery 84 / scheduling 32 / agent 26 / singleagent 9 全过。tag v0.26.0，main + develop 已同步。既有债：BL-049（--write 无早退）、BL-050（web profile 无 TEST_NODES 机制）。 |
+| **当前阶段** | `DEVELOP` (0.27.0 Web AgentGraph strict 补齐) |
+| **设计评估** | 0111 已将 Web manifest 对齐 89 个冻结场景；14 个现有节点经逐项语义审查完整成立，71 个保持 planned，4 个 superseded，strict 无其他错误。增量 infrastructure 82 passed、1 skipped，最终 subagent 复审 PASS。DEVELOP 仅补完整测试和必要产品行为；0108 SYSTEM_TEST 保持 pending，恢复时从 Web strict 层继续。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
