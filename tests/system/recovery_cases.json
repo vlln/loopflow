@@ -203,7 +203,7 @@
       "fixture": "recover 的目标是失败 Call 0003，但 workflow 重放在 0003 前提前返回",
       "action": "执行 recover",
       "assertion": "Run 变为 failed，错误为 replay_diverged；不得标记 done",
-      "test_node": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
+      "test_node": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_all_continue_targets",
       "targets": [
         "unit:replay-target"
       ],
@@ -1339,18 +1339,17 @@
     },
     {
       "ac_id": "AC-029-B-1",
-      "fixture": "run 处于 stale 且 stale_since 距今不足 24h（宽限期内）",
+      "fixture": "run 处于 stale 且 stale_since 距今不足 24h",
       "action": "`POST /api/v1/runs/{id}/reconcile`",
-      "assertion": "返回 409，错误码 run_in_grace；run.json 未被修改",
-      "test_node": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_returns_run_in_grace",
+      "assertion": "进程已确认死亡即按既有 reconcile 流程清理：status=failed、写 error_summary、清除 pid 字段与 stale_since（ADR-0046 2026-07-27 修订：宽限期不阻塞 reconcile，stale_since 仅供 UI 呈现剩余时间）；run.json 原子替换",
+      "test_node": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_succeeds",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile"
       ],
       "expectations": [
         {
           "kind": "http_status",
-          "value": 409,
-          "code": "run_in_grace"
+          "value": 200
         }
       ]
     },
