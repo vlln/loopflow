@@ -38,7 +38,7 @@ created: 2026-07-18T21:00:00Z
 | AC-014-B-4 | Arguments 切换到 JSON 高级模式 | 输入非法 JSON 并启动 | 显示 JSON 校验错误，不发送请求 | 自动化 |
 | AC-014-B-5 | loop.md 存在但无 args，workflow.py legacy meta.args 有值 | 打开 New Run 对话框 | loop.md 权威：编辑器为空白，不读取 workflow.py 声明 | 自动化 |
 | AC-014-B-6 | Run 的 working_directory 为 `/home/user/bio-reproducer` | 查看 Runs 左栏该 run item | 次要标识行显示 `bio-reproducer`（working_directory 的 basename），不显示 run_id UUID；hover 显示完整路径 | 自动化 |
-| AC-014-B-7 | Run 已记录 stale_since 且仍在 24h 宽限期，进程仍不存在 | 请求 reconcile | 返回 409 run_in_grace；run.json 除允许的首次 stale_since 记录外不改为 failed | 自动化 |
+| AC-014-B-7 | Run 已记录 stale_since，进程仍不存在 | 请求 reconcile | 进程已确认死亡即清理：status=failed、run.json 原子替换且 pid/stale_since 已清除（对齐 ADR-0046 修订：宽限期不阻塞 reconcile，stale_since 仅供 UI 呈现；不再返回 run_in_grace） | 自动化 |
 
 ## 异常场景
 

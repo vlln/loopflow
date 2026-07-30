@@ -3,7 +3,7 @@ title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、人工介入、本地 WebUI、ACP 可选传输、Agent waiting_input 控制协议与运行时追加 prompt（0.27.0）。
 type: spec
 status: active
-version: 19
+version: 20
 created: 2026-07-07T12:00:00Z
 ---
 
@@ -52,7 +52,7 @@ loopflow 是独立的 AI Agent 循环编排工具。以 Agent 为基本单元构
 | US-029 | 开发者 | 在白天和夜晚主题间切换 WebUI 外观 | 在不同光照环境下舒适使用 | P2 |
 | US-030 | 开发者 | agent 调用失败按类别（auth/quota、transient、task）区别处理 | auth/quota 立即失败不浪费重试，transient 自动退避重试并可续接 session，task 失败快速暴露给 workflow | P0 |
 | US-031 | 开发者 | loop 连续失败达到阈值时自动暂停调度 | 无人值守时防止故障 loop 反复消耗配额，恢复后手动解除暂停 | P1 |
-| US-032 | 开发者 | run 失联后先进入宽限期再判定失败 | 笔记本睡眠等场景不被误判失败，宽限期内进程恢复则自然调和 | P1 |
+| US-032 | 开发者 | run 失联被识别并呈现参考时间后再判定失败 | 笔记本睡眠等场景不被误报；进程恢复则自然调和，确认死亡则可显式清理 | P1 |
 | US-033 | 开发者 | 队列任务具有显式状态（pending/deferred/superseded） | 条件不满足挂起、被新任务取代都不计为失败，调度行为可观测 | P1 |
 | US-034 | 开发者 | 用 `--transport acp` 选 ACP 后端运行 loop | 用原生 ACP 后端（pi-acp 等）跑 loopflow，ACP 路径可选可用，CLI 仍为默认 | P1 |
 | US-035 | 评测 harness / 开发者 | 通过 `loop run --agent` 单独运行 loop 中某个 agent_def | component 级评测和单 agent 调试无需执行完整 workflow | P0 |
@@ -232,7 +232,7 @@ Body 是 Markdown 格式，内容自由但建议包含：目的、流程、权�
 | active_call_id | string | optional | 最近一次执行中的 Agent Call；worker_running 取消或 failed 时用于定位 retry/continue 目标 |
 | active_worker_atomic | boolean | optional | active worker 是否处于原子提交/隔离边界；true 时 recover_continue 不可用 |
 | error_category | string | optional | 失败分类：auth / quota / transient / task / unknown（0.21.0 新增） |
-| stale_since | ISO 8601 | optional | 首次判定 stale 的时间，宽限期计时起点；进程恢复或 reconcile 时清除（0.21.0 新增） |
+| stale_since | ISO 8601 | optional | 首次判定 stale 的时间，失联计时起点（供 UI 呈现参考）；进程恢复或 reconcile 时清除（0.21.0 新增） |
 
 ### Intervention
 
@@ -448,7 +448,7 @@ Agent 隔离层级体系（递进）：
 | BR-029 | Run 事件流可断线恢复 | WebUI 订阅 Run | 客户端按 event_id 请求断点后的事件；服务端可重放已持久化事件并继续推送新增事件，重复连接不得重复执行 Run |
 | BR-030 | Backend 诊断基于真实能力 | WebUI 查询后端 | 仅展示 BackendManager 或诊断命令可观测的安装、版本、能力、transport 和日志；不得伪造 VRAM、延迟或健康分数 |
 | BR-031 | Run 与 state 文件原子更新 | 创建 Run、状态变化、state 持久化或进程退出 | `run.json` 和 `state.json` 各自在同目录写临时文件，flush 后独立原子替换，不承诺跨文件事务；仅替换 run.json 时在同一份新 JSON 中更新其 updated_at，state.json 不增加保留字段 |
-| BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；首次确认进程不存在或身份不匹配时原子记录 stale_since，读模型返回 stale；后续读取不重复改写。显式 reconcile 再次校验，满足 BR-052 宽限期后原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at/stale_since，随后允许 recover |
+| BR-032 | 陈旧 running 状态可识别和修复 | 读取或 reconcile status=running 的 Run | 读取时同时校验 pid 和 process_started_at；首次确认进程不存在或身份不匹配时原子记录 stale_since，读模型返回 stale；后续读取不重复改写。显式 reconcile 再次校验，进程确认死亡即原子写 status=failed、finished_at、updated_at 和 error_summary，清除 pid/process_started_at/stale_since，随后允许 recover |
 | BR-033 | 恢复模式显式选择 | failed/cancelled Run 执行 recover | retry/replay 是默认恢复路径，创建新 session 或重放到 pending 边界；continue 使用原 session_id；缺少 durable session 能力、目标 Call 未落盘 session_id 或 active worker 为原子/隔离边界时返回 continue_not_supported，不静默降级 |
 | BR-034 | stop 取消当前 execution attempt | running/waiting_input Run 执行 stop | 先持久化取消意图，再终止已验证身份的进程组；SIGTERM 超时后 SIGKILL；最终 cancelled；cancelled 表示本次 execution epoch 被取消，不表示 Run identity 不可恢复 |
 | BR-035 | 人工介入可持久化重放 | workflow 调用 intervene 或 Agent 返回结构化 requests | 创建 request 后 Run 进入 waiting_input 且 worker 退出；workflow `intervene()` 是 routing/control gate，通过 replay 返回回答给 workflow；Agent requests 是继续执行所需输入，仅在 durable session 已落盘时创建并通过 continue 返回给 Agent；waiting_input 被 stop 后 pending request 保留，respond 可恢复同一 Run |
@@ -468,7 +468,7 @@ Agent 隔离层级体系（递进）：
 | BR-049 | Agent 失败按类别处理 | `agent()` 后端调用失败 | 失败分类为 auth/quota/transient/task/unknown，来源优先级：后端结构化上报 > stderr 模式匹配。transient 按既有退避（3/9/27s）自动重试且 recover 可 continue；auth/quota 与 task 不自动重试，直接持久化失败。分类写入 agent_done 事件与 run.json `error_category` |
 | BR-050 | Loop 失败熔断 | run 进入 failed 终态 | 该 loop 的 `consecutive_failures` +1（done 时归零）；达到阈值（默认 5，loop.md frontmatter 可用 `failure_threshold` 覆盖）时置 `paused=true` 并写 `paused_reason`。paused 的 loop 其队列任务在 dispatch 中标记 deferred 留队，不计失败 |
 | BR-051 | 熔断解除手动显式 | 用户执行 loop 恢复操作（CLI/Web） | 清除 `paused` 与 `consecutive_failures`；不提供自动解除 |
-| BR-052 | stale 宽限期 | 读模型判定 stale / 显式 reconcile | 首次判定 stale 时记录 `stale_since`；宽限期（默认 24h）内 reconcile 返回 409 `run_in_grace`，宽限期满后按 BR-032 执行。宽限期内 worker 进程恢复并写入终态时以 worker 写入为准，清除 `stale_since`（对 BR-032 的补充约束） |
+| BR-052 | stale 失联记录 | 读模型判定 stale / 显式 reconcile | 首次判定 stale 时记录 `stale_since` 作为失联计时起点，供 UI 呈现剩余参考时间（默认 24h 窗口）；宽限期**不阻塞** reconcile——进程探活确认死亡即按 BR-032 直接清理（ADR-0046 2026-07-27 修订：即使进程结束，后端 session 仍可 resume，阻塞无安全收益）。worker 进程恢复并写入终态时以 worker 写入为准，清除 `stale_since`（对 BR-032 的补充约束） |
 | BR-053 | 队列任务显式状态 | enqueue / dispatch | 任务状态机 pending/deferred/superseded。资源锁不可得时任务标记 deferred 留队（BR-019 语义不变，仅显式化）；`enqueue --supersede` 将同 loop 的 pending/deferred 任务标记 superseded 并记录 `superseded_by`；deferred/superseded 不计入 dispatch errors。loopflow 无常驻调度器，misfire 补偿暂不适用 |
 | BR-054 | ACP 传输可选 | `loopflow run`/`enqueue` 携带 `--transport acp` | 路由到 ACP 后端（AcpSdkBackend）；默认 CLI 不变。ACP 路径加载可选依赖 agent-client-protocol，缺失时报错提示安装 extra |
 | BR-055 | ACP permission auto-approve | ACP 后端发 `request_permission` | fire-and-forget 模型下统一 auto-approve-all（对应 acpx approve-all，不做读写分级），消除 ADR-0018 的授权死锁 |
@@ -581,7 +581,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | 修复 stale Run | run_id | status=failed 的 Run 摘要 | 404 run 不存在；409 Run 非 stale 或进程重新可用；500 原子写失败 |
 | 查询 / 诊断 Backends | 可选 backend 名 | Backend 摘要、能力和诊断日志 | 404 backend 不存在；503 诊断进程不可启动 |
 | 暂停解除 / 恢复 Loop | loop 名 | 更新后的 Loop 摘要（含 paused 状态） | 404 loop 不存在 |
-| 修复 stale Run（宽限期约束） | run_id | 同既有 reconcile | 宽限期内返回 409 `run_in_grace`，其余同既有 |
+| 修复 stale Run | run_id | 同既有 reconcile | 进程确认死亡即清理为 failed（宽限期不阻塞，对齐 BR-052 修订） |
 
 ### 失败与熔断呈现（0.21.0 新增）
 
@@ -646,7 +646,7 @@ Queue 首版作为 Runs 工作区内的 `Runs / Queue` 模式，不设一级导�
 | Transport | `transport` | Backend 通信方式：CLI 子进程或 ACP |
 | 失败分类 | `error_category` | auth/quota/transient/task/unknown 分类，决定重试与续接策略 |
 | 熔断 | `paused` / `consecutive_failures` | Loop 连续失败达阈值后暂停调度的状态 |
-| 宽限期 | `stale_since` | stale Run 从首次判定到允许 reconcile 的时间窗口 |
+| 失联参考窗口 | `stale_since` | stale Run 从首次判定起算的参考时间窗口（默认 24h），供 UI 呈现；不阻塞 reconcile |
 | Deferred | `status=deferred` | 条件不满足而挂起留队、不计失败的队列状态 |
 | Supersede | `status=superseded` | 被新任务显式取代且不计失败的队列状态 |
 | ACP Transport | `AcpSdkBackend` / `transport=acp` | 官方 Python ACP SDK 承载的可选传输路径 |

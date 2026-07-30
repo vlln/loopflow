@@ -16,10 +16,24 @@ AC_PATH = Path("docs/ac/0010-webui.md")
 MANIFEST_PATH = Path("tests/system/cases.json")
 
 EXPECTED_TEST_NODES = {
+    "AC-014-N-1": "tests/integration/test_web_api.py::test_ac014_n1_runs_list_all_statuses_default_latest",
+    "AC-014-N-2": "tests/integration/test_web_api.py::test_ac014_n2_failed_filter_in_place_switch",
+    "AC-014-N-4": "tests/integration/test_web_api.py::test_ac014_n4_start_run_returns_201_location_and_running",
+    "AC-014-N-7": "tests/integration/test_web_api.py::test_ac014_n7_rerun_creates_new_run_preserves_source",
+    "AC-014-N-8": "tests/integration/test_web_api.py::test_ac014_n8_loop_filter_and_text_search",
     "AC-014-N-9": "web/src/App.test.tsx::AC-014-N-9: arguments editor builds a typed args object",
+    "AC-014-N-10": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
+    "AC-014-N-11": "tests/integration/test_web_api.py::test_ac014_n11_system_meta_returns_running_version",
     "AC-014-B-1": "web/tests/webui.spec.ts::keeps a thousand Runs reachable without resizing the workspace",
+    "AC-014-B-2": "tests/integration/test_web_api.py::test_ac014_b2_empty_runs_shows_empty_state",
     "AC-014-B-3": "web/src/App.test.tsx::AC-014-B-3: blank-key rows are ignored and an empty editor submits {}",
     "AC-014-B-4": "web/src/App.test.tsx::AC-014-B-4: invalid JSON in JSON mode shows an error and sends nothing",
+    "AC-014-B-5": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
+    "AC-014-B-6": "tests/integration/test_web_api.py::test_ac014_b6_working_directory_basename_in_summary",
+    "AC-014-B-7": "tests/integration/test_web_api.py::test_ac014_b7_reconcile_stale_since_cleans_failed",
+    "AC-014-E-1": "tests/integration/test_web_api.py::test_ac014_e1_unreadable_run_returned_as_summary",
+    "AC-014-E-2": "tests/integration/test_web_api.py::test_ac014_e2_stale_detection_records_stale_since_once",
+    "AC-014-F-2": "tests/integration/test_web_api.py::test_ac014_f2_reconcile_expired_stale_atomic_failed",
     "AC-015-F-2": "tests/unit/test_web_events.py::test_incomplete_final_line_is_hidden_until_completed",
     "AC-016-N-3": "tests/integration/test_web_api.py::test_sse_multi_topic_pushes_run_event_and_file_changes",
     "AC-016-N-2": "tests/integration/test_web_api.py::test_sse_replay_end_cursor_and_legacy",
@@ -113,7 +127,7 @@ def test_strict_manifest_rejects_planned_nodes():
         if case["ac_id"] not in SUPERSEDED_AC_IDS
         and case["test_node"].startswith("planned::")
     ]
-    assert len(planned) == 49
+    assert len(planned) == 35
     assert len(SUPERSEDED_AC_IDS) == 4
     assert set(TEST_NODES).isdisjoint(SUPERSEDED_AC_IDS)
     assert len(manifest["cases"]) == len(TEST_NODES) + len(planned) + len(SUPERSEDED_AC_IDS)

@@ -5,7 +5,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from tests.web_support.ac_manifest import parse_ac
+from tests.web_support.ac_manifest import _test_node_exists, parse_ac
 
 
 VALID_KINDS = {"http_status", "cli_exit", "dom", "process", "unit"}
@@ -144,7 +144,7 @@ TEST_NODES = {
     "AC-020-E-3": "tests/unit/test_recovery.py::test_call_digest_is_stable_and_tracks_workflow_and_prompt",
     "AC-020-F-1": "tests/unit/test_recovery.py::test_corrupt_tail_is_uncommitted_and_legacy_success_is_unverified",
     "AC-020-F-2": "tests/unit/test_web_execution.py::test_background_executor_rejects_second_worker_for_same_run",
-    "AC-020-F-3": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_target",
+    "AC-020-F-3": "tests/unit/test_web_execution.py::test_recovery_fails_when_workflow_ends_before_all_continue_targets",
     "AC-021-N-1": "tests/unit/test_web_application.py::test_create_stop_recover_rerun_and_invalid_transition",
     "AC-021-N-2": "tests/unit/test_web_application.py::test_stop_waiting_input_cancels_without_worker_and_preserves_pending_request",
     "AC-021-N-3": "tests/unit/test_web_application.py::test_cancelled_recover_retry_and_continue_boundaries",
@@ -214,7 +214,7 @@ TEST_NODES = {
     "AC-026-F-1": "tests/unit/test_web_application.py::test_quota_failure_recover_continue_keeps_existing_boundaries",
     "AC-029-N-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n1_first_stale_detection_writes_stale_since",
     "AC-029-N-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_n2_worker_terminal_write_clears_stale_since",
-    "AC-029-B-1": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_returns_run_in_grace",
+    "AC-029-B-1": "tests/integration/test_web_api.py::test_ac029_b1_reconcile_within_grace_succeeds",
     "AC-029-B-2": "tests/integration/test_web_api.py::test_ac029_b2_reconcile_after_grace_fails_run_and_clears_stale_since",
     "AC-029-E-1": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e1_stale_since_is_not_refreshed",
     "AC-029-E-2": "tests/unit/test_stale_grace.py::TestStaleGracePeriod::test_ac029_e2_legacy_run_records_stale_since_on_first_detection",
@@ -301,7 +301,7 @@ EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
     ],
     "AC-029-N-1": [{"kind": "http_status", "value": 200}],
     "AC-029-N-2": [{"kind": "http_status", "value": 200}],
-    "AC-029-B-1": [{"kind": "http_status", "value": 409, "code": "run_in_grace"}],
+    "AC-029-B-1": [{"kind": "http_status", "value": 200}],
     "AC-029-B-2": [{"kind": "http_status", "value": 200}],
     "AC-029-E-1": [{"kind": "http_status", "value": 200}],
     "AC-029-E-2": [{"kind": "http_status", "value": 200}],
@@ -371,6 +371,8 @@ def check_manifest(
             errors.append(f"{ac_id}: planned test node is not allowed in strict mode")
         elif ac_id in TEST_NODES and node != TEST_NODES[ac_id]:
             errors.append(f"{ac_id}: test_node does not match implemented mapping")
+        elif ac_id in TEST_NODES and not _test_node_exists(node):
+            errors.append(f"{ac_id}: test_node does not exist")
         expectations = case.get("expectations")
         if not isinstance(expectations, list) or not expectations:
             errors.append(f"{ac_id}: at least one expectation is required")

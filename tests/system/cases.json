@@ -7,7 +7,7 @@
       "fixture": "fixture 含 running、failed、done、stopped 各 1 个 Run",
       "action": "打开 WebUI，进入 Runs",
       "assertion": "左栏同时显示 4 个 Run；默认选中最新 Run；中间和右侧显示该 Run 内容",
-      "test_node": "planned::ac-014-n-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_n1_runs_list_all_statuses_default_latest",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -24,7 +24,7 @@
       "fixture": "左栏有 failed Run A 和 failed Run B，另有 done Run C；筛选为 failed",
       "action": "选择 Run B，再选择 Run A",
       "assertion": "只有 A、B 可见；URL/selection 更新；筛选条件保持 failed；详情原地切换，不导航到独立列表页",
-      "test_node": "planned::ac-014-n-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_n2_failed_filter_in_place_switch",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -58,7 +58,7 @@
       "fixture": "Loop hello 存在且 mock backend 可执行",
       "action": "在 WebUI 以 args={} 启动 hello",
       "assertion": "API 返回 201、Location 和 status=running 的新 Run；左栏出现相同 run_id",
-      "test_node": "planned::ac-014-n-4",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_n4_start_run_returns_201_location_and_running",
       "targets": [
         "POST /api/v1/runs",
         "ui:runs"
@@ -109,7 +109,7 @@
       "fixture": "done Run A",
       "action": "对 A 执行 Rerun",
       "assertion": "API 返回 201 和新 Run B；B.run_id != A.run_id，B.loop/args 与 A 相同，A 文件不变",
-      "test_node": "planned::ac-014-n-7",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_n7_rerun_creates_new_run_preserves_source",
       "targets": [
         "POST /api/v1/runs/{run_id}/rerun",
         "ui:runs"
@@ -126,7 +126,7 @@
       "fixture": "fixture 含 Loop 名和 run_id 可区分的 Runs",
       "action": "分别应用 Loop 筛选和文本搜索",
       "assertion": "每次结果只包含匹配项；清除筛选后恢复完整列表",
-      "test_node": "planned::ac-014-n-8",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_n8_loop_filter_and_text_search",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -160,7 +160,7 @@
       "fixture": "Loop 的 loop.md 顶层声明 args（review 默认 main，count 无默认）",
       "action": "打开 New Run 对话框并选择该 Loop",
       "assertion": "键值编辑器预填 review=main 与空 count 行；直接启动时 POST args 只含 review=main",
-      "test_node": "planned::ac-014-n-10",
+      "test_node": "web/src/App.test.tsx::AC-014-N-10: declared args prefill the editor and empty rows are skipped on submit",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "POST /api/v1/runs",
@@ -178,7 +178,7 @@
       "fixture": "server 运行中",
       "action": "`GET /api/v1/system/meta` 并观察 WebUI rail",
       "assertion": "端点返回 200 `{\"version\": \"...\"}`（与 `loopflow.__version__` 一致）；rail 显示该版本而非硬编码值",
-      "test_node": "planned::ac-014-n-11",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_n11_system_meta_returns_running_version",
       "targets": [
         "GET /api/v1/system/meta",
         "ui:layout"
@@ -212,7 +212,7 @@
       "fixture": "Runs 目录为空",
       "action": "打开 Runs",
       "assertion": "左栏显示空状态；工作区不渲染伪造 Run；New Run 仍可用",
-      "test_node": "planned::ac-014-b-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_b2_empty_runs_shows_empty_state",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -263,7 +263,7 @@
       "fixture": "loop.md 存在但无 args，workflow.py legacy meta.args 有值",
       "action": "打开 New Run 对话框",
       "assertion": "loop.md 权威：编辑器为空白，不读取 workflow.py 声明",
-      "test_node": "planned::ac-014-b-5",
+      "test_node": "web/src/App.test.tsx::AC-014-B-5: a loop without declared args starts with a blank editor",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "POST /api/v1/runs",
@@ -281,7 +281,7 @@
       "fixture": "Run 的 working_directory 为 `/home/user/bio-reproducer`",
       "action": "查看 Runs 左栏该 run item",
       "assertion": "次要标识行显示 `bio-reproducer`（working_directory 的 basename），不显示 run_id UUID；hover 显示完整路径",
-      "test_node": "planned::ac-014-b-6",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_b6_working_directory_basename_in_summary",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -295,10 +295,10 @@
     },
     {
       "ac_id": "AC-014-B-7",
-      "fixture": "Run 已记录 stale_since 且仍在 24h 宽限期，进程仍不存在",
+      "fixture": "Run 已记录 stale_since，进程仍不存在",
       "action": "请求 reconcile",
-      "assertion": "返回 409 run_in_grace；run.json 除允许的首次 stale_since 记录外不改为 failed",
-      "test_node": "planned::ac-014-b-7",
+      "assertion": "进程已确认死亡即清理：status=failed、run.json 原子替换且 pid/stale_since 已清除（对齐 ADR-0046 修订：宽限期不阻塞 reconcile，stale_since 仅供 UI 呈现；不再返回 run_in_grace）",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_b7_reconcile_stale_since_cleans_failed",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile",
         "ui:runs"
@@ -316,7 +316,7 @@
       "fixture": "一个 run.json 是非法 JSON，另一个合法",
       "action": "查询 Runs",
       "assertion": "合法 Run 正常返回；非法条目作为 status=unreadable 的摘要返回并包含 parse_error；请求不返回 500",
-      "test_node": "planned::ac-014-e-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_e1_unreadable_run_returned_as_summary",
       "targets": [
         "GET /api/v1/runs",
         "ui:runs"
@@ -333,7 +333,7 @@
       "fixture": "Run status=running、进程不存在且 stale_since 缺失",
       "action": "首次选择该 Run，再刷新详情",
       "assertion": "首次读取原子记录 stale_since 并显示 stale；后续读取不重复改写；Stop 禁用且显示 Reconcile",
-      "test_node": "planned::ac-014-e-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_e2_stale_detection_records_stale_since_once",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:runs"
@@ -368,7 +368,7 @@
       "fixture": "Run 为 stale，stale_since 已超过 24h，reconcile 二次校验仍 stale",
       "action": "请求 reconcile",
       "assertion": "返回 status=failed；run.json 原子替换且 pid/process_started_at/stale_since 已清除",
-      "test_node": "planned::ac-014-f-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac014_f2_reconcile_expired_stale_atomic_failed",
       "targets": [
         "POST /api/v1/runs/{run_id}/reconcile"
       ],

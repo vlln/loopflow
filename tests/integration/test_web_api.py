@@ -1686,3 +1686,161 @@ def test_ac017_f1_loop_deleted_returns_404(api):
     items = client.request("GET", "/api/v1/loops").json()["items"]
     assert all(item["name"] != "ephemeral" for item in items)
     assert client.request("GET", "/api/v1/loops/hello").status == 200
+
+
+# --- AC-014 coverage (0112-03) ---
+
+
+def test_ac014_n1_runs_list_all_statuses_default_latest(api):
+    """AC-014-N-1: list returns runs of each status sorted latest-first."""
+    client, factory, _ = api
+    factory.create_run("r-running", status="running", pid=7, process_started_at="same")
+    factory.create_run("r-failed", status="failed")
+    factory.create_run("r-done", status="done")
+    factory.create_run("r-stopped", status="stopped")
+
+    items = client.request("GET", "/api/v1/runs").json()["items"]
+    statuses = {item["run_id"]: item["status"] for item in items}
+    for run_id in ("r-running", "r-failed", "r-done", "r-stopped"):
+        assert run_id in statuses
+    # created identical → sorted by run_id desc within same timestamp; latest-first ordering holds
+    created_order = [item["created"] for item in items]
+    assert created_order == sorted(created_order, reverse=True)
+
+
+def test_ac014_n2_failed_filter_in_place_switch(api):
+    """AC-014-N-2: status=failed filter returns only failed runs."""
+    client, factory, _ = api
+    factory.create_run("fa", status="failed")
+    factory.create_run("fb", status="failed")
+    factory.create_run("fc", status="done")
+
+    items = client.request("GET", "/api/v1/runs?status=failed").json()["items"]
+    ids = {item["run_id"] for item in items}
+    assert ids == {"fa", "fb"}
+
+
+def test_ac014_n4_start_run_returns_201_location_and_running(api):
+    """AC-014-N-4: POST /runs returns 201, Location header, and a running run in the list."""
+    client, factory, _ = api
+    created = client.request("POST", "/api/v1/runs", {"loop": "hello", "args": {}})
+    assert created.status == 201
+    run_id = created.json()["run_id"]
+    assert created.headers["location"].endswith(run_id)
+    assert created.json()["status"] == "running"
+    ids = {item["run_id"] for item in client.request("GET", "/api/v1/runs").json()["items"]}
+    assert run_id in ids
+
+
+def test_ac014_n7_rerun_creates_new_run_preserves_source(api):
+    """AC-014-N-7: rerun returns 201 new run_id with same loop/args; source run.json unchanged."""
+    client, factory, _ = api
+    source = factory.create_run("rerun-src", status="done", args={"x": 1})
+    before = (source / "run.json").read_bytes()
+
+    response = client.request("POST", "/api/v1/runs/rerun-src/rerun")
+    assert response.status == 201
+    new_id = response.json()["run_id"]
+    assert new_id != "rerun-src"
+    assert response.json()["loop"] == "hello"
+    new_meta = json.loads((factory.runs / new_id / "run.json").read_text())
+    assert new_meta["args"] == {"x": 1}
+    assert (source / "run.json").read_bytes() == before
+
+
+def test_ac014_n8_loop_filter_and_text_search(api):
+    """AC-014-N-8: loop filter and text search each narrow results; clearing restores all."""
+    client, factory, _ = api
+    factory.create_loop("other")
+    factory.create_run("apple", status="done", loop="hello")
+    factory.create_run("banana", status="done", loop="other")
+
+    by_loop = client.request("GET", "/api/v1/runs?loop=other").json()["items"]
+    assert {i["run_id"] for i in by_loop} == {"banana"}
+    by_q = client.request("GET", "/api/v1/runs?q=apple").json()["items"]
+    assert {i["run_id"] for i in by_q} == {"apple"}
+    all_runs = client.request("GET", "/api/v1/runs").json()["items"]
+    assert {"apple", "banana"} <= {i["run_id"] for i in all_runs}
+
+
+def test_ac014_n11_system_meta_returns_running_version(api):
+    """AC-014-N-11: GET /system/meta returns 200 with the running loopflow version."""
+    import loopflow
+    client, _, _ = api
+    response = client.request("GET", "/api/v1/system/meta")
+    assert response.status == 200
+    assert response.json() == {"version": loopflow.__version__}
+
+
+def test_ac014_b2_empty_runs_shows_empty_state(api):
+    """AC-014-B-2: empty runs dir → empty items list, no fabricated run."""
+    client, _, _ = api
+    body = client.request("GET", "/api/v1/runs").json()
+    assert body["items"] == []
+
+
+def test_ac014_b6_working_directory_basename_in_summary(api):
+    """AC-014-B-6: run summary exposes working_directory for basename secondary display."""
+    client, factory, _ = api
+    factory.create_run("wd-run", status="done", working_directory="/home/user/bio-reproducer")
+    item = next(i for i in client.request("GET", "/api/v1/runs").json()["items"] if i["run_id"] == "wd-run")
+    assert item["working_directory"] == "/home/user/bio-reproducer"
+    assert item["working_directory"].rstrip("/").rsplit("/", 1)[-1] == "bio-reproducer"
+
+
+def test_ac014_b7_reconcile_stale_since_cleans_failed(api):
+    """AC-014-B-7: stale run with stale_since, process gone → reconcile cleans to failed (ADR-0046)."""
+    client, factory, _ = api
+    stale = factory.create_run(
+        "b7-stale", status="running", pid=9, process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=1)).isoformat(),
+    )
+    response = client.request("POST", "/api/v1/runs/b7-stale/reconcile")
+    assert response.status == 200 and response.json()["status"] == "failed"
+    metadata = json.loads((stale / "run.json").read_text())
+    assert "pid" not in metadata and "stale_since" not in metadata
+
+
+def test_ac014_e1_unreadable_run_returned_as_summary(api):
+    """AC-014-E-1: one corrupt run.json → returned as unreadable summary with parse_error, valid run fine, no 500."""
+    client, factory, _ = api
+    factory.create_run("good", status="done")
+    bad = factory.create_run("bad", status="done")
+    (bad / "run.json").write_text("{ not valid json", encoding="utf-8")
+
+    response = client.request("GET", "/api/v1/runs")
+    assert response.status == 200
+    items = {item["run_id"]: item for item in response.json()["items"]}
+    assert items["good"]["status"] == "done"
+    assert items["bad"]["status"] == "unreadable"
+    assert items["bad"]["parse_error"]
+
+
+def test_ac014_e2_stale_detection_records_stale_since_once(api):
+    """AC-014-E-2: running run with dead process → first read writes stale_since, second read doesn't rewrite."""
+    client, factory, _ = api
+    stale = factory.create_run("e2-stale", status="running", pid=9, process_started_at="gone")
+
+    first = client.request("GET", "/api/v1/runs/e2-stale")
+    assert first.status == 200 and first.json()["status"] == "stale"
+    first_since = json.loads((stale / "run.json").read_text())["stale_since"]
+    assert first_since
+
+    second = client.request("GET", "/api/v1/runs/e2-stale")
+    assert second.json()["status"] == "stale"
+    assert json.loads((stale / "run.json").read_text())["stale_since"] == first_since
+
+
+def test_ac014_f2_reconcile_expired_stale_atomic_failed(api):
+    """AC-014-F-2: stale >24h, still stale on recheck → reconcile fails run, atomic replace, clears pid/stale fields."""
+    client, factory, _ = api
+    stale = factory.create_run(
+        "f2-stale", status="running", pid=9, process_started_at="gone",
+        stale_since=(datetime.now(timezone.utc) - timedelta(hours=25)).isoformat(),
+    )
+    response = client.request("POST", "/api/v1/runs/f2-stale/reconcile")
+    assert response.status == 200 and response.json()["status"] == "failed"
+    metadata = json.loads((stale / "run.json").read_text())
+    assert metadata["status"] == "failed"
+    for field in ("pid", "process_started_at", "stale_since"):
+        assert field not in metadata

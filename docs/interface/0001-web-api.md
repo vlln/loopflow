@@ -309,7 +309,7 @@ response 持久化成功后，后续恢复 worker/agent 失败按普通 Run exec
 
 无 body。200：相同 run_id、status=failed 的 `RunSummary`。
 
-错误：404 `run_not_found`；409 `run_not_stale`、`run_in_grace` 或 `process_alive`；500 `atomic_write_failed`。`run_in_grace` 的 `error.details.stale_since` 与 `error.details.grace_remaining_seconds` 分别给出计时起点和剩余秒数；不把 Run 改为 failed。
+错误：404 `run_not_found`；409 `run_not_stale` 或 `process_alive`；500 `atomic_write_failed`。进程探活确认死亡即清理为 `failed`（ADR-0046 修订：宽限期不阻塞 reconcile，`run_in_grace` 保留于错误映射表仅为向后兼容，不再触发）。
 
 ## 四、Run 事件
 
