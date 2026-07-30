@@ -5,7 +5,7 @@ DEVELOP 阶段执行容器。目标：将 0111 冻结的 89 场景 Web manifest 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
 | 01 | [AC-016 SSE 事件流](01-plan-ac016-sse.md) | [Report](01-report-ac016-sse.md) | done |
-| 02 | [AC-017 Loops + AC-018 Backends](02-plan-ac017-ac018.md) | 待完成后创建 | pending |
+| 02 | [AC-017 Loops + AC-018 Backends](02-plan-ac017-ac018.md) | [Report](02-report-ac017-ac018.md) | done |
 | 03 | [AC-014 Runs 工作台](03-plan-ac014-runs.md) | 待完成后创建 | pending |
 | 04 | [AC-015 AgentGraph](04-plan-ac015-agentgraph.md) | 待完成后创建 | pending |
 | 05 | [AC-019 布局与可访问性](05-plan-ac019-layout.md) | 待完成后创建 | pending |
