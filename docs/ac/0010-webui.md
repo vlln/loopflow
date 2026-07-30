@@ -2,7 +2,7 @@
 title: loopflow AC-0010 — 本地 WebUI 控制台
 description: 验收 Runs 主从工作台、AgentGraph 与 Call 过程、Loops 文件预览、Backend 诊断、SSE 恢复和本地安全边界。
 type: ac
-status: proposed
+status: active
 created: 2026-07-18T21:00:00Z
 ---
 

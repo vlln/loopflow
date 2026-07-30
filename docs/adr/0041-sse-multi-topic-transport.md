@@ -2,7 +2,7 @@
 title: ADR 0041 — SSE 多 topic 传输层
 description: 将 SSE 从 events.jsonl 管道重构为多路复用 transport，支持 run_event 和 file_changes 等 topic 各自独立游标，解耦传输与存储
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-23T14:00:00Z
 ---
 

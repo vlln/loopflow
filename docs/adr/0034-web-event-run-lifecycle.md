@@ -2,7 +2,7 @@
 title: ADR 0034 — Web 事件与 Run 生命周期契约
 description: 定义 events.jsonl v2 信封、Phase occurrence 关联、缓存边界、断线恢复、原子元数据写入和陈旧进程 reconcile
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-18T00:00:00Z
 ---
 

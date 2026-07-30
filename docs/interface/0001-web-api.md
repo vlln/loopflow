@@ -2,7 +2,7 @@
 title: loopflow Web API v1
 description: 本地 WebUI 的 REST 与 SSE 接口契约，覆盖 Runs、恢复、停止、人工介入、Loops、Queue、Backends 和事件续传。
 type: interface
-status: proposed
+status: active
 created: 2026-07-18T22:00:00Z
 ---
 

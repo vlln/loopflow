@@ -2,7 +2,7 @@
 title: loopflow Spec
 description: loopflow 核心功能规格：Agent 循环编排、可校验恢复、人工介入、本地 WebUI、ACP 可选传输、Agent waiting_input 控制协议与运行时追加 prompt（0.27.0）。
 type: spec
-status: proposed
+status: active
 version: 19
 created: 2026-07-07T12:00:00Z
 ---

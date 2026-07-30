@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` (0.27.0 Web 契约对齐) |
-| **设计评估** | 0109 已修复 Web manifest 无条件 planned 和节点校验缺陷，基础设施 81 passed、1 skipped，独立复审通过；strict 随后准确拒绝 54 个未完整覆盖场景。语义审查确认 AC-015/Spec 的 Phase 契约未同步 accepted ADR-0052，AC-014-E-2 与现行 stale 语义冲突，另有有效 Web AC 覆盖缺口。因此从 TEST_INFRA 转回 DESIGN；详见 0109 Report。0108 SYSTEM_TEST 保持 pending，已通过层不重跑。 |
+| **当前阶段** | `TEST_INFRA` (0.27.0 Web AgentGraph 增量基建) |
+| **设计评估** | 0110 已将 ADR-0052 传导至 Spec v19、AC-0010/0012、ADR-0033/0034/0041 与 Web Interface；独立审查全部 PASS，并经人类批量确认冻结。原 strict 54 个缺口保持诚实：17 个 AC-015 场景按 AgentGraph oracle 重评，37 个有效 Web 场景继续补覆盖，另新增 3 个场景。0108 SYSTEM_TEST 保持 pending，已通过层不重跑。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

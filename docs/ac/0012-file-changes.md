@@ -2,7 +2,7 @@
 title: loopflow AC-0012 — 工作目录文件变化观察
 description: 验收 Agent Call 完成边界快照 diff、file_changes.jsonl 持久化、与业务事件流分离、WebUI 文件变化展示
 type: ac
-status: proposed
+status: active
 created: 2026-07-23T12:00:00Z
 ---
 

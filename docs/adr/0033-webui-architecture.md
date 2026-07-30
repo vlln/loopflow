@@ -2,7 +2,7 @@
 title: ADR 0033 — 本地 WebUI 技术栈与分层
 description: 以 Python 标准库 HTTP server 提供 REST 与 SSE，以 React、TypeScript、Vite 构建本地单用户控制台
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-18T00:00:00Z
 ---
 
