@@ -65,3 +65,20 @@ def parse_sse(lines: Iterable[bytes]) -> list[dict[str, str]]:
             elif field in {"id", "event", "retry"}:
                 current[field] = value
     return events
+
+
+def split_sse_buffer(buffer: bytes) -> tuple[list[dict[str, str]], bytes]:
+    """Split a streaming SSE buffer into complete events and the incomplete tail.
+
+    Events are framed by blank lines; the remainder (a partial event without its
+    terminating blank line) is returned for the next chunk.
+    """
+    events: list[dict[str, str]] = []
+    while True:
+        indexes = [index for sep in (b"\r\n\r\n", b"\n\n") if (index := buffer.find(sep)) >= 0]
+        if not indexes:
+            return events, buffer
+        index = min(indexes)
+        frame = buffer[:index]
+        buffer = buffer[index:].lstrip(b"\r\n")
+        events.extend(parse_sse([*frame.splitlines(), b""]))

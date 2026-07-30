@@ -762,7 +762,7 @@
       "fixture": "Run 已有 event_id 1..10",
       "action": "不带游标订阅 SSE",
       "assertion": "按 1..10 重放 `event: run_event`，之后连接保持并推送新事件 11",
-      "test_node": "planned::ac-016-n-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac016_n1_sse_replay_then_live_push",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -834,7 +834,7 @@
       "fixture": "Run 已结束，最后 event_id=10",
       "action": "以 last_event_id=10 订阅",
       "assertion": "不重放旧事件；服务发送 `event: stream_end`（data 含 last_event_id=10）后关闭连接",
-      "test_node": "planned::ac-016-b-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac016_b1_sse_end_cursor_streams_end_without_replay",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -850,7 +850,7 @@
       "fixture": "100 条 1KB 事件连续落盘，单客户端订阅",
       "action": "记录落盘到 SSE 可读延迟",
       "assertion": "p95 < 500ms，event_id 顺序严格递增",
-      "test_node": "planned::ac-016-b-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac016_b2_sse_replay_latency_under_500ms",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -882,7 +882,7 @@
       "fixture": "服务端最大 event_id=10，客户端以 last_event_id=11 订阅",
       "action": "订阅 SSE",
       "assertion": "返回 410 JSON；body.error.code=`cursor_out_of_range`、body.error.details.max_event_id=10",
-      "test_node": "planned::ac-016-e-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac016_e1_sse_cursor_out_of_range_returns_410",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
@@ -899,7 +899,7 @@
       "fixture": "客户端重复收到同一 event_id",
       "action": "应用前端事件 reducer",
       "assertion": "状态只应用一次，不重复增加 Call 消息或边计数",
-      "test_node": "planned::ac-016-e-2",
+      "test_node": "web/src/eventReducer.test.ts::AC-016-E-2: applying the same event_id twice changes state only once",
       "targets": [
         "ui:event-reducer"
       ],
@@ -931,7 +931,7 @@
       "fixture": "run_id 不存在",
       "action": "订阅 SSE",
       "assertion": "返回 404，连接不进入重试循环",
-      "test_node": "planned::ac-016-f-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac016_f1_sse_unknown_run_returns_404",
       "targets": [
         "GET /api/v1/runs/{run_id}/events"
       ],
