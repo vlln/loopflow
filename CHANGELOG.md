@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.27.1] — 2026-07-30
+
+### Fixed
+- **`loopflow web` 返回 404 静态资源**（生产阻断性，0.27.0 发布遗漏）：0.27.0 发布时未将前端构建产物同步进 wheel，安装后 `loopflow web` 的 WebUI 全 404 `file_not_found`。修复：server 静态解析增加开发态兜底（包内 `static` 缺失时回退 `web/dist` 或 `LOOPFLOW_WEB_DIST` 环境变量），`uv run loopflow web` 不再依赖手动 `sync-web-assets.sh`。
+- **发布门禁补强**：`scripts/verify-wheel-assets.py` 新增端到端 smoke——起真实 `loopflow web` 服务 curl `/` 应 200，防止"wheel 有文件但服务不起来"再次漏过。回归测试 `tests/integration/test_web_static_serving.py` 固定此缺陷。
+
 ## [0.27.0] — 2026-07-30
 
 ### Added
