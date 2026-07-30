@@ -1739,3 +1739,38 @@ class TestGoalMode:
             )):
                 with pytest.raises(AgentError, match="exit code 1"):
                     agent("task", goal="Do it")
+
+
+class TestParallelEventAttribution:
+    """Regression 0.27.1: parallel agents' agent_message events must carry each
+    thread's own call_id, not a shared last-written value (event串线)."""
+
+    def test_parallel_agent_messages_keep_thread_local_call_id(self, temp_run_dir):
+        import json as _json
+        import time
+        from loopflow.infrastructure.context import _write_event
+        from loopflow.runtime import RunContext, parallel, set_context
+
+        ctx = RunContext(run_id="parallel-msg", run_dir=temp_run_dir)
+        set_context(ctx)
+        seen = {}
+
+        def thunk(idx):
+            ctx.next_session()  # sets thread-local current_call_id
+            cid = ctx.current_call_id
+            # barrier so both threads are mid-flight together
+            time.sleep(0.02 if idx == 0 else 0.01)
+            _write_event({"type": "agent_message", "content": f"msg-{idx}"})
+            seen[idx] = cid
+
+        parallel([lambda: thunk(0), lambda: thunk(1)])
+
+        rows = [_json.loads(line) for line in (temp_run_dir / "events.jsonl").read_text().splitlines()]
+        messages = [r for r in rows if r.get("type") == "agent_message"]
+        assert len(messages) == 2
+        for row in messages:
+            idx = int(row["payload"]["content"].split("-")[1])
+            assert row["call_id"] == seen[idx], (
+                f"agent_message {row['payload']} carried call_id {row['call_id']} "
+                f"but thread {idx} own call_id is {seen[idx]} (串线)"
+            )

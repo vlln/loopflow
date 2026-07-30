@@ -79,7 +79,7 @@ class RunContext:
         self._counter = counter
         self._counter_lock = threading.Lock()
         self._call_namespace = threading.local()
-        self._current_call_id: str | None = None
+        self._fallback_call_id: str | None = None
         self.default_backend: str | None = None
         self.default_model: str | None = None
         self.live = live
@@ -118,8 +118,10 @@ class RunContext:
         call_id = self.next_call_id()
         session_suffix = str(int(call_id)) if "." not in call_id else call_id
         session = f"wf_{self.run_id}_{session_suffix}"
-        self._current_call_id = call_id
+        # Store on the thread-local namespace so concurrent parallel workers
+        # each carry their own call_id (regression: shared attr串线).
         self._call_namespace.current_call_id = call_id
+        self._fallback_call_id = call_id
         self._publish_active_call(call_id)
         return session
 
@@ -148,8 +150,18 @@ class RunContext:
         self._call_namespace.counter = 0
 
     @property
+    def _current_call_id(self) -> str | None:
+        """The active call_id for the *current thread*.
+
+        Parallel workers each set their own via next_session on a thread-local,
+        so agent events emitted from a worker carry that worker's call_id
+        (regression: a shared attribute let workers overwrite each other).
+        """
+        return getattr(self._call_namespace, "current_call_id", None) or self._fallback_call_id
+
+    @property
     def current_call_id(self) -> str:
-        call_id = getattr(self._call_namespace, "current_call_id", self._current_call_id)
+        call_id = getattr(self._call_namespace, "current_call_id", None) or self._fallback_call_id
         if call_id is None:
             raise RuntimeError("No current Call")
         return call_id

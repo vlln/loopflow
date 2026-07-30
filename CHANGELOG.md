@@ -3,6 +3,7 @@
 ## [0.27.1] — 2026-07-30
 
 ### Fixed
+- **并行 Agent 事件 call_id 串线**（生产阻断性，deep-research 实跑暴露）：parallel 多个 Agent 并发时，`agent_message` 等事件的 `call_id` 被标成其他 worker 的——根因是 context 的 `_current_call_id` 是共享实例属性，并发 worker 互相覆盖。修复：改为读线程局部 `_call_namespace.current_call_id`（`threading.local`），每个 worker 各自携带自己的 call_id。回归测试 `tests/unit/test_runtime.py::TestParallelEventAttribution` 固定。
 - **`loopflow web` 返回 404 静态资源**（生产阻断性，0.27.0 发布遗漏）：0.27.0 发布时未将前端构建产物同步进 wheel，安装后 `loopflow web` 的 WebUI 全 404 `file_not_found`。修复：server 静态解析增加开发态兜底（包内 `static` 缺失时回退 `web/dist` 或 `LOOPFLOW_WEB_DIST` 环境变量），`uv run loopflow web` 不再依赖手动 `sync-web-assets.sh`。
 - **发布门禁补强**：`scripts/verify-wheel-assets.py` 新增端到端 smoke——起真实 `loopflow web` 服务 curl `/` 应 200，防止"wheel 有文件但服务不起来"再次漏过。回归测试 `tests/integration/test_web_static_serving.py` 固定此缺陷。
 
