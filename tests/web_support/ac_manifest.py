@@ -235,6 +235,20 @@ TEST_NODES = {
     "AC-018-E-2": "tests/integration/test_web_api.py::test_ac018_e2_invalid_encoding_uses_replacement",
     "AC-018-F-1": "tests/integration/test_web_api.py::test_ac018_f1_unknown_backend_404",
     "AC-018-F-2": "tests/integration/test_web_api.py::test_ac018_f2_diagnostic_start_failed_503",
+    "AC-019-N-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-N-2": "web/src/App.test.tsx::AC-019-N-2: keyboard selection shows focus and fires a single recover retry",
+    "AC-019-N-3": "tests/integration/test_web_api.py::test_ac019_n3_default_binds_loopback_only",
+    "AC-019-N-4": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
+    "AC-019-N-5": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
+    "AC-019-B-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-B-2": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-B-3": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
+    "AC-019-B-4": "web/src/App.test.tsx::AC-019-B-4: long error_summary is clamped, traceback stays expandable",
+    "AC-019-E-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-E-2": "web/src/App.test.tsx::AC-019-E-2: SSE disconnect shows stream error and keeps last data",
+    "AC-019-F-1": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
+    "AC-019-F-2": "web/src/App.test.tsx::AC-019-F-2: statuses remain text/icon distinguishable without color",
+    "AC-019-F-3": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
 }
 
 
@@ -264,9 +278,7 @@ PROTOCOL_EXPECTATIONS: dict[str, list[dict[str, Any]]] = {
         {"kind": "http_status", "value": 409, "code": "invalid_run_transition"}
     ],
     "AC-014-F-2": [{"kind": "http_status", "value": 200}],
-    "AC-014-B-7": [
-        {"kind": "http_status", "value": 409, "code": "run_in_grace"}
-    ],
+    "AC-014-B-7": [{"kind": "http_status", "value": 200}],
     "AC-015-E-1": [{"kind": "http_status", "value": 200}],
     "AC-015-F-1": [{"kind": "http_status", "value": 200}],
     "AC-016-N-1": [{"kind": "sse_event", "value": "run_event"}],

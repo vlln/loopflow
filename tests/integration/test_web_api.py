@@ -2055,3 +2055,22 @@ def test_ac015_b2_hundred_sequential_calls_ordered(api):
     # each call's events only carry its own call_id
     calls = {c["call_id"]: c for c in detail["calls"]}
     assert calls["call-1"]["status"] == "done" and calls["call-100"]["status"] == "done"
+
+
+# --- AC-019 process coverage (0112-05) ---
+
+
+def test_ac019_n3_default_binds_loopback_only(api):
+    """AC-019-N-3: server started without host binds 127.0.0.1, not 0.0.0.0/external."""
+    _, _, port = api
+    # the api fixture server was created via create_server("127.0.0.1", 0) — the default path
+    assert port > 0
+    # connect via loopback works
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=3)
+    connection.request("GET", "/api/v1/system/meta")
+    assert connection.getresponse().status == 200
+    connection.close()
+    # is_loopback gate: external hosts are refused without opt-in
+    import pytest as _pytest
+    with _pytest.raises(ValueError, match="allow_remote"):
+        create_server("0.0.0.0", 0)

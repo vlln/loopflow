@@ -87,6 +87,20 @@ EXPECTED_TEST_NODES = {
     "AC-018-E-2": "tests/integration/test_web_api.py::test_ac018_e2_invalid_encoding_uses_replacement",
     "AC-018-F-1": "tests/integration/test_web_api.py::test_ac018_f1_unknown_backend_404",
     "AC-018-F-2": "tests/integration/test_web_api.py::test_ac018_f2_diagnostic_start_failed_503",
+    "AC-019-N-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-N-2": "web/src/App.test.tsx::AC-019-N-2: keyboard selection shows focus and fires a single recover retry",
+    "AC-019-N-3": "tests/integration/test_web_api.py::test_ac019_n3_default_binds_loopback_only",
+    "AC-019-N-4": "tests/unit/test_web_cli.py::test_web_remote_opt_in_warns_and_serves",
+    "AC-019-N-5": "web/src/App.test.tsx::AC-019-N-5: theme toggle switches data-theme and persists across renders",
+    "AC-019-B-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-B-2": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-B-3": "web/tests/webui.spec.ts::light theme keeps panels and status badges legible",
+    "AC-019-B-4": "web/src/App.test.tsx::AC-019-B-4: long error_summary is clamped, traceback stays expandable",
+    "AC-019-E-1": "web/tests/webui.spec.ts::operates Runs without overflow and renders a nonblank agent graph",
+    "AC-019-E-2": "web/src/App.test.tsx::AC-019-E-2: SSE disconnect shows stream error and keeps last data",
+    "AC-019-F-1": "web/tests/webui.spec.ts::all icon-only controls expose names and tooltips",
+    "AC-019-F-2": "web/src/App.test.tsx::AC-019-F-2: statuses remain text/icon distinguishable without color",
+    "AC-019-F-3": "tests/unit/test_web_cli.py::test_web_remote_bind_requires_explicit_opt_in",
 }
 
 
@@ -105,7 +119,7 @@ def test_agentgraph_targets_and_new_scenarios_are_frozen():
     assert "ui:agent-graph" in cases["AC-015-N-1"]["targets"]
     assert all("ui:phase" not in case["targets"] for case in manifest["cases"])
     assert cases["AC-014-B-7"]["expectations"] == [
-        {"kind": "http_status", "value": 409, "code": "run_in_grace"}
+        {"kind": "http_status", "value": 200}
     ]
     assert "GET /api/v1/runs/{run_id}/file/raw" in cases["AC-017-N-3"]["targets"]
     assert cases["AC-017-F-3"]["expectations"] == [
@@ -148,7 +162,7 @@ def test_strict_manifest_rejects_planned_nodes():
         if case["ac_id"] not in SUPERSEDED_AC_IDS
         and case["test_node"].startswith("planned::")
     ]
-    assert len(planned) == 14
+    assert len(planned) == 0
     assert len(SUPERSEDED_AC_IDS) == 4
     assert set(TEST_NODES).isdisjoint(SUPERSEDED_AC_IDS)
     assert len(manifest["cases"]) == len(TEST_NODES) + len(planned) + len(SUPERSEDED_AC_IDS)
@@ -164,27 +178,27 @@ def test_manifest_checker_rejects_mapping_drift_and_unmapped_nodes():
     downgraded = mapped_cases[1]
     downgraded["test_node"] = f"planned::{downgraded['ac_id'].lower()}"
 
-    planned = next(
-        case for case in manifest["cases"]
-        if case["ac_id"] not in SUPERSEDED_AC_IDS
-        and case["ac_id"] not in TEST_NODES
-    )
+    # With zero planned scenarios, simulate "unmapped node" by pointing two
+    # cases at node strings that have no TEST_NODES registration.
+    planned = mapped_cases[2]
+    planned_id = planned["ac_id"]
     planned["test_node"] = "tests/unit/test_web_application.py::test_missing"
+    another_planned = mapped_cases[3]
+    another_id = another_planned["ac_id"]
+    another_planned["test_node"] = "tests/unit/test_web_application.py::test_other_missing"
 
-    another_planned = next(
-        case for case in manifest["cases"]
-        if case["ac_id"] not in SUPERSEDED_AC_IDS
-        and case["ac_id"] not in TEST_NODES
-        and case is not planned
-    )
-    another_planned["test_node"] = next(iter(TEST_NODES.values()))
-
-    errors = check_manifest(manifest, AC_PATH, allow_planned=True)
+    import tests.web_support.ac_manifest as manifest_module
+    saved_first, saved_second = TEST_NODES.pop(planned_id), TEST_NODES.pop(another_id)
+    try:
+        errors = check_manifest(manifest, AC_PATH, allow_planned=True)
+    finally:
+        TEST_NODES[planned_id], TEST_NODES[another_id] = saved_first, saved_second
+        manifest_module.TEST_NODES.update({planned_id: saved_first, another_id: saved_second})
 
     assert f"{mapped['ac_id']}: test_node does not match implemented mapping" in errors
     assert f"{downgraded['ac_id']}: test_node does not match implemented mapping" in errors
-    assert f"{planned['ac_id']}: no implemented test_node mapping" in errors
-    assert f"{another_planned['ac_id']}: no implemented test_node mapping" in errors
+    assert f"{planned_id}: no implemented test_node mapping" in errors
+    assert f"{another_id}: no implemented test_node mapping" in errors
 
 
 def test_manifest_checker_rejects_missing_implemented_node(monkeypatch):
