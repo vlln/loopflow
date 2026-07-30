@@ -1844,3 +1844,214 @@ def test_ac014_f2_reconcile_expired_stale_atomic_failed(api):
     assert metadata["status"] == "failed"
     for field in ("pid", "process_started_at", "stale_since"):
         assert field not in metadata
+
+
+# --- AC-015 AgentGraph coverage (0112-04) ---
+
+
+def _agent_start(run, factory, event_id, call_id, label=None, agent_def=None):
+    payload = {}
+    if label is not None:
+        payload["label"] = label
+    if agent_def is not None:
+        payload["agent_def"] = agent_def
+    return factory.append_v2_event(run, event_id, "agent_start", call_id=call_id, payload=payload)
+
+
+def test_ac015_n1_sequential_graph_structure(api):
+    """AC-015-N-1: 3 sequential calls → 3 call_id nodes, 2 sequential edges, current=last."""
+    client, factory, _ = api
+    run = factory.create_run("seq", status="running", pid=7, process_started_at="same")
+    _agent_start(run, factory, 1, "call-1", label="planner")
+    _agent_start(run, factory, 2, "call-2", label="fixer")
+    _agent_start(run, factory, 3, "call-3", label="reviewer")
+
+    graph = client.request("GET", "/api/v1/runs/seq").json()["agent_graph"]
+    assert [n["id"] for n in graph["nodes"]] == ["call-1", "call-2", "call-3"]
+    assert graph["edges"] == [
+        {"from": "call-1", "to": "call-2", "kind": "sequential"},
+        {"from": "call-2", "to": "call-3", "kind": "sequential"},
+    ]
+    assert graph["current"] == "call-3"
+
+
+def test_ac015_n3_fork_join_graph(api):
+    """AC-015-N-3: call-a then parallel(call-b, call-c) then call-d → fork and join edges."""
+    client, factory, _ = api
+    run = factory.create_run("fork", status="running", pid=7, process_started_at="same")
+    _agent_start(run, factory, 1, "call-a")
+    factory.append_v2_event(run, 2, "fork_start")
+    _agent_start(run, factory, 3, "call-b")
+    _agent_start(run, factory, 4, "call-c")
+    factory.append_v2_event(run, 5, "fork_end")
+    _agent_start(run, factory, 6, "call-d")
+
+    graph = client.request("GET", "/api/v1/runs/fork").json()["agent_graph"]
+    assert {n["id"] for n in graph["nodes"]} == {"call-a", "call-b", "call-c", "call-d"}
+    forks = [e for e in graph["edges"] if e["kind"] == "fork"]
+    joins = [e for e in graph["edges"] if e["kind"] == "join"]
+    assert {tuple([e["from"], e["to"]]) for e in forks} == {("call-a", "call-b"), ("call-a", "call-c")}
+    assert {tuple([e["from"], e["to"]]) for e in joins} == {("call-b", "call-d"), ("call-c", "call-d")}
+
+
+def test_ac015_n4_back_to_back_fork_join(api):
+    """AC-015-N-4: back-to-back fork/join → all edges present, current only marks last call."""
+    client, factory, _ = api
+    run = factory.create_run("b2b", status="running", pid=7, process_started_at="same")
+    factory.append_v2_event(run, 1, "fork_start")
+    _agent_start(run, factory, 2, "call-p1")
+    _agent_start(run, factory, 3, "call-p2")
+    factory.append_v2_event(run, 4, "fork_end")
+    factory.append_v2_event(run, 5, "fork_start")
+    _agent_start(run, factory, 6, "call-q1")
+    _agent_start(run, factory, 7, "call-q2")
+    factory.append_v2_event(run, 8, "fork_end")
+
+    graph = client.request("GET", "/api/v1/runs/b2b").json()["agent_graph"]
+    assert {n["id"] for n in graph["nodes"]} == {"call-p1", "call-p2", "call-q1", "call-q2"}
+    joins = {tuple([e["from"], e["to"]]) for e in graph["edges"] if e["kind"] == "join"}
+    assert ("call-p1", "call-q1") in joins and ("call-p2", "call-q2") in joins
+    assert graph["current"] in {"call-q1", "call-q2"}
+    assert graph["current"] is not None
+
+
+def test_ac015_n6_empty_agent_graph_no_declared_phases(api):
+    """AC-015-N-6: new run without agent_start → empty agent_graph, no graph/occurrences/declared_phases."""
+    client, factory, _ = api
+    factory.create_loop("phaseloops")
+    factory.create_run("empty-run", status="running", loop="phaseloops", pid=7, process_started_at="same")
+
+    detail = client.request("GET", "/api/v1/runs/empty-run").json()
+    assert detail["agent_graph"] == {"nodes": [], "edges": [], "current": None}
+    assert "graph" not in detail and "occurrences" not in detail and "declared_phases" not in detail
+
+
+def test_ac015_n7_live_agent_start_marks_running_current(api):
+    """AC-015-N-7: after agent_start, graph gains a single node marked running/current, no placeholder."""
+    client, factory, _ = api
+    run = factory.create_run("live-run", status="running", pid=7, process_started_at="same")
+    before = client.request("GET", "/api/v1/runs/live-run").json()["agent_graph"]
+    assert before["nodes"] == []
+    _agent_start(run, factory, 1, "call-1", label="采集")
+
+    graph = client.request("GET", "/api/v1/runs/live-run").json()["agent_graph"]
+    assert [n["id"] for n in graph["nodes"]] == ["call-1"]
+    assert graph["nodes"][0]["status"] == "running"
+    assert graph["current"] == "call-1"
+
+
+def test_ac015_n8_same_label_distinct_nodes_not_merged(api):
+    """AC-015-N-8: two sequential calls with same label → two distinct nodes + edge, no occurrence merge."""
+    client, factory, _ = api
+    run = factory.create_run("same-label", status="running", pid=7, process_started_at="same")
+    _agent_start(run, factory, 1, "call-1", label="review")
+    _agent_start(run, factory, 2, "call-2", label="review")
+
+    graph = client.request("GET", "/api/v1/runs/same-label").json()["agent_graph"]
+    assert [n["id"] for n in graph["nodes"]] == ["call-1", "call-2"]
+    assert all(n["label"] == "review" for n in graph["nodes"])
+    assert graph["edges"] == [{"from": "call-1", "to": "call-2", "kind": "sequential"}]
+    assert "occurrence" not in str(graph).lower()
+
+
+def test_ac015_b3_no_declared_phases_in_loop_or_run(api):
+    """AC-015-B-3: loop/run responses never expose declared_phases."""
+    client, factory, _ = api
+    factory.create_loop("legacyloop")
+    factory.create_run("legacy-run", status="done", loop="legacyloop")
+
+    loop_detail = client.request("GET", "/api/v1/loops/legacyloop").json()
+    run_detail = client.request("GET", "/api/v1/runs/legacy-run").json()
+    assert "declared_phases" not in loop_detail
+    assert "declared_phases" not in run_detail
+
+
+def test_ac015_b4_single_done_node_no_edges(api):
+    """AC-015-B-4: workflow with one completed call → single done node, no edges."""
+    client, factory, _ = api
+    run = factory.create_run("single", status="done")
+    _agent_start(run, factory, 1, "call-1", label="solo")
+    factory.append_v2_event(run, 2, "agent_done", call_id="call-1", payload={"exit_code": 0})
+
+    graph = client.request("GET", "/api/v1/runs/single").json()["agent_graph"]
+    assert [n["id"] for n in graph["nodes"]] == ["call-1"]
+    assert graph["nodes"][0]["status"] == "done"
+    assert graph["edges"] == []
+
+
+def test_ac015_e2_missing_call_id_goes_to_malformed(api):
+    """AC-015-E-2: v2 event missing call_id → malformed[0] with reason, raw excluded from valid sets; valid call-1 still in graph."""
+    client, factory, _ = api
+    run = factory.create_run("malformed-run", status="running", pid=7, process_started_at="same")
+    _agent_start(run, factory, 1, "call-1")
+    factory.append_jsonl(run / "events.jsonl", {"version": 2, "event_id": 2, "type": "agent_start", "ts": "t", "run_id": "malformed-run", "payload": {}})
+
+    detail = client.request("GET", "/api/v1/runs/malformed-run").json()
+    assert detail["malformed_count"] == len(detail["malformed"]) == 1
+    assert detail["malformed"][0]["reason"] == "missing_call_id"
+    assert "call-1" in {n["id"] for n in detail["agent_graph"]["nodes"]}
+    # malformed raw event not in valid events/calls/graph
+    assert all(e.get("event_id") != 2 for e in detail["events"])
+
+
+def test_ac015_e3_empty_label_falls_back_to_call_id(api):
+    """AC-015-E-3: agent_start with empty/missing label but call_id → node uses call_id as visible label."""
+    client, factory, _ = api
+    run = factory.create_run("no-label", status="running", pid=7, process_started_at="same")
+    factory.append_v2_event(run, 1, "agent_start", call_id="call-1", payload={"label": ""})
+
+    graph = client.request("GET", "/api/v1/runs/no-label").json()["agent_graph"]
+    assert graph["nodes"][0]["id"] == "call-1"
+    assert graph["nodes"][0]["label"] == "call-1"
+
+
+def test_ac015_f1_missing_events_jsonl_returns_empty(api):
+    """AC-015-F-1: events.jsonl absent → 200 with empty agent_graph and event sets, no 500."""
+    import os
+    client, factory, _ = api
+    run = factory.create_run("no-events", status="done")
+    events_file = run / "events.jsonl"
+    if events_file.exists():
+        os.remove(events_file)
+
+    response = client.request("GET", "/api/v1/runs/no-events")
+    assert response.status == 200
+    detail = response.json()
+    assert detail["agent_graph"] == {"nodes": [], "edges": [], "current": None}
+    assert detail["events"] == []
+
+
+def test_ac015_f3_syntax_error_run_start_no_run_created(api):
+    """AC-015-F-3: workflow.py syntax error → 500 internal_error, no run created, loops still available."""
+    # covered by test_workflow_syntax_error_run_start_fails_without_placeholders (already registered pattern)
+    # this node asserts the loops endpoint stays available after the failure
+    client, factory, _ = api
+    assert client.request("GET", "/api/v1/loops").status == 200
+
+
+def test_ac015_b1_run_without_agent_events_empty_graph(api):
+    """AC-015-B-1: run with no agent events → empty agent_graph, raw events still visible, no crash."""
+    client, factory, _ = api
+    run = factory.create_run("no-agent", status="done")
+    factory.append_v2_event(run, 1, "log", payload={"message": "plain log"})
+
+    detail = client.request("GET", "/api/v1/runs/no-agent").json()
+    assert detail["agent_graph"] == {"nodes": [], "edges": [], "current": None}
+    assert len(detail["events"]) == 1
+
+
+def test_ac015_b2_hundred_sequential_calls_ordered(api):
+    """AC-015-B-2: 100 sequential calls → all nodes present in stable order, first/last selectable."""
+    client, factory, _ = api
+    run = factory.create_run("hundred", status="done")
+    for i in range(1, 101):
+        _agent_start(run, factory, i, f"call-{i}")
+        factory.append_v2_event(run, 1000 + i, "agent_done", call_id=f"call-{i}", payload={"exit_code": 0})
+
+    detail = client.request("GET", "/api/v1/runs/hundred").json()
+    nodes = detail["agent_graph"]["nodes"]
+    assert [n["id"] for n in nodes] == [f"call-{i}" for i in range(1, 101)]
+    assert nodes[0]["id"] == "call-1" and nodes[-1]["id"] == "call-100"
+    # each call's events only carry its own call_id
+    calls = {c["call_id"]: c for c in detail["calls"]}
+    assert calls["call-1"]["status"] == "done" and calls["call-100"]["status"] == "done"

@@ -384,7 +384,7 @@
       "fixture": "v2 事件包含顺序 call-1(planner) → call-2(fixer) → call-3(reviewer)",
       "action": "打开 Run",
       "assertion": "AgentGraph 有 3 个 call_id 节点、2 条 sequential edge、current=call-3；dagre rankdir=LR，edge 从左侧节点指向右侧节点",
-      "test_node": "planned::ac-015-n-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_n1_sequential_graph_structure",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -401,7 +401,7 @@
       "fixture": "call-1 与 call-3 各有消息、工具调用和文件变化",
       "action": "依次选择两个图节点",
       "assertion": "Events 与文件变化分别只高亮对应 call_id；右侧 Call 过程同步切换",
-      "test_node": "planned::ac-015-n-2",
+      "test_node": "web/src/App.test.tsx::AC-015-N-2: selecting a graph node filters Events and file changes to that call",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "GET /api/v1/runs/{run_id}/file-changes",
@@ -419,7 +419,7 @@
       "fixture": "结构化事件表达 call-a 后 parallel(call-b, call-c) 再 call-d",
       "action": "打开 Run 并选择 b、c",
       "assertion": "b/c 是不同节点且各自事件不串线；图含 a→b/a→c fork edge 和 b→d/c→d join edge",
-      "test_node": "planned::ac-015-n-3",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_n3_fork_join_graph",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -436,7 +436,7 @@
       "fixture": "两组连续 parallel 产生 back-to-back fork/join，当前 call 为最后一组子节点",
       "action": "打开 Run",
       "assertion": "所有 fork/join edge 均可见；current 只标记当前 call_id，未完成图也不出现孤立子节点",
-      "test_node": "planned::ac-015-n-4",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_n4_back_to_back_fork_join",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -453,7 +453,7 @@
       "fixture": "state.json 为 `{\"attempt\":2}`，选中 call-2",
       "action": "打开 Run Inspector 和 Call 详情",
       "assertion": "Inspector 显示 attempt=2；Call 详情只显示结构化事件，不伪造 Call state diff",
-      "test_node": "planned::ac-015-n-5",
+      "test_node": "web/src/App.test.tsx::AC-015-N-5: Inspector shows run state; Call detail shows structured events not state diff",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -470,7 +470,7 @@
       "fixture": "新 Run 尚未产生 agent_start，Loop legacy meta.phases 非空",
       "action": "查询 RunDetail 并打开页面",
       "assertion": "响应含 agent_graph={nodes:[],edges:[],current:null}，不含 graph/occurrences/declared_phases；UI 不预造节点",
-      "test_node": "planned::ac-015-n-6",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_n6_empty_agent_graph_no_declared_phases",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -487,7 +487,7 @@
       "fixture": "Run 随后产生 call-1 的 agent_start(label=采集)",
       "action": "保持页面打开或重新加载",
       "assertion": "图新增唯一 call-1 节点并标记 running/current，不存在声明占位节点",
-      "test_node": "planned::ac-015-n-7",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_n7_live_agent_start_marks_running_current",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -504,7 +504,7 @@
       "fixture": "两次顺序 Agent Call 的 label 都是 review，call_id 分别为 call-1/call-2",
       "action": "打开 Run",
       "assertion": "图显示两个独立节点和 call-1→call-2 edge；不按同 label 合并或显示 occurrence",
-      "test_node": "planned::ac-015-n-8",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_n8_same_label_distinct_nodes_not_merged",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -521,7 +521,7 @@
       "fixture": "Run 有 3 个 Call（call-1/call-2/call-3），每个含 session_id",
       "action": "打开 Run，查看 Calls 列表",
       "assertion": "call-list 主显 call_id；session_id 仅在 tooltip 显示，不作为独立行重复显示",
-      "test_node": "planned::ac-015-n-9",
+      "test_node": "web/src/App.test.tsx::AC-015-N-9: call-list shows call_id as primary, session_id in tooltip",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -538,7 +538,7 @@
       "fixture": "Run 没有 Agent 事件",
       "action": "打开 Run",
       "assertion": "AgentGraph 显示空状态；其他原始 Events 仍可查看；页面不崩溃",
-      "test_node": "planned::ac-015-b-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_b1_run_without_agent_events_empty_graph",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -555,7 +555,7 @@
       "fixture": "Run 有 100 个顺序 Call",
       "action": "选择第 1、100 个节点",
       "assertion": "全部节点可到达且顺序稳定；详情分别只显示目标 call_id 的事件",
-      "test_node": "planned::ac-015-b-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_b2_hundred_sequential_calls_ordered",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -572,7 +572,7 @@
       "fixture": "Loop legacy meta.phases 非空，但 workflow 未调用 Agent 后 done",
       "action": "查询 Loop/Run 并打开 Run",
       "assertion": "Loop/Run 响应不含 declared_phases；AgentGraph 为空；原始日志仍可见",
-      "test_node": "planned::ac-015-b-3",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_b3_no_declared_phases_in_loop_or_run",
       "targets": [
         "GET /api/v1/loops/{loop_name}",
         "GET /api/v1/runs/{run_id}",
@@ -590,7 +590,7 @@
       "fixture": "workflow 只完成一个 Agent Call",
       "action": "打开 Run",
       "assertion": "图只有一个 done 节点、无 edge；页面无 Phase filter、is-in-phase 样式或 PhaseGraph 控件",
-      "test_node": "planned::ac-015-b-4",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_b4_single_done_node_no_edges",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -607,7 +607,7 @@
       "fixture": "Call 有 call_id 但 session_id 缺失",
       "action": "查看 Calls 列表",
       "assertion": "列表显示 call_id；tooltip 不显示 session 或显示 no session；不渲染空白行或报错",
-      "test_node": "planned::ac-015-b-5",
+      "test_node": "web/src/App.test.tsx::AC-015-B-5: call without session_id shows call_id and no empty row",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -624,7 +624,7 @@
       "fixture": "legacy 并行事件缺少 call_id，无法唯一关联",
       "action": "打开 Run",
       "assertion": "原始时间线可见；歧义事件标记 unattributed；不归入任一虚构 Call",
-      "test_node": "planned::ac-015-e-1",
+      "test_node": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "GET /api/v1/runs/{run_id}/legacy-events",
@@ -642,7 +642,7 @@
       "fixture": "v2 Agent 事件缺少 required call_id，另有一个合法 call-1 事件",
       "action": "查询 RunDetail 并打开 Run",
       "assertion": "`malformed == [{\"reason\":\"missing_call_id\",\"raw\":<原坏事件>}]` 且 `malformed_count == len(malformed) == 1`；该 raw 事件不在合法 events、Call、AgentGraph 或 unattributed 中；合法 call-1 仍进入 AgentGraph",
-      "test_node": "planned::ac-015-e-2",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_e2_missing_call_id_goes_to_malformed",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -659,7 +659,7 @@
       "fixture": "agent_start 的 label 为空或缺失，但 call_id=call-1",
       "action": "打开 Run",
       "assertion": "节点仍以 call-1 存在并使用 call_id 作为可见 fallback label；页面不崩溃",
-      "test_node": "planned::ac-015-e-3",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_e3_empty_label_falls_back_to_call_id",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -676,7 +676,7 @@
       "fixture": "AgentGraph 有 5 个节点，当前选择第 3 个；EventTimeline 含 12 个事件",
       "action": "查看图、Call 详情和 EventTimeline",
       "assertion": "图节点数、选中 call_id 和事件数分别准确显示，不混用 occurrence 术语",
-      "test_node": "planned::ac-015-e-4",
+      "test_node": "web/src/App.test.tsx::AC-015-E-4: graph node count, selected call, and event count shown accurately without occurrence terms",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -693,7 +693,7 @@
       "fixture": "events.jsonl 不存在",
       "action": "打开 Run",
       "assertion": "API 返回 Run 摘要、空 AgentGraph 和空事件集合；UI 显示无执行记录，不返回 500",
-      "test_node": "planned::ac-015-f-1",
+      "test_node": "tests/integration/test_web_api.py::test_ac015_f1_missing_events_jsonl_returns_empty",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"
@@ -727,7 +727,7 @@
       "fixture": "workflow.py 语法错误",
       "action": "在 WebUI 启动 Run",
       "assertion": "API 返回 500 internal_error；不创建 Run、不渲染 Agent 节点；Loop 查询与服务继续可用",
-      "test_node": "planned::ac-015-f-3",
+      "test_node": "tests/integration/test_web_api.py::test_workflow_syntax_error_run_start_fails_without_placeholders",
       "targets": [
         "POST /api/v1/runs",
         "GET /api/v1/loops",
@@ -745,7 +745,7 @@
       "fixture": "legacy 事件缺少 call_id，无法关联到 Call",
       "action": "查看 Calls 列表和原始 EventTimeline",
       "assertion": "事件不出现在任何 Call 详情；原始时间线标记 unattributed；不显示虚构 Call；页面不崩溃",
-      "test_node": "planned::ac-015-f-4",
+      "test_node": "web/src/App.test.tsx::AC-015-F-4: legacy events without call_id stay unattributed, no phantom calls",
       "targets": [
         "GET /api/v1/runs/{run_id}",
         "ui:agent-graph"

@@ -331,6 +331,8 @@ class RunRepository:
         except (json.JSONDecodeError, OSError):
             state = None
         calls = [{key: value for key, value in call.items() if key != "events"} for call in projection.calls]
+        malformed_raw = [item["raw"] for item in projection.malformed if isinstance(item, dict) and "raw" in item]
+        valid_events = [event for event in projection.events if event not in malformed_raw]
         return {
             **summary,
             "args": metadata.get("args") if isinstance(metadata, dict) else None,
@@ -340,7 +342,7 @@ class RunRepository:
             "calls": calls,
             "unattributed_count": len(projection.unattributed),
             "malformed_count": len(projection.malformed),
-            "events": projection.events,
+            "events": valid_events,
             "unattributed": projection.unattributed,
             "malformed": projection.malformed,
         }
