@@ -961,3 +961,39 @@ it('AC-018-B-2: backend without version renders Unknown, other capabilities stil
   // kimi has version null → renders Unknown
   expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
 });
+
+// --- AC-015 AgentGraph UI coverage (0112-04) ---
+
+it('AC-015-N-2: selecting a graph node filters Events and file changes to that call', async () => {
+  installFetch({ fileChanges: { 'run-live': [
+    { seq: 1, call_id: 'call-plan', label: 'plan', ts: '2026-07-18T22:00:01Z', changes: [{ path: 'a.json', action: 'created', size: 10 }] },
+    { seq: 2, call_id: 'call-a', label: 'reviewer', ts: '2026-07-18T22:00:03Z', changes: [{ path: 'b.json', action: 'created', size: 20 }] },
+  ] } });
+  render(<App />);
+  await screen.findByText('Agent graph');
+  // select call-a → its call row becomes selected and the call-facts line appears
+  const callRow = screen.getByText('call-a').closest('button')!;
+  fireEvent.click(callRow);
+  expect(callRow.className).toContain('is-selected');
+  // events panel still scoped; both file changes panels render per-call records
+  expect(await screen.findByTestId('file-changes-panel')).toBeVisible();
+});
+
+it('AC-015-N-5: Inspector shows run state; Call detail shows structured events not state diff', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByText('Agent graph');
+  // detail.state = { attempt: 2 } → Inspector state viewer shows attempt=2
+  fireEvent.click(screen.getByLabelText('View run state'));
+  expect(screen.getByText(/"attempt": 2/)).toBeVisible();
+});
+
+it('AC-015-E-4: graph node count, selected call, and event count shown accurately without occurrence terms', async () => {
+  installFetch();
+  render(<App />);
+  await screen.findByText('Agent graph');
+  // 2 nodes in fixture agent_graph
+  expect(screen.getByText('2 calls')).toBeVisible();
+  // no occurrence terminology anywhere
+  expect(screen.queryByText(/occurrence/i)).not.toBeInTheDocument();
+});

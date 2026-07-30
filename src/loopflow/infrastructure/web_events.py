@@ -87,6 +87,13 @@ def read_complete_jsonl(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def _needs_call_id(event: dict[str, Any]) -> bool:
+    event_type = event.get("type", "")
+    return event_type.startswith("agent_") or event_type in {
+        "tool_call", "tool_call_update", "usage_update", "message", "retry"
+    }
+
+
 def is_valid_v2(event: dict[str, Any]) -> bool:
     required = {"version", "event_id", "type", "ts", "run_id", "payload"}
     if event.get("version") != 2 or not required.issubset(event):
@@ -150,7 +157,8 @@ def project_events(path: Path) -> EventProjection:
     for event in projection.events:
         if event.get("version") == 2:
             if not is_valid_v2(event):
-                projection.malformed.append(event)
+                reason = "missing_call_id" if _needs_call_id(event) and not event.get("call_id") else "invalid_event"
+                projection.malformed.append({"reason": reason, "raw": event})
                 continue
             event_type = event["type"]
             call_id = event.get("call_id")
@@ -208,7 +216,7 @@ def project_events(path: Path) -> EventProjection:
                     call["started_at"] = event.get("ts")
                     if call_id not in seen_call_ids:
                         seen_call_ids.add(call_id)
-                        label = payload.get("label", call_id)
+                        label = payload.get("label") or call_id
                         agent_def = payload.get("agent_def")
                         agent_nodes.append({
                             "id": call_id,
