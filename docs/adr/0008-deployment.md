@@ -8,7 +8,7 @@ created: 2026-07-07T12:00:00Z
 
 # ADR-0008: 部署策略
 
-> 2026-08-03：修订为**本地型发布**。历史所有版本（0.24~0.27）实际均按本地型发布（release/* → main + tag + GitHub Releases 产物），无 PyPI publish 配置或执行记录；且 PyPI 上 `loopflow` 已被他人占用。原决策保留为备选方案（见「备选方案」）。
+> 2026-08-03：修订为**本地型发布**。历史所有版本（0.24~0.27）实际均按本地型发布（release/* 分支 → 合并 main + 打 tag），无 PyPI publish 配置或执行记录；且 PyPI 上 `loopflow` 已被他人占用。原决策保留为备选方案（见「备选方案」）。
 
 ---
 
@@ -20,7 +20,7 @@ loopflow 是 CLI 工具，需要确定用户安装方式和开发者发布流程
 
 ## 决策内容
 
-**本地型发布**：以 `release/*` 分支 → 合并 `main` + 打 tag 为发布锚点，构建产物（`uv build` 生成的 wheel/sdist）附在 GitHub Releases 中分发。开发者/部署目标从 Releases 或本地 editable 安装（`pip install --user -e .`）。
+**本地型发布**：以 `release/*` 分支 → 合并 `main` + 打 tag 为发布锚点（tag 即版本归档）。发布门禁验证 `uv build` 产物可构建、wheel 可真实起服（见「验证」段）；部署目标从本地 editable 安装（`pip install --user -e .`）。
 
 **PyPI 发布不再作为当前执行路径**：PyPI 上 `loopflow` 包名已被他人占用，且本仓库无 PyPI publish 配置、token 或执行记录。若未来需要公共分发，先解决包名问题再评估（见备选方案 A）。
 
@@ -35,8 +35,8 @@ loopflow 是 CLI 工具，需要确定用户安装方式和开发者发布流程
 
 ### 方案 B: 本地型发布（当前决策）
 
-- 优点：与既有 0.24~0.27 实际流程一致（release/* → main + tag + GitHub Releases 产物），无外部账号依赖
-- 缺点：公共可发现性弱，分发依赖 GitHub；用户需从 Releases 下载或本地构建
+- 优点：与既有 0.24~0.27 实际流程一致（release/* → main + tag），无外部账号依赖
+- 缺点：公共可发现性弱，无公共分发渠道（仓库未发布 GitHub Releases）；外部用户需自行构建或联系维护者
 
 ### 方案 C: Homebrew
 
@@ -69,7 +69,7 @@ loopflow 是 CLI 工具，需要确定用户安装方式和开发者发布流程
 
 ### 负面
 
-- 不提供 `pip install loopflow` 公共安装渠道，外部用户需从 Releases 获取
+- 不提供 `pip install loopflow` 公共安装渠道，仓库也无 GitHub Releases 产物分发，外部用户需自行构建
 - 若未来需要公共分发，需重新评估包名与 PyPI 流程（见备选方案 A）
 
 ---
