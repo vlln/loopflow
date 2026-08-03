@@ -112,7 +112,17 @@ function RunsWorkspace() {
       onState: (state) => {
         setStreamState(state);
         if (state === 'closed' || state === 'error') {
-          void api.run(selectedId).then((value) => { setDetail(value); }).catch(() => {});
+          void api.run(selectedId).then((value) => {
+            setDetail(value);
+            // BL-057/0.28.0: a run can settle into waiting_input exactly when
+            // its SSE stream closes — reload interventions so the answer
+            // panel appears without needing to switch runs away and back.
+            if (value.status === 'waiting_input' || value.allowed_actions.includes('respond') || value.interventions?.length) {
+              void api.interventions(value.run_id).then((page) => setInterventions(page.items)).catch((cause) => setError(messageOf(cause)));
+            } else {
+              setInterventions([]);
+            }
+          }).catch(() => {});
           void api.fileChanges(selectedId).then((result) => setFileChangeRecords(result.items)).catch(() => setFileChangeRecords([]));
           void loadRuns();
         }
