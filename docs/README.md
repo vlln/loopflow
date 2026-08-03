@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `SYSTEM_TEST` (0.28.0) |
-| **设计评估** | 0.28.0 迭代：DEVELOP 无新业务特性（BL-056/057/058/059 均在 DESIGN/TEST_INFRA 闭环），develop 全绿。进入 SYSTEM_TEST：全量测试 + strict manifest + 专项（含 demo loop 黑盒链路）。 |
+| **当前阶段** | `RELEASE` (0.28.0) |
+| **设计评估** | 0.28.0 迭代：SYSTEM_TEST 全层全绿（693 Python + 六 profile strict + 16 Playwright + 性能专项），无阻塞缺陷。进入 RELEASE：本轮为增量小迭代（ADR-0008 文档修订 + 测试资产 + 基建修复），无新业务特性。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
