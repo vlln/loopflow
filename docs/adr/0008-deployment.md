@@ -1,6 +1,6 @@
 ---
 title: ADR-0008
-description: 部署策略：本地型发布（release → main + tag + GitHub Releases 产物）；PyPI 路径保留为备选
+description: 部署策略：本地型发布（release → main + tag + wheel 构建冒烟）；PyPI 路径保留为备选
 type: adr
 status: proposed
 created: 2026-07-07T12:00:00Z
@@ -64,7 +64,7 @@ loopflow 是 CLI 工具，需要确定用户安装方式和开发者发布流程
 ### 正面
 
 - 发布流程与既有执行一致，无新账号/凭证依赖
-- tag + GitHub Releases 产物可追溯、可回滚
+- tag 即版本归档，可追溯、可回滚
 - 版本号与 CHANGELOG 维护成本不变
 
 ### 负面
