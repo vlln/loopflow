@@ -110,6 +110,32 @@ def _spawn_env(mode: str) -> dict[str, str]:
     return {**os.environ, "MOCK_ACP_MODE": mode}
 
 
+async def _wait_more_updates(
+    collector: _NotificationCollector,
+    before: int,
+    *,
+    timeout: float = 5.0,
+    interval: float = 0.01,
+) -> None:
+    """Wait until the collector has received more updates than *before*.
+
+    Deterministic replacement for fixed sleeps: ``conn.prompt()`` returns when
+    the prompt response arrives, but ``session_update`` notifications are
+    delivered asynchronously and may still be in flight.  Poll until the
+    collector sees the new updates (or fail on timeout) instead of guessing
+    a sleep duration — this removes the subprocess/notification timing race
+    (BL-059).
+    """
+    deadline = asyncio.get_event_loop().time() + timeout
+    while len(collector.updates) <= before:
+        if asyncio.get_event_loop().time() > deadline:
+            raise AssertionError(
+                f"timed out waiting for notifications after prompt "
+                f"(before={before}, now={len(collector.updates)})"
+            )
+        await asyncio.sleep(interval)
+
+
 async def _drive(mode: str, prompts: list[str], *, do_load: bool = False) -> tuple[Any, str, list[Any], list[dict]]:
     """Spawn mock server in *mode*, drive *prompts*, return (init, session_id, all_updates, permission_calls)."""
     collector = _NotificationCollector()
@@ -132,8 +158,10 @@ async def _drive(mode: str, prompts: list[str], *, do_load: bool = False) -> tup
         for i, prompt_text in enumerate(prompts):
             if do_load and i == 1:
                 await conn.load_session(cwd="/tmp", session_id=sid)
+            before = len(collector.updates)
             resp = await conn.prompt(session_id=sid, prompt=[text_block(prompt_text)])
             assert resp.stop_reason == "end_turn"
+            await _wait_more_updates(collector, before)
         all_updates = collector.updates
         return init, sid, all_updates, collector.permission_calls
 
@@ -284,13 +312,17 @@ def test_mock_context_prefix_only_first_prompt():
             ns = await conn.new_session(cwd="/tmp")
             sid = ns.session_id
 
-            # First prompt
+            # First prompt — context prefix + reply arrive asynchronously
+            before = len(collector.updates)
             await conn.prompt(session_id=sid, prompt=[text_block("First")])
+            await _wait_more_updates(collector, before)
             first_texts = _message_texts(collector.updates)
             collector.updates.clear()
 
             # Second prompt — should NOT have context prefix
+            before = len(collector.updates)
             await conn.prompt(session_id=sid, prompt=[text_block("Second")])
+            await _wait_more_updates(collector, before)
             second_texts = _message_texts(collector.updates)
             return first_texts, second_texts
 
