@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import http.client
 import re
+import threading
+import time
 from importlib.resources import files
 
 
@@ -22,7 +25,27 @@ def main() -> int:
     if missing:
         raise SystemExit(f"wheel is missing referenced assets: {missing}")
 
-    print(f"wheel assets ok: index.html + {len(asset_paths)} hashed assets")
+    # End-to-end smoke: `loopflow web` must serve the built UI, not just ship files.
+    # Regression for the 0.27.0 defect where the wheel had no assets at all.
+    from loopflow.presentation.web.server import create_server
+
+    server = create_server("127.0.0.1", 0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        body = response.read()
+        conn.close()
+        if response.status != 200 or b"<!doctype html>" not in body.lower():
+            raise SystemExit(f"GET / failed: status={response.status}")
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
+
+    print(f"wheel assets ok: index.html + {len(asset_paths)} hashed assets; web serves UI")
     return 0
 
 

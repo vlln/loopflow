@@ -390,7 +390,7 @@ def handler_for(
             if pure.is_absolute() or ".." in pure.parts or not (relative == "index.html" or relative.startswith("assets/")):
                 self._error(404, "file_not_found", "Static resource was not found")
                 return
-            root = static_root or importlib.resources.files("loopflow.presentation.web").joinpath("static")
+            root = static_root or _resolve_static_root()
             resource = root.joinpath(*pure.parts)
             if not resource.is_file():
                 if "." not in pure.name:
@@ -431,6 +431,30 @@ def is_loopback(host: str) -> bool:
         return ipaddress.ip_address(host).is_loopback
     except ValueError:
         return False
+
+
+def _resolve_static_root() -> Any:
+    """Locate the WebUI static assets.
+
+    Production wheels ship them at ``loopflow/presentation/web/static``. In a
+    source checkout the dist artifacts live at ``web/dist`` until synced into
+    the package — resolve that so `loopflow web` works without a manual sync.
+    """
+    packaged = importlib.resources.files("loopflow.presentation.web").joinpath("static")
+    if packaged.joinpath("index.html").is_file():
+        return packaged
+    env_root = os.environ.get("LOOPFLOW_WEB_DIST")
+    if env_root:
+        candidate = Path(env_root)
+        if candidate.joinpath("index.html").is_file():
+            return candidate
+    # Dev fallback: walk up from this file to a repo's web/dist.
+    here = Path(__file__).resolve()
+    for parent in (here.parent, *here.parents):
+        candidate = parent / "web" / "dist"
+        if candidate.joinpath("index.html").is_file():
+            return candidate
+    return packaged  # missing; caller reports 404
 
 
 def _one(query: dict[str, list[str]], key: str) -> str | None:
