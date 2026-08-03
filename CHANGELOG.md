@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.28.0] — 2026-08-03
+
+### Changed
+- **ADR-0008 修订为本地型发布**（BL-056）：0.24~0.27 全部实际按本地型发布（release/* → main + tag + wheel 构建冒烟），无 PyPI publish 配置/执行记录，且 PyPI 上 `loopflow` 包名已被他人占用。ADR 修订反映现实，PyPI 路径保留为备选方案。
+
+### Added
+- **demo loop 真实链路黑盒**（BL-057/058）：新增 mock backend（`--mock bash`）demo loop（`tests/agent_support/demo_loop/`）——assets agent 真实生成 `chart.png`/`report.pdf`，workflow 调用 `intervene()` 请求批准。配端到端黑盒测试（`tests/e2e/test_demo_loop_blackbox.py`）验证 WebUI 二进制预览（AC-033）与 intervention 应答（AC-023）真实链路，不调付费 Agent、可入 CI，补上 SYSTEM_TEST 既有黑盒盲区。
+
+### Fixed
+- **子进程级测试 flaky**（BL-059）：`test_mock_acp_support` 子进程测试在 CI 偶发失败——`conn.prompt()` 返回后 `session_update` 通知异步投递未完成即断言。改为轮询等待通知就绪（确定性，替代隐式时序假设），本地 5 连跑 + CI 全绿。
+- **docs/plans 汇总表与状态文档同步**：0108 状态修正 done、0112 登记、main/develop docs/README 同步至 0.27.1/0.28.0 状态；uv.lock 版本同步 0.27.1。
+
 ## [0.27.1] — 2026-07-30
 
 ### Fixed
