@@ -4,8 +4,8 @@ TEST_INFRA 增量执行容器（0.28.0 迭代）。
 
 | 单元 | Plan | Report | 状态 |
 |------|------|--------|------|
-| 01 | [BL-059 子进程测试确定性](01-plan-bl059-subprocess.md) | [Report](01-report-bl059-subprocess.md) | pending |
-| 02 | [BL-057/058 demo loop + 黑盒盲区](02-plan-demo-loop.md) | [Report](02-report-demo-loop.md) | pending |
+| 01 | [BL-059 子进程测试确定性](01-plan-bl059-subprocess.md) | [Report](01-report-bl059-subprocess.md) | done |
+| 02 | [BL-057/058 demo loop + 黑盒盲区](02-plan-demo-loop.md) | [Report](02-report-demo-loop.md) | done |
 
 ## 执行位置
 
