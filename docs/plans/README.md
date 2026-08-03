@@ -72,7 +72,8 @@
 | [0110](0110-web-contract-alignment/) | Web AgentGraph 契约对齐 | done | 2026-07-29 |
 | [0111](0111-web-agentgraph-manifest/) | Web AgentGraph manifest 增量基建 | done | 2026-07-29 |
 | [0112](0112-web-ac-strict-coverage/) | Web AC strict 覆盖补齐 | done | 2026-07-30 |
-| [0113](0113-0.28.0-test-infra/) | 0.28.0 增量测试基建（BL-059 + BL-057/058） | pending | 2026-08-03 |
+| [0113](0113-0.28.0-test-infra/) | 0.28.0 增量测试基建（BL-059 + BL-057/058） | done | 2026-08-03 |
+| [0114](0114-0.28.0-system-test/) | 0.28.0 系统测试 | done | 2026-08-03 |
 
 ## 状态说明
 
