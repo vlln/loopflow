@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` (新一轮迭代) |
-| **设计评估** | 0.27.0 已发布；0.27.1 hotfix 已发布（v0.27.1 tag 在 main，main+develop 已同步）：修复 loopflow web 静态 404、并行 Agent 事件 call_id 串线。BL-057/058/059 记录 demo loop 端到端、SYSTEM_TEST 真实 agent 黑盒盲区、子进程级测试 flaky。新一轮迭代候选从 docs/backlog.md 拉取。 |
+| **当前阶段** | `TEST_INFRA` (增量检查) |
+| **设计评估** | 0.28.0 迭代：ADR-0008 已 accepted（本地型发布，BL-056）。BL-057/058/059 无权威文档变更，进入 TEST_INFRA 增量检查（子进程测试确定性 + demo loop 端到端基建）。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
