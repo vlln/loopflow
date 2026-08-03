@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DESIGN` (新一轮迭代) |
-| **设计评估** | 0.28.0 迭代：候选选定 BL-056（ADR-0008 修订为本地型发布，proposed）+ BL-057/058（demo loop 端到端 + SYSTEM_TEST 黑盒盲区，仅 Plan 容器）+ BL-059（子进程测试确定性，无文档变更）。审查 7 项全过，待人类确认 promote。 |
+| **当前阶段** | `TEST_INFRA` (增量检查) |
+| **设计评估** | 0.28.0 迭代：ADR-0008 已 accepted（本地型发布，BL-056）。BL-057/058/059 无权威文档变更，进入 TEST_INFRA 增量检查（子进程测试确定性 + demo loop 端到端基建）。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

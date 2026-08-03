@@ -9,7 +9,7 @@
 | [0005](0005-test-framework.md) | 测试框架选型 | accepted | Spec |
 | [0006](0006-ci-platform.md) | CI 平台选型 | accepted | Spec |
 | [0007](0007-coverage.md) | 覆盖率策略 | accepted | Spec |
-| [0008](0008-deployment.md) | 部署策略：本地型发布 | proposed | Spec / BL-056 修订 |
+| [0008](0008-deployment.md) | 部署策略：本地型发布 | accepted | Spec / BL-056 修订 |
 | [0009](0009-phase-graph.md) | PhaseGraph 执行图与终端渲染 | superseded | ADR-0052 替代 |
 | [0031](0031-loop-definition.md) | loop.md — loop 定义文件格式（frontmatter + body） | accepted | — |
 | [0032](0032-dispatch-queue.md) | 调度机制：dispatch + queue + resource lock | accepted | — |

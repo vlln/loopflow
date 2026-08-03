@@ -2,7 +2,7 @@
 title: ADR-0008
 description: 部署策略：本地型发布（release → main + tag + wheel 构建冒烟）；PyPI 路径保留为备选
 type: adr
-status: proposed
+status: accepted
 created: 2026-07-07T12:00:00Z
 ---
 
