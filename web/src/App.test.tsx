@@ -174,6 +174,52 @@ it('operates the Runs master-detail workspace and stream', async () => {
   await waitFor(() => expect(calls.some((call) => call.includes('status=failed'))).toBe(true));
 });
 
+it('shows the answer panel when a run settles into waiting_input on stream end', async () => {
+  // Regression (0.28.0 / BL-057): when a run settles into waiting_input at
+  // the exact moment its SSE stream closes, the answer panel must appear
+  // without switching runs away and back. installFetch records every call;
+  // we make the run-live detail flip to waiting_input after the first fetch,
+  // then emit stream_end and assert the app fetches interventions itself.
+  let detailFetches = 0;
+  const calls = installFetch({
+    detailOverride: undefined as never,
+  });
+  const originalInstall = globalThis.fetch;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  vi.stubGlobal('fetch', (async (input: any, init?: any) => {
+    const path = String(input);
+    calls.push(`${init?.method ?? 'GET'} ${path}`);
+    if (path === '/api/v1/runs/run-live' && (init?.method ?? 'GET') === 'GET') {
+      detailFetches += 1;
+      if (detailFetches > 1) {
+        return response({
+          ...detail,
+          ...runs[1],
+          status: 'waiting_input',
+          allowed_actions: ['respond', 'stop'],
+          interventions: undefined,
+        });
+      }
+    }
+    if (path === '/api/v1/runs/run-live/interventions') {
+      return response({ items: [{ request_id: 'approve-live-1', key: 'approve', prompt: 'Approve?', schema: { type: 'boolean' }, status: 'pending', resume_mode: 'replay', call_id: null, can_continue_session: false, created_at: '2026-07-18T22:00:00Z', responded_at: null }] });
+    }
+    return originalInstall(input, init);
+  }) as typeof fetch);
+
+  render(<App />);
+  await screen.findByText('run-live');
+  // SSE connection for the running run is open.
+  await waitFor(() => expect(EventSourceMock.instances.length).toBeGreaterThan(0));
+  const conn = EventSourceMock.instances[EventSourceMock.instances.length - 1];
+  act(() => { conn.emit('stream_end'); });
+  // The panel appears without any run switching (fix regression).
+  await waitFor(() => expect(screen.getByText('1 pending request')).toBeVisible());
+  expect(screen.getByText('Approve?')).toBeVisible();
+  expect(calls.some((call) => call.endsWith('/interventions'))).toBe(true);
+  vi.unstubAllGlobals();
+});
+
 it('creates a Run from the modal', async () => {
   installFetch();
   render(<App />);
