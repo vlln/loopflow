@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `DEVELOP` (0.28.0) |
-| **设计评估** | 0.28.0 迭代：TEST_INFRA 增量闭环（0113 done — BL-059 子进程确定性、BL-057/058 demo loop 黑盒），MR 门禁全绿（693 Python + 65 前端 + 16 Playwright）。进入 DEVELOP：本轮无新增 Spec/AC（BL-057/058 仅测试资产），BL-059 已随基建修复，无待开发业务特性。 |
+| **当前阶段** | `SYSTEM_TEST` (0.28.0) |
+| **设计评估** | 0.28.0 迭代：DEVELOP 无新业务特性（BL-056/057/058/059 均在 DESIGN/TEST_INFRA 闭环），develop 全绿。进入 SYSTEM_TEST：全量测试 + strict manifest + 专项（含 demo loop 黑盒链路）。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
