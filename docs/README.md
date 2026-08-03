@@ -4,8 +4,8 @@
 
 | 字段 | 值 |
 |------|-----|
-| **当前阶段** | `RELEASE` complete (v0.27.0) |
-| **设计评估** | 0.27.0：BL-046 Agent waiting_input 控制协议、BL-051 Web 二进制文件预览、BL-052 Run append prompt、BL-054 New Run declared args 契约。reconcile 契约对齐 ADR-0046（Spec v20）；Web strict manifest 89 场景全绿，SYSTEM_TEST 全绿无阻塞缺陷。 |
+| **当前阶段** | `RELEASE` complete (v0.27.1) |
+| **设计评估** | 0.27.0：BL-046 Agent waiting_input 控制协议、BL-051 Web 二进制文件预览、BL-052 Run append prompt、BL-054 New Run declared args 契约。reconcile 契约对齐 ADR-0046（Spec v20）；Web strict manifest 89 场景全绿，SYSTEM_TEST 全绿无阻塞缺陷。0.27.1 hotfix：修复 loopflow web 静态 404 与并行 Agent 事件 call_id 串线（v0.27.1 tag 已打，main+develop 已同步）。新一轮迭代候选 BL-057/058/059 见 docs/backlog.md（develop）。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->
