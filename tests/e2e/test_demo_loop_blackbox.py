@@ -166,6 +166,9 @@ def test_demo_loop_blackbox_ac033_ac023(demo_env):
     assert (work / "report.pdf").is_file(), "report.pdf missing"
     assert (work / "chart.png").read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
     assert (work / "report.pdf").read_bytes()[:8] == b"%PDF-1.4"
+    # Assets carry real visible content (BL-057: meant to be previewed).
+    assert len((work / "chart.png").read_bytes()) > 1000  # not a 1x1 stub
+    assert b"Demo Report" in (work / "report.pdf").read_bytes()  # has text
 
     # 3. Web server over the same dirs: AC-033 preview + raw.
     server, thread, client = _make_web_server(demo_env[0].parent, runs)
