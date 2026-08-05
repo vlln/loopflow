@@ -67,8 +67,13 @@ def main() -> int:
             json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
-    else:
-        manifest = profile.read_manifest(args.manifest)
+        # BL-049: regenerated manifests contain planned:: nodes, so strict
+        # validation would always fail and mislead. --write is a generator,
+        # not a validator; exit clean after writing.
+        print(f"AC manifest written: {args.manifest} ({len(manifest['cases'])} scenarios)")
+        return 0
+
+    manifest = profile.read_manifest(args.manifest)
 
     errors = profile.check_manifest(manifest, args.ac, allow_planned=args.allow_planned)
     if errors:
