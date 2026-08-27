@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- **CliTransport 空闲看门狗完善为子进程感知**（BL-013 兜底）：此前工作区补丁仅在"无输出超时"后直接 kill，会把 mip/docker pull 等静默 30-60min 的长命令误杀；现改为 idle 超时后先检查存活子进程——有子进程（长命令）继续等待，无子进程才判定为挂起的模型调用并 kill。默认阈值 43200s→7200s（官方 `CLAUDE_STREAM_IDLE_TIMEOUT_MS` 主防在前，本层只兜底幽灵进程）。新增 `tests/unit/test_cli_transport_watchdog.py` 7 例。
+
 ## [0.28.0] — 2026-08-03
 
 ### Changed
