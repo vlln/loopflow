@@ -6,7 +6,7 @@ __pycache__/
 dist/__pycache__/
 .coverage
 .agents/
-web/node_modules/
+node_modules/
 web/dist/
 web/coverage/
 web/playwright-report/
@@ -14,3 +14,5 @@ web/test-results/
 web/*.tsbuildinfo
 src/loopflow/presentation/web/static/
 .artifacts/
+# 本地环境文档（含本机路径/内网信息，不进版本库）
+AGENTS.local.md

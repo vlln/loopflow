@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- **校验驱动的重试编排原语 `run_rerun_loop`**（BL-062 / ADR-0058）：框架层新增通用跨阶段回退编排——阶段序列执行、末位阶段后校验回调（`validate` → `RouteDecision(route_key, message)`）驱动回退重跑、路由映射（`route_map`）与预算控制；路由决策携带反馈（message）经 `context["feedback"]` 送达重跑阶段；`RerunOutcome(value, session_id)` 携带阶段会话 id，回退重跑时经 `context["resume_session_id"]` + `agent(resume_session_id=...)` 恢复该阶段上次对话（`AgentResult.session_id` 提供真实后端会话 id，`run_goal_loop` 新增 `initial_resume_session_id`）。不引入 phase 概念（ADR-0052）。配 `tests/agent_support/rerun_demo_loop/` mock backend demo loop 黑盒（事件退出码序列断言 [1,0,0,0]），34 unit + 2 e2e 用例（28 rerun_loop + 6 goal_loop/runner session）。
+
+### Fixed
+- **CliTransport 空闲看门狗完善为子进程感知**（BL-013 兜底）：此前工作区补丁仅在"无输出超时"后直接 kill，会把 mip/docker pull 等静默 30-60min 的长命令误杀；现改为 idle 超时后先检查存活子进程——有子进程（长命令）继续等待，无子进程才判定为挂起的模型调用并 kill。默认阈值 43200s→7200s（官方 `CLAUDE_STREAM_IDLE_TIMEOUT_MS` 主防在前，本层只兜底幽灵进程）。新增 `tests/unit/test_cli_transport_watchdog.py` 7 例。
+
 ## [0.28.0] — 2026-08-03
 
 ### Changed

@@ -5,7 +5,7 @@
 | 字段 | 值 |
 |------|-----|
 | **当前阶段** | `DESIGN` (新一轮迭代) |
-| **设计评估** | 0.28.0 已发布（v0.28.0 tag 在 main，main+develop 已同步）：ADR-0008 本地型发布、demo loop 黑盒、子进程测试确定性。新一轮迭代候选从 docs/backlog.md 拉取。 |
+| **设计评估** | 0.28.0 已发布（v0.28.0 tag 在 main，main+develop 已同步）：ADR-0008 本地型发布、demo loop 黑盒、子进程测试确定性。**BL-062 已闭环（0115 run_rerun_loop 完成）：ADR-0058（校验驱动的重试编排）经 DESIGN 评审 accepted**。新一轮迭代候选从 docs/backlog.md 拉取。 |
 | **核心模块** | backend, runtime, discovery, CLI, graph, display, agent, skills, Web Application/API/Frontend 已实现 |
 
 <!-- Agent 中断恢复时，用 git log --oneline --grep="docs(state):\|docs(plan):" 重建上下文。 -->

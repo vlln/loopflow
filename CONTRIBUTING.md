@@ -88,6 +88,17 @@ develop  ────●──●──●──●──●──→  (持续�
 
 Merge 策略：squash merge（保持 develop 历史线性）。
 
+### hotfix 留档（BL-060）
+
+热修复是快速通道，但不允许无痕：`hotfix/*` 必须创建最小执行容器
+（`docs/plans/<编号>-<hotfix-描述>/`，Plan + Report 成对），内容至少包含：
+
+- **Plan**：缺陷现象、根因、修复方案、验收方式（回归测试 + 冒烟）
+- **Report**：修复 commit、回归结果、`main` + `develop` 合并记录
+
+hotfix 合并到 `main` 后，执行容器状态更新为 `done`，作为该次修复的
+可审计留档（修复了什么、怎么验收、何时合入）。
+
 ---
 
 ## 五、测试
