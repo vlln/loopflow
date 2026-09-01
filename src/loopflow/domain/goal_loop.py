@@ -28,6 +28,8 @@ class AgentResult:
     value: Any = None          # business result (None if not complete)
     turns: int = 1             # number of agent calls
     tokens: int | None = None  # total tokens consumed
+    session_id: str | None = None  # backend session id（ADR-0058 rerun_loop
+                                   # 回退恢复用；mock/无 backend 下为 None）
 
 
 def run_goal_loop(
@@ -39,6 +41,7 @@ def run_goal_loop(
     emit_log: Callable[[str], None] | None = None,
     schema_max_retries: int = 3,
     control_schema: dict | None = None,
+    initial_resume_session_id: str | None = None,
 ) -> AgentResult:
     """Run goal loop: iterate until complete or blocked.
 
@@ -47,16 +50,22 @@ def run_goal_loop(
     Schema retry is managed at the goal loop level, not inside _execute_once.
     Each call_fn invocation uses max_retries=0 — the goal loop owns the retry
     budget globally across iterations.
+
+    ``initial_resume_session_id``：首轮迭代恢复的外部会话 id（ADR-0058：
+    rerun_loop 回退重跑 goal 模式阶段时复用上次会话）。返回的 AgentResult
+    ``session_id`` 为**最近已知**的 backend sid（末次迭代若返回 None 则保留
+    更早的非 None 会话——"最近可用会话"语义）。
     """
 
     goal_schema = add_goal_to_schema(schema)
     output_schema = add_control_to_schema(goal_schema) if control_schema else goal_schema
 
     session = "goal_1"
-    resume_session_id: str | None = None
+    resume_session_id: str | None = initial_resume_session_id
     blocked_reason: str | None = None
     blocked_count = 0
     schema_failures = 0
+    last_sid: str | None = None
 
     def _log(msg: str) -> None:
         if emit_log:
@@ -98,9 +107,12 @@ def run_goal_loop(
         # Valid JSON: extract goal state
         goal_state: dict = result.pop("__goal", {}) if isinstance(result, dict) else {}
         status = goal_state.get("status", "active")
+        if backend_sid:
+            last_sid = backend_sid
 
         if status == "complete":
-            return AgentResult(status="complete", value=result, turns=iteration)
+            return AgentResult(status="complete", value=result, turns=iteration,
+                               session_id=last_sid)
 
         if status == "blocked":
             reason = goal_state.get("reason") or "unknown"
@@ -115,6 +127,7 @@ def run_goal_loop(
                     status="blocked",
                     reason=f"{reason} (3 consecutive identical reasons)",
                     turns=iteration,
+                    session_id=last_sid,
                 )
 
         # Setup for next iteration
@@ -125,4 +138,5 @@ def run_goal_loop(
         status="exhausted",
         reason=f"Goal not completed after {goal_max_iterations} iterations",
         turns=goal_max_iterations,
+        session_id=last_sid,
     )

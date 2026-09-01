@@ -214,13 +214,18 @@ class AgentRunner:
             isolation: Worktree isolation mode.
             max_retries: Max JSON parse retries.
             goal_max_iterations: Max goal loop iterations.
+            resume_session_id: 显式恢复的 backend session id（ADR-0058
+                rerun_loop 回退重跑时复用该阶段上次会话；非恢复模式也可用）。
             **params: Template parameters.
 
         Returns:
-            Parsed dict (if schema) or raw text.
+            AgentResult（含 session_id：本次调用/末次迭代的 backend sid）。
         """
         self._label = params.pop("label", None)
         self._agent_def_name = params.pop("agent_def", None)
+        # 显式 session 恢复（ADR-0058 rerun_loop 回退时复用阶段上次 session）：
+        # 非恢复模式下也可 resume 一个已完成的 backend session（agent_resume 事件）。
+        resume_session_id = params.pop("resume_session_id", None)
         # 1. Dynamic backends must discover capabilities before prompt/schema
         # assembly so we never advertise an unsafe intervention path.
         if self.backend is not None:
@@ -301,24 +306,30 @@ class AgentRunner:
                 _goal_call, self._log,
                 schema_max_retries=max_retries,
                 control_schema=AGENT_CONTROL_SCHEMA if intervention_available else None,
+                initial_resume_session_id=resume_session_id,
             )
 
         # 7. Native goal: single call, wrap in AgentResult
         if native_goal:
             result, backend_sid = self._execute_once(
                 resolved, schema, model, isolation, max_retries,
+                resume_session_id=resume_session_id,
             )
             self._observe_file_changes()
             if isinstance(result, str) and result.startswith("Goal ["):
-                return AgentResult(status="blocked", reason=result)
-            return AgentResult(status="complete", value=result)
+                return AgentResult(status="blocked", reason=result,
+                                   session_id=backend_sid)
+            return AgentResult(status="complete", value=result,
+                               session_id=backend_sid)
 
         # 8. Normal single call
-        result = self._execute_once(
+        result, backend_sid = self._execute_once(
             resolved, schema, model, isolation, max_retries,
-        )[0]
+            resume_session_id=resume_session_id,
+        )
         self._observe_file_changes()
-        return AgentResult(status="complete", value=result)
+        return AgentResult(status="complete", value=result,
+                           session_id=backend_sid)
 
     def _observe_file_changes(self) -> None:
         """Observe file changes after an agent call completes."""
@@ -387,13 +398,16 @@ class AgentRunner:
             if selection.outcome in {"hit", "legacy_hit"} and not target_continue:
                 self.ctx.legacy_recovery = selection.outcome == "legacy_hit"
                 cached = selection.segment.text
+                # D-6：replay hit 携带 segment.session_id——rerun_loop 回退重跑
+                # 时能恢复该次会话（此前恒返回 None，session 通道在恢复运行下断）
+                replay_sid = selection.segment.session_id
                 if schema:
                     try:
-                        return json.loads(cached), None
+                        return json.loads(cached), replay_sid
                     except json.JSONDecodeError:
                         pass
                 else:
-                    return cached, None
+                    return cached, replay_sid
             if self.ctx.recovery_mode == "continue" and self.ctx.continue_targets:
                 if target_info is None:
                     raise ReplayDiverged(

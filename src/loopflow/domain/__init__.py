@@ -21,6 +21,13 @@ from loopflow.domain.marshalling import (
     marshal,
     validate_json,
 )
+from loopflow.domain.rerun_loop import (
+    RerunOutcome,
+    RerunResult,
+    RouteDecision,
+    Stage,
+    run_rerun_loop,
+)
 
 __all__ = [
     "ERROR_CATEGORIES",
@@ -29,6 +36,10 @@ __all__ = [
     "Capabilities",
     "AgentResult",
     "ParamSpec",
+    "RerunOutcome",
+    "RerunResult",
+    "RouteDecision",
+    "Stage",
     "add_goal_to_schema",
     "build_goal_steering",
     "coerce_json",
@@ -37,5 +48,6 @@ __all__ = [
     "render_template",
     "resolve_params",
     "run_goal_loop",
+    "run_rerun_loop",
     "validate_json",
 ]
